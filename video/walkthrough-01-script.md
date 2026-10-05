@@ -11,8 +11,9 @@ Voices: Jessica (female) and Brian (male), both American (ElevenLabs). One cut e
 | 3 | The **Back up your wallet** screen. Tap **Save an encrypted backup**, the share sheet appears. | Before you can receive money, it asks you to back up: an encrypted file you can save or email to yourself, or your twelve words on paper. |
 | 4 | Wallet home: the balance card in dollars, **Receive · Send · Mint**, the Tokens list. | Balances are in dollars. Send to a name instead of a long address, and keep BSV, MNEE and all your tokens in one place. |
 | 5 | Tap the **Exchange** tab: Tokens, NFTs, Music, Video. Scroll the trending tokens, open one. | The Exchange lets you buy and sell tokens and NFTs, wallet to wallet, with no middleman. |
-| 5b | Tap the **Media** (play) button: the player with music and movie NFTs. | And the media player plays the music and movie NFTs you own, right inside your wallet. |
-| 6 | Tap the **Social** tab: your own $NAME card pinned on top, a token room opens. | Your name is also a token, with its own chat room. Hold a friend's token to get into theirs. |
+| 5b | Exchange › **Music**, then **Video**: real music and movie NFT listings. | Music and movie NFTs trade here too, and play in your wallet's media player once you own them. |
+| 5c | **Apps** tab: the bApps grid (bChat, bMovies, bWriter…), scroll. | The Apps tab is a store of BSV apps, and you can add any site you like. |
+| 6 | **Feed** (posts from BSV social apps), then **Chat** › Chatrooms: group rooms, the bWallet Lounge. | The Feed shows posts from across BSV social apps. In Chat, join group rooms, or hold a friend's token to get into theirs. |
 | 7 | Open **b**. Tap **Create a strategy**. The prompt fills in. | And there's b, your agent. Ask it to create a trading strategy in plain words. |
 | 8 | b's reply with goals and limits. Highlight the line "max $10 a day". | It writes the rules, and the wallet enforces the limits before anything is signed. |
 | 9 | End card: gold b, **bwalletx.com**, "Android · iPhone · Chrome · Web", "Beta: test with small amounts". | bWalletX. Get it free at bwalletx.com. It's in beta, so start with small amounts. |
