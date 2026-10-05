@@ -1,17 +1,101 @@
 [
-  { "url": "https://bwalletx.com/?v=2", "lines": ["bWalletX: the BSV wallet for tokens, media and apps. Android, iPhone, Chrome and web.", "One wallet for tokens, media, apps, chat and AI agents. Your keys stay on your device."] },
-  { "url": "https://bwalletx.com/pnees?v=6", "lines": ["PNEEs: digital pennies on BSV, backed only by BSV locked in public vaults. Live mainnet pilot.", "We ran the first PNEEs liquidation on mainnet at a real 3-of-5 price. The txids are on the page."] },
-  { "url": "https://bwalletx.com/strategies?v=5", "lines": ["Tell the b agent your trading idea. It writes the strategy, tests it on live prices and packages it to sell on the Exchange.", "Strategies are programs your agent runs, inside limits the wallet enforces. Make one, or buy one."] },
-  { "url": "https://bwalletx.com/agent", "lines": ["Give your AI agent its own trading account and a budget. Stop it or sweep everything back any time."] },
-  { "url": "https://bwalletx.com/exchange", "lines": ["The bWalletX Exchange: buy and sell tokens, NFTs and $HANDLE tokens wallet to wallet."] },
-  { "url": "https://bwalletx.com/social?v=2", "lines": ["Your handle is your paymail, your token and your chat room. Sign in with X or Google."] },
-  { "url": "https://bwalletx.com/mcp", "lines": ["Let Claude, ChatGPT or Cursor use a bWalletX agent account through MCP, within the limits you set."] },
-  { "url": "https://bwalletx.com/cli", "lines": ["Run your bWalletX wallet and agents from the command line: balances, sends, trades and strategies."] },
-  { "url": "https://bwalletx.com/developers", "lines": ["Add Connect with bWalletX to your site: one script, a standard BRC-100 wallet, no API keys."] },
-  { "url": "https://bwalletx.com/apps/add", "lines": ["Built a BSV app? Add it to the Apps screen in bWallet and bWalletX. Free, reviewed by a person."] },
-  { "url": "https://bwalletx.com/iphone?v=2", "lines": ["bWalletX on iPhone today: install the web app from Safari in under a minute. It makes you back up before you can receive money."] },
-  { "url": "https://bwalletx.com/features", "lines": ["Everything bWalletX does, on one page: tokens, names, rooms, calls, market, media and minting."] },
-  { "url": "https://bwalletx.com/exchange/strategies", "lines": ["Strategies for sale on the bWalletX Exchange, each with the same public spec so they're easy to compare."] },
-  { "url": "https://bwalletx.com/strategies/spec?v=2", "lines": ["The bWalletX strategy file and listing spec, for anyone writing strategies or tools."] },
-  { "url": "https://bwalletx.com/blog?v=2", "lines": ["How we're building bWalletX, post by post: what worked, what broke, and what's not done."] }
+  {
+    "url": "https://bwalletx.com/?v=2",
+    "lines": [
+      "bWalletX: the BSV wallet for tokens, media and apps. Android, iPhone, Chrome and web.",
+      "One wallet for tokens, media, apps, chat and AI agents. Your keys stay on your device."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/pnees?v=6",
+    "lines": [
+      "PNEEs: digital pennies on BSV, backed only by BSV locked in public vaults. Live mainnet pilot.",
+      "We ran the first PNEEs liquidation on mainnet at a real 3-of-5 price. The txids are on the page."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/strategies?v=5",
+    "lines": [
+      "Tell the b agent your trading idea. It writes the strategy, tests it on live prices and packages it to sell on the Exchange.",
+      "Strategies are programs your agent runs, inside limits the wallet enforces. Make one, or buy one."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/agent",
+    "lines": [
+      "Give your AI agent its own trading account and a budget. Stop it or sweep everything back any time."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/exchange",
+    "lines": [
+      "The bWalletX Exchange: buy and sell tokens, NFTs and $HANDLE tokens wallet to wallet."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/social?v=2",
+    "lines": [
+      "Your handle is your paymail, your token and your chat room. Sign in with X or Google."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/mcp",
+    "lines": [
+      "Let Claude, ChatGPT or Cursor use a bWalletX agent account through MCP, within the limits you set."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/cli",
+    "lines": [
+      "Run your bWalletX wallet and agents from the command line: balances, sends, trades and strategies."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/developers?v=2",
+    "lines": [
+      "Add Connect with bWalletX to your site: one script, a standard BRC-100 wallet, no API keys."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/apps/add",
+    "lines": [
+      "Built a BSV app? Add it to the Apps screen in bWallet and bWalletX. Free, reviewed by a person."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/iphone?v=2",
+    "lines": [
+      "bWalletX on iPhone today: install the web app from Safari in under a minute. It makes you back up before you can receive money."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/features",
+    "lines": [
+      "Everything bWalletX does, on one page: tokens, names, rooms, calls, market, media and minting."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/exchange/strategies",
+    "lines": [
+      "Strategies for sale on the bWalletX Exchange, each with the same public spec so they're easy to compare."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/strategies/spec?v=2",
+    "lines": [
+      "The bWalletX strategy file and listing spec, for anyone writing strategies or tools."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog?v=3",
+    "lines": [
+      "How we're building bWalletX, post by post: what worked, what broke, and what's not done."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/friends?v=4",
+    "lines": [
+      "Your friends, their tokens and their rooms. Hold a friend's token to get into their room, then message, call or pay them in one tap."
+    ]
+  }
 ]
