@@ -3,3 +3,4 @@ state.json
 node_modules
 video/clips/*.mp4
 video/out/
+.vscode/
