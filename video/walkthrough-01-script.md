@@ -9,7 +9,7 @@ Voices: Jessica (female) and Brian (male), both American (ElevenLabs). One cut e
 | 1 | Black. The gold b fades up with a soft glow. Title: **bWalletX**. | This is bWalletX. One wallet for your money, your tokens, your apps and your AI agent. |
 | 2 | Tap **Create wallet**, type a password, the wallet opens. | Making a wallet takes a few seconds. Your keys are created on your device, and they never leave it. |
 | 3 | The **Back up your wallet** screen. Tap **Save an encrypted backup**, the share sheet appears. | Before you can receive money, it asks you to back up: an encrypted file you can save or email to yourself, or your twelve words on paper. |
-| 4 | Wallet home: the balance card in dollars, **Receive · Send · Mint**, the Tokens list. | Balances are in dollars. Send to a name instead of a long address, and keep BSV, MNEE dollars and all your tokens in one place. |
+| 4 | Wallet home: the balance card in dollars, **Receive · Send · Mint**, the Tokens list. | Balances are in dollars. Send to a name instead of a long address, and keep BSV, MNEE and all your tokens in one place. |
 | 5 | Tap the **Exchange** tab: Tokens, NFTs, Music, Video. Scroll the trending tokens, open one. | The Exchange lets you buy and sell tokens and NFTs, wallet to wallet, with no middleman. |
 | 5b | Tap the **Media** (play) button: the player with music and movie NFTs. | And the media player plays the music and movie NFTs you own, right inside your wallet. |
 | 6 | Tap the **Social** tab: your own $NAME card pinned on top, a token room opens. | Your name is also a token, with its own chat room. Hold a friend's token to get into theirs. |
