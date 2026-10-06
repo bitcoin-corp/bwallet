@@ -4,3 +4,8 @@ node_modules
 video/clips/*.mp4
 video/out/
 .vscode/
+.env.blog
+blog-state/
+posts-blog.json
+PAUSED
+PAUSED-BLOG

@@ -1,179 +1,185 @@
 [
- {
-  "url": "https://bwalletx.com/blog/001-the-fork",
-  "lines": [
-   "001 · Forking Yours Wallet onto phones: how bWalletX started, and why we left the Yours code alone."
-  ]
- },
- {
-  "url": "https://bwalletx.com/blog/002-four-names",
-  "lines": [
-   "002 · Four names in a week: Yours Wallet Mobile, bCorp Wallet, bWallet, then bWalletX. Why the name kept changing, and why there are now two apps."
-  ]
- },
- {
-  "url": "https://bwalletx.com/blog/003-tabs-apps-feed",
-  "lines": [
-   "003 · Tabs, apps and a social feed: The phone layout changed many times. We added an Apps home screen with 100+ BSV apps, a Media player and a feed that reads other BSV social apps."
-  ]
- },
- {
-  "url": "https://bwalletx.com/blog/004-names-and-paymail",
-  "lines": [
-   "004 · Names, handles and paymail: Send to $handle, name@bwalletx.com or an OpNS name. The paymail server moved domain twice, and social sign-in became a verified name."
-  ]
- },
- {
-  "url": "https://bwalletx.com/blog/005-personal-tokens-and-rooms",
-  "lines": [
-   "005 · Personal tokens and token rooms: Hold a token to enter its chat room. Your $NAME is a token with its own room. How rooms, tickets and issuers came together, and what we reversed."
-  ]
- },
- {
-  "url": "https://bwalletx.com/blog/006-paying-for-indexing",
-  "lines": [
-   "006 · Who pays for indexing: A BSV-21 token only shows up in wallets once an indexer lists it. Working out who pays for that, and how much, took four attempts."
-  ]
- },
- {
-  "url": "https://bwalletx.com/blog/007-store-and-private",
-  "lines": [
-   "007 · Store rules, open rooms and moderation: We audited the app against App Store and Play rules, split it into four release channels and built the safety features the stores require."
-  ]
- },
- {
-  "url": "https://bwalletx.com/blog/008-the-exchange",
-  "lines": [
-   "008 · Building the Exchange, and why buys broke: Listing and buying 1Sat tokens from the wallet. Most of the work was not the screens but storage limits, double-encrypted records and slow APIs."
-  ]
- },
- {
-  "url": "https://bwalletx.com/blog/009-the-b-agent",
-  "lines": [
-   "009 · The b agent: paid, or your own key: An assistant inside the wallet. It started free, became paid-only within a day, and now asks for consent before it sends anything."
-  ]
- },
- {
-  "url": "https://bwalletx.com/blog/010-agents-strategies-cli",
-  "lines": [
-   "010 · Agent accounts, strategies, CLI and MCP: Separate wallet accounts for agents, spending rules the wallet enforces, a market for strategies, and a command-line tool that keeps keys on the phone."
-  ]
- },
- {
-  "url": "https://bwalletx.com/blog/011-pnees-pilot",
-  "lines": [
-   "011 · From a dollar bond to PNEEs on mainnet: A BSV-backed dollar token went from a design note to a small, capped mainnet pilot in two days. This is what is enforced, what is not, and what went wrong."
-  ]
- },
- {
-  "url": "https://bwalletx.com/blog/012-extension-and-web",
-  "lines": [
-   "012 · The extension, the web app and pairing: bWalletX also runs as a Chrome and Brave extension and as a web app. On iPhone the web app is the only way to get the full wallet, so we made backup mandatory there."
-  ]
- },
- {
-  "url": "https://bwalletx.com/blog/013-sites-and-navigation",
-  "lines": [
-   "013 · Two sites from one: A download page became bwallet.space, then bwalletx.com became the main site, with the store site generated from it. And this blog."
-  ]
- },
- {
-  "url": "https://bwalletx.com/?v=3",
-  "lines": [
-   "bWalletX: the BSV wallet for tokens, media and apps. Android, iPhone, Chrome and web.",
-   "One wallet for tokens, media, apps, chat and AI agents. Your keys stay on your device."
-  ]
- },
- {
-  "url": "https://bwalletx.com/pnees?v=6",
-  "lines": [
-   "PNEEs: digital pennies on BSV, backed only by BSV locked in public vaults. Live mainnet pilot.",
-   "We ran the first PNEEs liquidation on mainnet at a real 3-of-5 price. The txids are on the page."
-  ]
- },
- {
-  "url": "https://bwalletx.com/strategies?v=5",
-  "lines": [
-   "Tell the b agent your trading idea. It writes the strategy, tests it on live prices and packages it to sell on the Exchange.",
-   "Strategies are programs your agent runs, inside limits the wallet enforces. Make one, or buy one."
-  ]
- },
- {
-  "url": "https://bwalletx.com/agent",
-  "lines": [
-   "Give your AI agent its own trading account and a budget. Stop it or sweep everything back any time."
-  ]
- },
- {
-  "url": "https://bwalletx.com/exchange",
-  "lines": [
-   "The bWalletX Exchange: buy and sell tokens, NFTs and $HANDLE tokens wallet to wallet."
-  ]
- },
- {
-  "url": "https://bwalletx.com/social?v=2",
-  "lines": [
-   "Your handle is your paymail, your token and your chat room. Sign in with X or Google."
-  ]
- },
- {
-  "url": "https://bwalletx.com/mcp",
-  "lines": [
-   "Let Claude, ChatGPT or Cursor use a bWalletX agent account through MCP, within the limits you set."
-  ]
- },
- {
-  "url": "https://bwalletx.com/cli",
-  "lines": [
-   "Run your bWalletX wallet and agents from the command line: balances, sends, trades and strategies."
-  ]
- },
- {
-  "url": "https://bwalletx.com/developers?v=2",
-  "lines": [
-   "Add Connect with bWalletX to your site: one script, a standard BRC-100 wallet, no API keys."
-  ]
- },
- {
-  "url": "https://bwalletx.com/apps/add",
-  "lines": [
-   "Built a BSV app? Add it to the Apps screen in bWallet and bWalletX. Free, reviewed by a person."
-  ]
- },
- {
-  "url": "https://bwalletx.com/iphone?v=2",
-  "lines": [
-   "bWalletX on iPhone today: install the web app from Safari in under a minute. It makes you back up before you can receive money."
-  ]
- },
- {
-  "url": "https://bwalletx.com/features",
-  "lines": [
-   "Everything bWalletX does, on one page: tokens, names, rooms, calls, market, media and minting."
-  ]
- },
- {
-  "url": "https://bwalletx.com/exchange/strategies",
-  "lines": [
-   "Strategies for sale on the bWalletX Exchange, each with the same public spec so they're easy to compare."
-  ]
- },
- {
-  "url": "https://bwalletx.com/strategies/spec?v=2",
-  "lines": [
-   "The bWalletX strategy file and listing spec, for anyone writing strategies or tools."
-  ]
- },
- {
-  "url": "https://bwalletx.com/blog?v=3",
-  "lines": [
-   "How we're building bWalletX, post by post: what worked, what broke, and what's not done."
-  ]
- },
- {
-  "url": "https://bwalletx.com/friends?v=5",
-  "lines": [
-   "Your friends, their tokens and their rooms. Hold a friend's token to get into their room, then message, call or pay them in one tap."
-  ]
- }
+  {
+    "url": "https://bwalletx.com/blog/001-the-fork",
+    "lines": [
+      "001 · Forking Yours Wallet onto phones: how bWalletX started, and why we left the Yours code alone."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/002-four-names",
+    "lines": [
+      "002 · Four names in a week: Yours Wallet Mobile, bCorp Wallet, bWallet, then bWalletX. Why the name kept changing, and why there are now two apps."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/003-tabs-apps-feed",
+    "lines": [
+      "003 · Tabs, apps and a social feed: The phone layout changed many times. We added an Apps home screen with 100+ BSV apps, a Media player and a feed that reads other BSV social apps."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/004-names-and-paymail",
+    "lines": [
+      "004 · Names, handles and paymail: Send to $handle, name@bwalletx.com or an OpNS name. The paymail server moved domain twice, and social sign-in became a verified name."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/005-personal-tokens-and-rooms",
+    "lines": [
+      "005 · Personal tokens and token rooms: Hold a token to enter its chat room. Your $NAME is a token with its own room. How rooms, tickets and issuers came together, and what we reversed."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/006-paying-for-indexing",
+    "lines": [
+      "006 · Who pays for indexing: A BSV-21 token only shows up in wallets once an indexer lists it. Working out who pays for that, and how much, took four attempts."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/007-store-and-private",
+    "lines": [
+      "007 · Store rules, open rooms and moderation: We audited the app against App Store and Play rules, split it into four release channels and built the safety features the stores require."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/008-the-exchange",
+    "lines": [
+      "008 · Building the Exchange, and why buys broke: Listing and buying 1Sat tokens from the wallet. Most of the work was not the screens but storage limits, double-encrypted records and slow APIs."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/009-the-b-agent",
+    "lines": [
+      "009 · The b agent: paid, or your own key: An assistant inside the wallet. It started free, became paid-only within a day, and now asks for consent before it sends anything."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/010-agents-strategies-cli",
+    "lines": [
+      "010 · Agent accounts, strategies, CLI and MCP: Separate wallet accounts for agents, spending rules the wallet enforces, a market for strategies, and a command-line tool that keeps keys on the phone."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/011-pnees-pilot",
+    "lines": [
+      "011 · From a dollar bond to PNEEs on mainnet: A BSV-backed dollar token went from a design note to a small, capped mainnet pilot in two days. This is what is enforced, what is not, and what went wrong."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/012-extension-and-web",
+    "lines": [
+      "012 · The extension, the web app and pairing: bWalletX also runs as a Chrome and Brave extension and as a web app. On iPhone the web app is the only way to get the full wallet, so we made backup mandatory there."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/013-sites-and-navigation",
+    "lines": [
+      "013 · Two sites from one: A download page became bwallet.space, then bwalletx.com became the main site, with the store site generated from it. And this blog."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/014-open-feed",
+    "lines": [
+      "014 · One feed for BSV: Every BSV social app keeps its own feed. bChat shows all of them, credits them, and pays the people who wrote the posts."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/?v=3",
+    "lines": [
+      "bWalletX: the BSV wallet for tokens, media and apps. Android, iPhone, Chrome and web.",
+      "One wallet for tokens, media, apps, chat and AI agents. Your keys stay on your device."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/pnees?v=6",
+    "lines": [
+      "PNEEs: digital pennies on BSV, backed only by BSV locked in public vaults. Live mainnet pilot.",
+      "We ran the first PNEEs liquidation on mainnet at a real 3-of-5 price. The txids are on the page."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/strategies?v=5",
+    "lines": [
+      "Tell the b agent your trading idea. It writes the strategy, tests it on live prices and packages it to sell on the Exchange.",
+      "Strategies are programs your agent runs, inside limits the wallet enforces. Make one, or buy one."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/agent",
+    "lines": [
+      "Give your AI agent its own trading account and a budget. Stop it or sweep everything back any time."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/exchange",
+    "lines": [
+      "The bWalletX Exchange: buy and sell tokens, NFTs and $HANDLE tokens wallet to wallet."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/social?v=2",
+    "lines": [
+      "Your handle is your paymail, your token and your chat room. Sign in with X or Google."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/mcp",
+    "lines": [
+      "Let Claude, ChatGPT or Cursor use a bWalletX agent account through MCP, within the limits you set."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/cli",
+    "lines": [
+      "Run your bWalletX wallet and agents from the command line: balances, sends, trades and strategies."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/developers?v=2",
+    "lines": [
+      "Add Connect with bWalletX to your site: one script, a standard BRC-100 wallet, no API keys."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/apps/add",
+    "lines": [
+      "Built a BSV app? Add it to the Apps screen in bWallet and bWalletX. Free, reviewed by a person."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/iphone?v=2",
+    "lines": [
+      "bWalletX on iPhone today: install the web app from Safari in under a minute. It makes you back up before you can receive money."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/features",
+    "lines": [
+      "Everything bWalletX does, on one page: tokens, names, rooms, calls, market, media and minting."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/exchange/strategies",
+    "lines": [
+      "Strategies for sale on the bWalletX Exchange, each with the same public spec so they're easy to compare."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/strategies/spec?v=2",
+    "lines": [
+      "The bWalletX strategy file and listing spec, for anyone writing strategies or tools."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog?v=3",
+    "lines": [
+      "How we're building bWalletX, post by post: what worked, what broke, and what's not done."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/friends?v=5",
+    "lines": [
+      "Your friends, their tokens and their rooms. Hold a friend's token to get into their room, then message, call or pay them in one tap."
+    ]
+  }
 ]

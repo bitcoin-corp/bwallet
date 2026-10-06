@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "dry": "node xpost.mjs",
-    "post": "node xpost.mjs --post"
+    "post": "node xpost.mjs --post",
+    "test": "node --test blog/test/*.test.mjs",
+    "blog": "node blog.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

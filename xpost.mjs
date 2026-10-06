@@ -7,6 +7,7 @@
 //   node xpost.mjs --post           post the next item on each channel
 //   node xpost.mjs --post --daily   scheduler mode: only acts at 10:xx Europe/London, once per London day
 //   --x-only / --bchat-only         limit to one channel
+//   node xpost.mjs --post --url U   post just the queue item with url U (blog.mjs uses this at publish time)
 //   node xpost.mjs --text "..." --post   one-off X post (not part of the queue)
 //   node xpost.mjs --profile --post publish the bChat posting profile now (normally automatic before the first post)
 // Pause: create a file named PAUSED next to this script (touch PAUSED). Remove it to resume.
@@ -53,9 +54,14 @@ const save = () => {
 };
 
 const posts = JSON.parse(fs.readFileSync(path.join(dir, 'posts.json'), 'utf8'));
+// Published nightly blog posts (blog.mjs, server-only file): posted at publish time with --url, so they are
+// already marked posted here and the daily queue never repeats them.
+const blogQueue = path.join(dir, 'posts-blog.json');
+if (fs.existsSync(blogQueue)) posts.push(...JSON.parse(fs.readFileSync(blogQueue, 'utf8')).filter((b) => !posts.some((p) => p.url === b.url)));
+const onlyUrl = args.includes('--url') ? args[args.indexOf('--url') + 1] : null;
 const textOf = (p) => `${p.lines[0]}\n\n${p.url}`;
 for (const p of posts) if (textOf(p).length > 280) throw new Error(`too long (${textOf(p).length}): ${p.url}`);
-const nextFor = (ch) => posts.find((p) => !state[ch].posted[p.url]) ?? null;
+const nextFor = (ch) => posts.find((p) => !state[ch].posted[p.url] && (!onlyUrl || p.url === onlyUrl)) ?? null;
 
 // ── scheduler gate ───────────────────────────────────────────────────────────
 if (daily) {
