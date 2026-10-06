@@ -7,6 +7,8 @@
     "post": "node xpost.mjs --post"
   },
   "dependencies": {
-    "@bsv/sdk": "2.2.0"
+    "@anthropic-ai/sdk": "^0.131.0",
+    "@bsv/sdk": "2.2.0",
+    "@resvg/resvg-js": "^2.6.2"
   }
 }
