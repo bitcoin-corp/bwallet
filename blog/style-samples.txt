@@ -1,0 +1,39 @@
+=== 012-extension-and-web
+Development blog · 012 · 1–5 Oct 2026
+The extension, the web app and pairing
+bWalletX also runs as a Chrome and Brave extension and as a web app. On iPhone the web app is the only way to get the full wallet, so we made backup mandatory there.
+## Back to an extension
+Since the code started as an extension, building one again was cheap. On 1 October we branded it; on 3 October it shipped as bWalletX, with the full mobile interface in Chrome's side panel and a gold strip to open it full screen. We serve it from this site, not the Chrome Web Store, so you install it in developer mode. Brave works too.
+Two fixes mattered. Each version used to install with a new extension ID, which meant a new, empty wallet. Since 5.1.9 a fixed key in the manifest keeps the same ID across versions. And on the question of who answers websites: on 3 October the extension set window.CWI only if no other wallet had. The next day we reversed that: bWalletX takes it by default, even over Yours, and a setting hands it back.
+## Letting websites find the wallet
+Websites can discover bWalletX through BRC-100 wallet announcements, in the style of EIP-6963. A small connect.js on the Developers page shows how. For desktop sites and a phone wallet, there is phone pairing: scan a code, check the same 4-digit code on both screens, and requests travel through an encrypted relay that stores nothing. Each request still needs approval on the phone.
+## The web app, and iPhone
+The web wallet runs at web.bwalletx.com. On iPhone, Apple only allows App Store apps, and the store edition can't trade. So bWalletX on iPhone is the web app, added to the Home Screen from Safari.
+The iPhone page says it plainly: the keys are on your phone, not our servers, but browser storage is fragile. Safari can clear it. On 5 October we asked the browser for persistent storage, and added a mandatory backup step. After you create or restore a wallet, you save an encrypted backup or write down your recovery phrase and pass a three-word quiz. Receive waits until you have backed up. The only way to skip is "remind me later" at zero balance. In the native apps and the extension the step can be skipped.
+## What's not done
+- The extension is not in the Chrome Web Store.
+- Persistent storage is a request; Safari may still clear site data. A backup is the only protection.
+- Pairing depends on our relay being up.
+Related: Extension · iPhone · Developers · Android
+=== 013-sites-and-navigation
+Development blog · 013 · 29 Sep – 5 Oct 2026
+Two sites from one
+A download page became bwallet.space, then bwalletx.com became the main site, with the store site generated from it. And this blog.
+## From a download page to two sites
+The first site, on 29 September, was a download page for the Yours-branded port, with an Android APK and a TestFlight link. On 1 October it became the bWallet site at bwallet.space, with section videos, a beta APK and a waitlist.
+On 3 October we forked it to make bwalletx.com. Over the next two days bwalletx.com became the main site, with pages for features, Exchange, Social, Agents, Strategies, CLI, MCP, Android, iPhone, Extension, Developers and PNEEs, each with its own share image.
+## Keeping the store site clean
+bwallet.space is the site for the store app, and it must not advertise features the store app doesn't have. Since 4 October a script copies the shared assets from bwalletx.com and generates the bwallet.space home page from ours, with trading, token rooms and social sign-in taken out and clear links to bwalletx.com. Pages that exist only on bWalletX redirect there. The script never copies HTML pages, so this blog is not copied to the store site.
+## Navigation
+The navbar was rewritten by hand on every page until 5 October, when one script, nav.js, started rendering it from a single config for both sites. Each section can have its own sub-menu. That is where this blog lives: under Developers.
+## Small things that went wrong
+- The waitlist form 404'd on bwalletx.com until we proxied it to bwallet.space.
+- X kept old share images, so several images have version numbers in their file names to break the cache.
+- The big b logo was hidden under the fixed header on sub-pages until we added spacing.
+- We dropped a Brave Shields tip from the extension page because we hadn't verified it.
+## About this blog
+These posts were written from the git history of the wallet, this site, the chat server and the PNEEs prototype. They are as accurate as the commits allow. If something here is wrong, the code is the record, and we will correct the post.
+## What's not done
+- The two sites still share one API host; bwalletx.com proxies some requests to bwallet.space.
+- The APK download folder keeps every version; there is no cleanup yet.
+Related: Home · Features · Developers
