@@ -1,0 +1,22 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      '@bsv/sdk':
+        specifier: 2.2.0
+        version: 2.2.0
+
+packages:
+
+  '@bsv/sdk@2.2.0':
+    resolution: {integrity: sha512-+qDajfMt8IkhnB7qLADODCLqnCFu3W52Kn/knNK1lRZhCPbyFkcPVW6HdHrZnn6vdOvtsCvOhUdw/CUW92TwQA==}
+
+snapshots:
+
+  '@bsv/sdk@2.2.0': {}

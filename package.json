@@ -1,0 +1,12 @@
+{
+  "name": "bwalletx-x",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dry": "node xpost.mjs",
+    "post": "node xpost.mjs --post"
+  },
+  "dependencies": {
+    "@bsv/sdk": "2.2.0"
+  }
+}
