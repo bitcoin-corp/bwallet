@@ -10,6 +10,9 @@
 //   node xpost.mjs --post --url U   post just the queue item with url U (blog.mjs uses this at publish time)
 //   node xpost.mjs --text "..." --post   one-off X post (not part of the queue)
 //   node xpost.mjs --profile --post publish the bChat posting profile now (normally automatic before the first post)
+//   node xpost.mjs --recycle on|off|status   recycle mode (default off): once the queue is finished, repost ONE
+//                                  already-posted item a day, oldest-posted first, using its next alternative line;
+//                                  never the same URL twice within 30 days. Off: queue finished, nothing posts.
 // Pause: create a file named PAUSED next to this script (touch PAUSED). Remove it to resume.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -53,6 +56,16 @@ const save = () => {
   fs.renameSync(statePath + '.tmp', statePath);
 };
 
+state.recycle ??= { enabled: false };
+
+if (args.includes('--recycle')) {
+  const v = args[args.indexOf('--recycle') + 1];
+  if (v === 'on' || v === 'off') { state.recycle.enabled = v === 'on'; save(); }
+  else if (v !== 'status') { console.error('usage: node xpost.mjs --recycle on|off|status'); process.exit(2); }
+  console.log(`recycle: ${state.recycle.enabled ? 'ON' : 'OFF'}`);
+  process.exit(0);
+}
+
 const posts = JSON.parse(fs.readFileSync(path.join(dir, 'posts.json'), 'utf8'));
 // Published nightly blog posts (blog.mjs, server-only file): posted at publish time with --url, so they are
 // already marked posted here and the daily queue never repeats them.
@@ -61,7 +74,26 @@ if (fs.existsSync(blogQueue)) posts.push(...JSON.parse(fs.readFileSync(blogQueue
 const onlyUrl = args.includes('--url') ? args[args.indexOf('--url') + 1] : null;
 const textOf = (p) => `${p.lines[0]}\n\n${p.url}`;
 for (const p of posts) if (textOf(p).length > 280) throw new Error(`too long (${textOf(p).length}): ${p.url}`);
+for (const p of posts) for (const l of p.lines) if (`${l}\n\n${p.url}`.length > 280) throw new Error(`too long: ${p.url}`);
 const nextFor = (ch) => posts.find((p) => !state[ch].posted[p.url] && (!onlyUrl || p.url === onlyUrl)) ?? null;
+
+// Recycle: when the queue is finished and recycle is on, pick the posted item whose most recent post (first or
+// recycled) is oldest, skipping anything posted within 30 days. Alternate lines rotate: lines[1], lines[2], ... then lines[0].
+const DAY = 86_400_000;
+const lastAt = (ch, url) => {
+  const ts = [state[ch].posted[url]?.at, ...state.history.filter((h) => h.channel === ch && h.url === url).map((h) => h.at)];
+  return Math.max(...ts.filter(Boolean).map((t) => Date.parse(t)));
+};
+const recycleFor = (ch) => {
+  if (!state.recycle.enabled || onlyUrl) return null;
+  const now = Date.now();
+  const p = posts.filter((p) => state[ch].posted[p.url] && now - lastAt(ch, p.url) >= 30 * DAY)
+    .sort((a, b) => lastAt(ch, a.url) - lastAt(ch, b.url))[0];
+  if (!p) return null;
+  const n = state.history.filter((h) => h.channel === ch && h.url === p.url && h.recycled).length;
+  const line = p.lines.length > 1 ? p.lines[1 + (n % p.lines.length)] ?? p.lines[0] : p.lines[0];
+  return { p, text: `${line}\n\n${p.url}` };
+};
 
 // ── scheduler gate ───────────────────────────────────────────────────────────
 if (daily) {
@@ -110,7 +142,18 @@ if (oneOff) {
 
 if (doX) {
   const p = nextFor('x');
-  if (!p) log('X: queue finished, nothing to post');
+  const rc = p ? null : recycleFor('x');
+  if (!p && rc && !live) console.log(`X recycle next:\n\n${rc.text}\n`);
+  else if (!p && rc) {
+    try {
+      const id = await postToX(rc.text);
+      const at = new Date().toISOString();
+      state.history.push({ at, channel: 'x', url: rc.p.url, id, text: rc.text, recycled: true });
+      save();
+      log('X recycled:', rc.p.url, `https://x.com/i/web/status/${id}`);
+    } catch (e) { failed = true; log('X FAILED:', e.message); }
+  }
+  else if (!p) log(state.recycle.enabled ? 'X: queue finished, nothing eligible to recycle (30-day rule)' : 'X: queue finished');
   else if (!live) console.log(`X next (${posts.indexOf(p) + 1}/${posts.length}):\n\n${textOf(p)}\n`);
   else {
     try {
@@ -129,16 +172,19 @@ if (doX) {
 if (doBchat) {
   let bchat = null, k = null;
   try { bchat = await import('./bchat.mjs'); k = bchat.keys(env); } catch (e) { failed = true; log('bChat: could not load poster:', e.message); }
-  const p = nextFor('bchat');
+  const p0 = nextFor('bchat');
+  const rc = p0 ? null : recycleFor('bchat');
+  const p = p0 ?? rc?.p ?? null;
+  const text = rc ? rc.text : p && textOf(p);
   if (!bchat) { /* load error logged above */ }
   else if (!k) log('bChat: no poster keys (BCHAT_ROOT_WIF / BCHAT_SIGN_WIF), skipped');
-  else if (!p && !args.includes('--profile')) log('bChat: queue finished, nothing to post');
+  else if (!p && !args.includes('--profile')) log(state.recycle.enabled ? 'bChat: queue finished, nothing eligible to recycle (30-day rule)' : 'bChat: queue finished');
   else {
     let funded = 0;
     try { funded = (await bchat.balance(k)).sats; } catch (e) { log('bChat: balance check failed:', e.message); }
     if (!live) {
       console.log(`bChat poster ${k.address} (BAP ${k.bapId}), balance ${funded} sats, profile ${state.bchat.profile ? 'published ' + state.bchat.profile.txid : 'NOT yet published'}`);
-      if (p) console.log(`bChat next (${posts.indexOf(p) + 1}/${posts.length}):\n\n${textOf(p)}\n`);
+      if (p) console.log(`bChat ${rc ? 'recycle next' : `next (${posts.indexOf(p) + 1}/${posts.length})`}:\n\n${text}\n`);
     } else if (funded < 200) {
       log(`bChat: poster unfunded (${funded} sats). Send BSV to ${k.address}. Skipped.`);
     } else {
@@ -150,13 +196,13 @@ if (doBchat) {
           log('bChat profile published:', r.txid, 'ingested', r.ingested);
         }
         if (p && !args.includes('--profile')) {
-          const r = await bchat.publishPost(k, textOf(p));
+          const r = await bchat.publishPost(k, text);
           const at = new Date().toISOString();
-          state.bchat.posted[p.url] = { at, txid: r.txid };
-          state.history.push({ at, channel: 'bchat', url: p.url, txid: r.txid });
+          if (!rc) state.bchat.posted[p.url] = { at, txid: r.txid };
+          state.history.push({ at, channel: 'bchat', url: p.url, txid: r.txid, ...(rc && { text, recycled: true }) });
           save();
           log('bChat posted:', p.url, r.txid, 'ingested', r.ingested);
-          if (!nextFor('bchat')) log('bChat: that was the last item, queue finished');
+          if (!rc && !nextFor('bchat')) log('bChat: that was the last item, queue finished');
         }
       } catch (e) { failed = true; log('bChat FAILED:', e.message); }
     }

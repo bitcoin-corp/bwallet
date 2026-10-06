@@ -181,5 +181,71 @@
     "lines": [
       "Your friends, their tokens and their rooms. Hold a friend's token to get into their room, then message, call or pay them in one tap."
     ]
+  },
+  {
+    "url": "https://bwalletx.com/agents",
+    "lines": [
+      "Give each AI its own bWalletX account and budget. Daily caps, Stop all, an activity log, and the CLI or MCP to drive it."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/lounge",
+    "lines": [
+      "The bWallet Lounge: talk to the team and other bWallet people. Type /b and the $b assistant answers."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/video",
+    "lines": [
+      "bWalletX in one minute: a short tour of the BSV wallet for tokens, media and apps."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/push-notifications",
+    "lines": [
+      "Push notifications for bWalletX are coming: messages, mentions, payments and calls, even with the app closed. It says who messaged you, not what they wrote."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/gmail",
+    "lines": [
+      "Sign in to bWalletX with Gmail and get yourname.gmail@bwalletx.com: a verified name that is your paymail, your token and your chat room."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/mint",
+    "lines": [
+      "What you can mint with bWalletX: art, music, films, books, tickets, coins and contracts on BSV. What it costs and what to watch out for."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/buy",
+    "lines": [
+      "How to get BSV into bWalletX: buy through an independent provider, or receive it from an exchange or a friend. It shows in your wallet in dollars."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/extension",
+    "lines": [
+      "bWalletX for Chrome and Brave: the full wallet in the side panel, and a wallet websites can connect to."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/android",
+    "lines": [
+      "bWalletX for Android: the BSV wallet for tokens, media and apps. Download the app."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/download",
+    "lines": [
+      "Get bWalletX on Android, Chrome, web or iPhone."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/pnee",
+    "lines": [
+      "PNEEs are digital pennies on BSV, one US cent each, backed only by BSV locked in public vaults. No bank, no freeze. Live mainnet pilot."
+    ]
   }
 ]
