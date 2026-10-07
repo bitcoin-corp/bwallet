@@ -84,6 +84,30 @@
     ]
   },
   {
+    "url": "https://bwalletx.com/blog/015-launchpad",
+    "lines": [
+      "015 · Launchpad, and checking what we sign: bWalletX 5.1.74 can buy and sell bonding-curve coins. The wallet now checks every trade the server prepares before it signs anything."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/017-sign-in-and-lounge",
+    "lines": [
+      "017 · Sign in with bWalletX, and the Lounge: bChat now has one gold button to sign in with your wallet. Every account starts in the bWallet Lounge."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/018-testers",
+    "lines": [
+      "018 · 1 BSV for testing bWallet on Android: Google needs 12 people to test bWallet for 14 days before it can go on the Play Store. We are paying 1 BSV for that time."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/019-language-filter",
+    "lines": [
+      "019 · Blur slurs, show swearing: The bChat feed and bWalletX now blur slurs behind a tap. Swearing is shown. Nothing is deleted."
+    ]
+  },
+  {
     "url": "https://bwalletx.com/?v=3",
     "lines": [
       "bWalletX: the BSV wallet for tokens, media and apps. Android, iPhone, Chrome and web.",
