@@ -96,6 +96,12 @@
     ]
   },
   {
+    "url": "https://bwalletx.com/blog/021-coordinate-on-bsv",
+    "lines": [
+      "021 · Coordinate on BSV: Big platforms put every community in one room, where a small one gets piled on. Advertise there, coordinate here. Part 1 of a series on chat on BSV."
+    ]
+  },
+  {
     "url": "https://bwalletx.com/blog/015-launchpad",
     "lines": [
       "015 · Launchpad, and checking what we sign: bWalletX 5.1.74 can buy and sell bonding-curve coins. The wallet now checks every trade the server prepares before it signs anything."
