@@ -102,6 +102,12 @@
     ]
   },
   {
+    "url": "https://bwalletx.com/blog/022-bring-your-coins-home",
+    "lines": [
+      "022 · Bring your coins home: your old 12 words still work. Which BSV wallets bWalletX can restore or sweep from, and what can't come across."
+    ]
+  },
+  {
     "url": "https://bwalletx.com/blog/015-launchpad",
     "lines": [
       "015 · Launchpad, and checking what we sign: bWalletX 5.1.74 can buy and sell bonding-curve coins. The wallet now checks every trade the server prepares before it signs anything."
