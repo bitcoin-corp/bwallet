@@ -2,6 +2,9 @@
 // (bit-sign src/lib/feed/script.ts: B text/markdown | MAP SET app bChat type post | AIP BITCOIN_ECDSA),
 // pays from the poster key, broadcasts via WhatsOnChain, then hands the raw tx to the feed indexers.
 // Keys come from the environment only (BCHAT_ROOT_WIF, BCHAT_SIGN_WIF), never from code.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { BigNumber, BSM, Hash, OP, P2PKH, PrivateKey, SatoshisPerKilobyte, Script, Signature, Transaction, Utils } from '@bsv/sdk';
 
 const B_PREFIX = '19HxigV4QyBv3tHpQVcUEQyq1pzZVdoAut';
@@ -72,11 +75,12 @@ export function profileScripts(k) {
 }
 
 // WhatsOnChain rate-limits (429) shared server IPs: retry with backoff.
+const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
 async function wocGet(url) {
   for (let i = 0; ; i++) {
-    const r = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-    if (r.status !== 429 || i >= 4) return r;
-    await new Promise((ok) => setTimeout(ok, 3000 * (i + 1)));
+    const r = await fetch(url, { signal: AbortSignal.timeout(15_000) }).catch((e) => ({ ok: false, status: 0, text: async () => String(e), json: async () => null }));
+    if ((r.status !== 429 && r.status !== 0) || i >= 5) return r;
+    await sleep(4000 * (i + 1));
   }
 }
 
@@ -86,56 +90,118 @@ async function getJson(url) {
   return r.json();
 }
 
+/** Raw hex of a tx, validated (a 429/HTML body used to reach Transaction.fromHex: "Invalid hex string"). */
+async function txHex(txid) {
+  const r = await wocGet(`${WOC}/tx/${txid}/hex`);
+  const hex = r.ok ? (await r.text()).trim() : '';
+  if (/^[0-9a-f]+$/i.test(hex) && hex.length % 2 === 0) return hex;
+  const g = await fetch(`https://junglebus.gorillapool.io/v1/transaction/get/${txid}/bin`, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  if (g?.ok) return Buffer.from(await g.arrayBuffer()).toString('hex');
+  throw new Error(`could not fetch tx ${txid} (woc ${r.status})`);
+}
+
+// ── UTXO ledger ─────────────────────────────────────────────────────────────
+// 7 Oct 2026: WoC /unspent kept listing an output already spent by our own unconfirmed tx, so every
+// post reused it (DOUBLE_SPEND_ATTEMPTED). We now chain from our own last change output and remember
+// every outpoint we have spent, so WoC's view is only a fallback, and checked.
+const LEDGER = path.join(path.dirname(fileURLToPath(import.meta.url)), 'bchat-utxo.json');
+const ledgerLoad = () => { try { return JSON.parse(fs.readFileSync(LEDGER, 'utf8')); } catch { return { spent: [], tip: null }; } };
+function ledgerSave(l) {
+  l.spent = l.spent.slice(-500);
+  fs.writeFileSync(LEDGER + '.tmp', JSON.stringify(l, null, 2));
+  fs.renameSync(LEDGER + '.tmp', LEDGER);
+}
+
 export async function balance(k) {
-  const utxos = await getJson(`${WOC}/address/${k.address}/unspent`);
-  return { utxos, sats: utxos.reduce((a, u) => a + u.value, 0) };
+  const l = ledgerLoad();
+  if (l.tip && !l.spent.includes(`${l.tip.txid}:${l.tip.vout}`)) return { utxos: [l.tip], sats: l.tip.value, source: 'tip' };
+  const utxos = await spendable(k, l);
+  return { utxos, sats: utxos.reduce((a, u) => a + u.value, 0), source: 'woc' };
+}
+
+/** WoC unspent minus: outpoints we spent, outpoints consumed by our unconfirmed txs, and anything WoC says is spent. */
+async function spendable(k, l) {
+  const list = await getJson(`${WOC}/address/${k.address}/unspent`);
+  const spent = new Set(l.spent);
+  for (const u of list.filter((u) => !u.height)) {
+    try { for (const i of Transaction.fromHex(await txHex(u.tx_hash)).inputs) spent.add(`${i.sourceTXID}:${i.sourceOutputIndex}`); } catch {}
+  }
+  const out = [];
+  for (const u of list) {
+    const op = `${u.tx_hash}:${u.tx_pos}`;
+    if (spent.has(op)) continue;
+    const r = await wocGet(`${WOC}/tx/${u.tx_hash}/${u.tx_pos}/spent`);
+    if (r.status === 404) out.push({ txid: u.tx_hash, vout: u.tx_pos, value: u.value });
+    else if (!r.ok && r.status !== 200) out.push({ txid: u.tx_hash, vout: u.tx_pos, value: u.value, unchecked: true });
+  }
+  return out.sort((a, b) => (a.unchecked ? 1 : 0) - (b.unchecked ? 1 : 0) || b.value - a.value);
 }
 
 const ARC = 'https://arc.gorillapool.io/v1/tx';
 
+async function txKnown(txid) {
+  const a = await fetch(`${ARC}/${txid}`, { signal: AbortSignal.timeout(15_000) }).then((r) => r.ok ? r.json() : null).catch(() => null);
+  if (a && /SEEN|MINED|STORED|ANNOUNCED|SENT|ACCEPTED/i.test(a.txStatus ?? '') && !/DOUBLE|REJECT/i.test(a.txStatus)) return true;
+  const w = await wocGet(`${WOC}/tx/hash/${txid}`);
+  return w.ok;
+}
+
 /**
  * Broadcast: WhatsOnChain first, retrying 429s with backoff (7 Oct 2026: a 429 lost the day's bChat post),
- * then GorillaPool ARC. "Already known" counts as success on either.
+ * then GorillaPool ARC. "Already known", or our own txid visible afterwards, counts as success.
  */
-async function broadcast(rawTx) {
+async function broadcast(rawTx, txid) {
   const errors = [];
   for (let i = 0; i < 4; i++) {
     const r = await fetch(`${WOC}/tx/raw`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ txhex: rawTx }), signal: AbortSignal.timeout(20_000) }).catch((e) => ({ ok: false, status: 0, text: async () => String(e) }));
     const body = await r.text();
     if (r.ok || /already|known/i.test(body)) return 'woc';
-    errors.push(`woc ${r.status}`);
+    errors.push(`woc ${r.status} ${body.slice(0, 80)}`);
     if (r.status !== 429 && r.status !== 0 && r.status < 500) break;
-    await new Promise((ok) => setTimeout(ok, 5000 * (i + 1)));
+    await sleep(5000 * (i + 1));
   }
   const r = await fetch(ARC, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rawTx }), signal: AbortSignal.timeout(20_000) }).catch((e) => ({ ok: false, status: 0, text: async () => String(e) }));
   const body = await r.text();
   let status = '';
   try { status = JSON.parse(body).txStatus ?? ''; } catch {}
   if (r.ok && !/REJECTED|DOUBLE_SPEND|INVALID|MALFORMED/i.test(status) || /already|known/i.test(body)) return 'arc';
-  throw new Error(`broadcast refused: ${errors.join(', ')}; arc ${r.status} ${(status || body).slice(0, 200)}`);
+  await sleep(3000);
+  if (await txKnown(txid)) return 'known';
+  throw Object.assign(new Error(`broadcast refused: ${errors.join(', ')}; arc ${r.status} ${(status || body).slice(0, 200)}`), { doubleSpend: /DOUBLE_SPEND/i.test(status + body) });
 }
 
-/** Fund, sign and broadcast a tx carrying `scripts` as 0-sat outputs. Returns { txid, rawTx }. */
-async function send(k, scripts) {
-  const { utxos, sats } = await balance(k);
+/** Fund, sign and broadcast a tx carrying `scripts` as 0-sat outputs. Returns { txid, rawTx }. dry: build only. */
+async function send(k, scripts, { dry = false } = {}) {
+  const l = ledgerLoad();
+  const { utxos, sats, source } = await balance(k);
   if (sats < MIN_SATS) throw Object.assign(new Error(`unfunded: ${sats} sats at ${k.address}`), { unfunded: true });
+  const u = utxos[0]; // one input: balance is ample, and fewer inputs means fewer stale-UTXO collisions
   const tx = new Transaction();
-  for (const u of utxos.sort((a, b) => b.value - a.value).slice(0, 5)) {
-    const hex = await (await wocGet(`${WOC}/tx/${u.tx_hash}/hex`)).text();
-    tx.addInput({ sourceTransaction: Transaction.fromHex(hex.trim()), sourceOutputIndex: u.tx_pos, unlockingScriptTemplate: new P2PKH().unlock(k.sign) });
-  }
+  const src = Transaction.fromHex(u.rawTx ?? await txHex(u.txid));
+  tx.addInput({ sourceTransaction: src, sourceOutputIndex: u.vout, unlockingScriptTemplate: new P2PKH().unlock(k.sign) });
   for (const s of scripts) tx.addOutput({ lockingScript: s, satoshis: 0 });
   tx.addOutput({ lockingScript: new P2PKH().lock(k.address), change: true });
   await tx.fee(new SatoshisPerKilobyte(100));
   await tx.sign();
   const rawTx = tx.toHex();
-  await broadcast(rawTx);
   const txid = tx.id('hex');
+  const op = `${u.txid}:${u.vout}`;
+  if (dry) return { txid, rawTx, dry: true, input: op, source };
+  try {
+    await broadcast(rawTx, txid);
+  } catch (e) {
+    if (e.doubleSpend) { l.spent.push(op); if (l.tip && `${l.tip.txid}:${l.tip.vout}` === op) l.tip = null; ledgerSave(l); }
+    throw e;
+  }
+  const vout = tx.outputs.length - 1;
+  l.spent.push(op);
+  l.tip = { txid, vout, value: tx.outputs[vout].satoshis, rawTx };
+  ledgerSave(l);
   const ingested = await Promise.all(INGEST.map((u) =>
     fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rawTx }), signal: AbortSignal.timeout(10_000) })
       .then((x) => x.ok).catch(() => false)));
   return { txid, rawTx, ingested };
 }
 
-export const publishProfile = (k) => send(k, profileScripts(k));
-export const publishPost = (k, text) => send(k, [postScript(text, k)]);
+export const publishProfile = (k, o) => send(k, profileScripts(k), o);
+export const publishPost = (k, text, o) => send(k, [postScript(text, k)], o);

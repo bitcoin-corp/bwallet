@@ -185,6 +185,10 @@ if (doBchat) {
     if (!live) {
       console.log(`bChat poster ${k.address} (BAP ${k.bapId}), balance ${funded} sats, profile ${state.bchat.profile ? 'published ' + state.bchat.profile.txid : 'NOT yet published'}`);
       if (p) console.log(`bChat ${rc ? 'recycle next' : `next (${posts.indexOf(p) + 1}/${posts.length})`}:\n\n${text}\n`);
+      if (p) {
+        try { const d = await bchat.publishPost(k, text, { dry: true }); console.log(`bChat dry tx ${d.txid} spends ${d.input} (from ${d.source}), ${d.rawTx.length / 2} bytes`); }
+        catch (e) { log('bChat dry build failed:', e.message); }
+      }
     } else if (funded < 200) {
       log(`bChat: poster unfunded (${funded} sats). Send BSV to ${k.address}. Skipped.`);
     } else {
