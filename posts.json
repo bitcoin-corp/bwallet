@@ -90,6 +90,12 @@
     ]
   },
   {
+    "url": "https://bwalletx.com/sign",
+    "lines": [
+      "Flip your bWalletX card and sign the back with your finger. It stays on your phone. Next: sign contracts with it and seal them on Bitcoin for under a penny."
+    ]
+  },
+  {
     "url": "https://bwalletx.com/blog/015-launchpad",
     "lines": [
       "015 · Launchpad, and checking what we sign: bWalletX 5.1.74 can buy and sell bonding-curve coins. The wallet now checks every trade the server prepares before it signs anything."
