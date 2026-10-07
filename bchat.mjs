@@ -91,6 +91,30 @@ export async function balance(k) {
   return { utxos, sats: utxos.reduce((a, u) => a + u.value, 0) };
 }
 
+const ARC = 'https://arc.gorillapool.io/v1/tx';
+
+/**
+ * Broadcast: WhatsOnChain first, retrying 429s with backoff (7 Oct 2026: a 429 lost the day's bChat post),
+ * then GorillaPool ARC. "Already known" counts as success on either.
+ */
+async function broadcast(rawTx) {
+  const errors = [];
+  for (let i = 0; i < 4; i++) {
+    const r = await fetch(`${WOC}/tx/raw`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ txhex: rawTx }), signal: AbortSignal.timeout(20_000) }).catch((e) => ({ ok: false, status: 0, text: async () => String(e) }));
+    const body = await r.text();
+    if (r.ok || /already|known/i.test(body)) return 'woc';
+    errors.push(`woc ${r.status}`);
+    if (r.status !== 429 && r.status !== 0 && r.status < 500) break;
+    await new Promise((ok) => setTimeout(ok, 5000 * (i + 1)));
+  }
+  const r = await fetch(ARC, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rawTx }), signal: AbortSignal.timeout(20_000) }).catch((e) => ({ ok: false, status: 0, text: async () => String(e) }));
+  const body = await r.text();
+  let status = '';
+  try { status = JSON.parse(body).txStatus ?? ''; } catch {}
+  if (r.ok && !/REJECTED|DOUBLE_SPEND|INVALID|MALFORMED/i.test(status) || /already|known/i.test(body)) return 'arc';
+  throw new Error(`broadcast refused: ${errors.join(', ')}; arc ${r.status} ${(status || body).slice(0, 200)}`);
+}
+
 /** Fund, sign and broadcast a tx carrying `scripts` as 0-sat outputs. Returns { txid, rawTx }. */
 async function send(k, scripts) {
   const { utxos, sats } = await balance(k);
@@ -105,9 +129,7 @@ async function send(k, scripts) {
   await tx.fee(new SatoshisPerKilobyte(100));
   await tx.sign();
   const rawTx = tx.toHex();
-  const r = await fetch(`${WOC}/tx/raw`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ txhex: rawTx }), signal: AbortSignal.timeout(20_000) });
-  const body = await r.text();
-  if (!r.ok && !/already|known/i.test(body)) throw new Error(`broadcast refused: ${r.status} ${body.slice(0, 200)}`);
+  await broadcast(rawTx);
   const txid = tx.id('hex');
   const ingested = await Promise.all(INGEST.map((u) =>
     fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rawTx }), signal: AbortSignal.timeout(10_000) })
