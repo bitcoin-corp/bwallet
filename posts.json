@@ -108,6 +108,18 @@
     ]
   },
   {
+    "url": "https://bwalletx.com/blog/024-tips-and-paid-likes",
+    "lines": [
+      "024 · Pay the person who wrote it: in bWalletX a paid like or a tip pays the author in the same transaction. bChat takes 0%, the post's home app gets 5% on top, and authors can hide their own posts."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/025-push-notifications",
+    "lines": [
+      "025 · Push notifications, from our own server: DMs, mentions and calls in bWalletX via push.bwalletx.com. Previews off by default, no message text stored, and why we didn't use a third party."
+    ]
+  },
+  {
     "url": "https://bwalletx.com/blog/015-launchpad",
     "lines": [
       "015 · Launchpad, and checking what we sign: bWalletX 5.1.74 can buy and sell bonding-curve coins. The wallet now checks every trade the server prepares before it signs anything."
