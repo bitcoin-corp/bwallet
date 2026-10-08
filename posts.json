@@ -144,6 +144,30 @@
     ]
   },
   {
+    "url": "https://bwalletx.com/blog/031-calls-mics-menu",
+    "lines": [
+      "031 · bWalletX 5.1.88 is out: a Calls tab with Recents, Contacts, Services and a keypad, mics and cameras that work in Spaces and calls, up to 4 accounts in the menu, sign-in alerts."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/032-meet-bchatx",
+    "lines": [
+      "032 · Meet bChatX.com: chat's new home. Sign in with bWalletX, your wallet stays bWalletX, the feed arrives with the page, and posts from other apps are filtered."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/033-spaces-you-can-listen-to",
+    "lines": [
+      "033 · Spaces you can just listen to: public Spaces on bChatX need no sign-in to listen. Up to 12 speakers on stage, and a relay so office and hotel networks can join."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/034-open-apps-open-protocol",
+    "lines": [
+      "034 · Open apps, open protocol: MIT-licensed apps, the bChat Protocol on GitHub, a proposal for threads across apps. Your keys never leave your wallet."
+    ]
+  },
+  {
     "url": "https://bwalletx.com/blog/015-launchpad",
     "lines": [
       "015 · Launchpad, and checking what we sign: bWalletX 5.1.74 can buy and sell bonding-curve coins. The wallet now checks every trade the server prepares before it signs anything."
