@@ -120,6 +120,30 @@
     ]
   },
   {
+    "url": "https://bwalletx.com/blog/026-paying-to-be-heard",
+    "lines": [
+      "026 · Paying to be heard: token rooms in bWalletX can charge per message, burned or paid to the issuer. The wallet signs, the server checks, then it's spent. No paid-but-refused. Admins exempt."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/027-airdrops-not-dividends",
+    "lines": [
+      "027 · Airdrops, not dividends: why bWalletX issuers reward holders with airdrops, a filter that blocks returns wording, an airdrop inbox, and sandboxed NFT content."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/028-launch-something",
+    "lines": [
+      "028 · Launch something with your coin: token links for a website, app, X, Telegram and bChat. Holding gets you the room; anything else is \"Issuer says\". No company field."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/029-bpositive",
+    "lines": [
+      "029 · bPositive: sponsor someone's journey in bWalletX. Monthly support from pots, milestone pledges confirmed by witnesses, thank-you NFTs. Gifts only, 18+, 0% fee. Coming."
+    ]
+  },
+  {
     "url": "https://bwalletx.com/blog/015-launchpad",
     "lines": [
       "015 · Launchpad, and checking what we sign: bWalletX 5.1.74 can buy and sell bonding-curve coins. The wallet now checks every trade the server prepares before it signs anything."
