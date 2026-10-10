@@ -397,5 +397,143 @@
     "lines": [
       "PNEEs are digital pennies on BSV, one US cent each, backed only by BSV locked in public vaults. No bank, no freeze. Live mainnet pilot."
     ]
+  },
+  {
+    "url": "https://bwalletx.com/web",
+    "lines": [
+      "Use bWalletX in your browser: no install, keys stay in your browser, and it works on any computer."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/desktop",
+    "lines": [
+      "bWalletX Desktop: your whole wallet on a big screen. Money, chat, Spaces and Agent b side by side."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/iphone",
+    "lines": [
+      "Use bWalletX on iPhone today: add the web app from Safari in under a minute. No App Store needed."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/pots",
+    "lines": [
+      "Pots: set money aside inside your wallet for savings, bills or a pension. Standing orders and subscriptions pay from them."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/subscriptions",
+    "lines": [
+      "Subscriptions in bWalletX are priced in dollars and paid from a pot. The pot balance is the most anyone can take. Pause or cancel any time."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/lock",
+    "lines": [
+      "Lock BSV until a date, or as payouts over time. Nobody can unlock it early, including us."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/swap",
+    "lines": [
+      "Swap BTC, ETH, USDT, SOL and 1,000+ other coins into BSV, paid straight into your own wallet."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/history",
+    "lines": [
+      "See every transaction your bWalletX account made for any dates, and export it as a CSV or a PDF statement."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/restore",
+    "lines": [
+      "Bring your old wallet with you: restore or sweep Yours, Panda, RelayX, Twetch, SimplyCash, BIP44 wallets and private keys into bWalletX."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/identity-map",
+    "lines": [
+      "Your identity key is who you are. Every other key in bWalletX comes from it, by purpose and by the person you deal with."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/airdrops",
+    "lines": [
+      "Airdrops land in your own inbox in bWalletX. Keep what you want, hide the rest."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/chat",
+    "lines": [
+      "Chat is built into bWalletX: rooms, token rooms and private messages, on the same chain as your money."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/bspaces",
+    "lines": [
+      "bSpaces: live audio in bWalletX. Take the stage, raise your hand, or just listen."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/live",
+    "lines": [
+      "Go live to your holders: your token is the ticket into your room in bWalletX."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/bphone",
+    "lines": [
+      "bPhone: charge to receive calls in bWalletX. Set a price per minute or per call, paid wallet to wallet while you talk."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/bpositive",
+    "lines": [
+      "bPositive: sponsor someone in bWalletX with monthly support from a pot and milestone pledges."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/social",
+    "lines": [
+      "Your handle is your paymail, your token and your chat room. Sign in with X or Google and chat with the people whose tokens you hold."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/handles",
+    "lines": [
+      "Your $handle is your paymail, and it can be your token and your room too. One name for paying, chatting and signing in."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/games",
+    "lines": [
+      "Play Bitcoin games inside bWalletX: bGames originals, the TokenBlaster arcade and more."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/testers",
+    "lines": [
+      "We pay 1 BSV to people who test bWallet on Android for 14 days. Apply with Google and get paid into your own bWallet."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/developers",
+    "lines": [
+      "Add a Connect with bWalletX button to your site: one script, a standard BRC-100 wallet, no API keys."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/sign-in-button",
+    "lines": [
+      "The standard Sign in with bWalletX button: one tag, gold, dark or light, four sizes, plus a React wrapper and SVGs."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/open-source",
+    "lines": [
+      "bWalletX is open source: the wallet and CLI are MIT-licensed on GitHub. Here is what that means for your keys and coins."
+    ]
   }
 ]
