@@ -168,6 +168,12 @@
     ]
   },
   {
+    "url": "https://bwalletx.com/blog/030-bphone",
+    "lines": [
+      "030 · bPhone: charge to receive calls in bWalletX. Set a price per second, minute, hour or call, paid wallet to wallet while you talk, with no middleman."
+    ]
+  },
+  {
     "url": "https://bwalletx.com/blog/031-calls-mics-menu",
     "lines": [
       "031 · bWalletX 5.1.88 is out: a Calls tab with Recents, Contacts, Services and a keypad, mics and cameras that work in Spaces and calls, up to 4 accounts in the menu, sign-in alerts."
@@ -176,7 +182,7 @@
   {
     "url": "https://bwalletx.com/blog/032-meet-bchatx",
     "lines": [
-      "032 · Meet bChatX.com: chat's new home. Sign in with bWalletX, your wallet stays bWalletX, the feed arrives with the page, and posts from other apps are filtered."
+      "032 · Meet bChatX: chat's new home. Sign in with bWalletX, your wallet stays bWalletX, the feed arrives with the page, and posts from other apps are filtered."
     ]
   },
   {
