@@ -90,12 +90,6 @@
     ]
   },
   {
-    "url": "https://bwalletx.com/sign",
-    "lines": [
-      "Flip your bWalletX card and sign the back with your finger. It stays on your phone. Next: sign contracts with it and seal them on Bitcoin for under a penny."
-    ]
-  },
-  {
     "url": "https://bwalletx.com/blog/021-coordinate-on-bsv",
     "lines": [
       "021 · Coordinate on BSV: Big platforms put every community in one room, where a small one gets piled on. Advertise there, coordinate here. Part 1 of a series on chat on BSV."
@@ -123,6 +117,36 @@
     "url": "https://bwalletx.com/blog/026-paying-to-be-heard",
     "lines": [
       "026 · Paying to be heard: token rooms in bWalletX can charge per message, burned or paid to the issuer. The wallet signs, the server checks, then it's spent. No paid-but-refused. Admins exempt."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/015-launchpad",
+    "lines": [
+      "015 · Launchpad, and checking what we sign: bWalletX 5.1.74 can buy and sell bonding-curve coins. The wallet now checks every trade the server prepares before it signs anything."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/016-pots",
+    "lines": [
+      "016 · Subscriptions, paid from pots: Subscriptions in bWalletX are paid from a pot, money you set aside for them. Out now in 5.1.75 at Settings › Pots. Free, and you can pause any time."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/017-sign-in-and-lounge",
+    "lines": [
+      "017 · Sign in with bWalletX, and the Lounge: bChat now has one gold button to sign in with your wallet. Every account starts in the bWallet Lounge."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/019-language-filter",
+    "lines": [
+      "019 · Blur slurs, show swearing: The bChat feed and bWalletX now blur slurs behind a tap. Swearing is shown. Nothing is deleted."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/020-sign-in-with-x",
+    "lines": [
+      "020 · Sign in with X: bWalletX can make a wallet from your X account. You get your X username as a verified paymail, b0asex.x@bwalletx.com for example, with your picture, a token and a room."
     ]
   },
   {
@@ -192,33 +216,9 @@
     ]
   },
   {
-    "url": "https://bwalletx.com/blog/015-launchpad",
+    "url": "https://bwalletx.com/sign",
     "lines": [
-      "015 · Launchpad, and checking what we sign: bWalletX 5.1.74 can buy and sell bonding-curve coins. The wallet now checks every trade the server prepares before it signs anything."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/016-pots",
-    "lines": [
-      "016 · Subscriptions, paid from pots: Subscriptions in bWalletX are paid from a pot, money you set aside for them. Out now in 5.1.75 at Settings › Pots. Free, and you can pause any time."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/017-sign-in-and-lounge",
-    "lines": [
-      "017 · Sign in with bWalletX, and the Lounge: bChat now has one gold button to sign in with your wallet. Every account starts in the bWallet Lounge."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/019-language-filter",
-    "lines": [
-      "019 · Blur slurs, show swearing: The bChat feed and bWalletX now blur slurs behind a tap. Swearing is shown. Nothing is deleted."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/020-sign-in-with-x",
-    "lines": [
-      "020 · Sign in with X: bWalletX can make a wallet from your X account. You get your X username as a verified paymail, b0asex.x@bwalletx.com for example, with your picture, a token and a room."
+      "Flip your bWalletX card and sign the back with your finger. It stays on your phone. Next: sign contracts with it and seal them on Bitcoin for under a penny."
     ]
   },
   {
