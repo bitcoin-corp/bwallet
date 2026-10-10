@@ -168,6 +168,30 @@
     ]
   },
   {
+    "url": "https://bwalletx.com/blog/035-pots-and-locks",
+    "lines": [
+      "035 · Pots & Locks: the Lock screen groups your locks into pots like Pension and Savings goal, every lock feature kept, and a PNEEs pot for BSV locked to back PNEEs."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/036-subscriptions-in-dollars",
+    "lines": [
+      "036 · Subscriptions priced in dollars, paid in BSV at that day's rate, from a pot you choose. One list, Pause all, cancel any time. Nothing paid up front."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/037-portfolio-vs-market",
+    "lines": [
+      "037 · Portfolio vs market: tap the price tile to see your wallet against just holding BSV, holding BTC or keeping dollars, over a day, week, month, year or all time."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/038-swap-into-bsv",
+    "lines": [
+      "038 · Swap into BSV: BTC, ETH and 1,000+ coins into BSV from the home screen. ChangeNOW runs the swap and the BSV comes straight to your own wallet."
+    ]
+  },
+  {
     "url": "https://bwalletx.com/blog/015-launchpad",
     "lines": [
       "015 · Launchpad, and checking what we sign: bWalletX 5.1.74 can buy and sell bonding-curve coins. The wallet now checks every trade the server prepares before it signs anything."
