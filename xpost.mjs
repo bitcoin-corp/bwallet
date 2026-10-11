@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-// Post the next bWalletX queue item to X (@bWalletX) and to the bChat feed (official bWalletX poster).
+// Post the next bWalletX queue item to X (@bWalletX), the bChat feed (official bWalletX poster) and Twetch (@bWalletX).
 // The queue is posts.json, in order. Each item posts ONCE per channel; when the queue ends, nothing more posts.
-// Keys come from .env.local (X) and $BWX_POSTER_ENV or ~/Secrets/bwalletx-poster/poster.env (bChat), never from code.
+// Keys come from .env.local (X) and $BWX_POSTER_ENV or ~/Secrets/bwalletx-poster/poster.env (bChat; Twetch's
+// TWETCH_SIGN_WIF too), never from code.
 //
 //   node xpost.mjs                  dry run: show what each channel would post next
 //   node xpost.mjs --post           post the next item on each channel
 //   node xpost.mjs --post --daily   scheduler mode: only acts at 10:xx Europe/London, once per London day
-//   --x-only / --bchat-only         limit to one channel
+//   --x-only / --bchat-only / --twetch-only   limit to one channel
 //   node xpost.mjs --post --url U   post just the queue item with url U (blog.mjs uses this at publish time)
 //   node xpost.mjs --text "..." --post   one-off X post (not part of the queue)
 //   node xpost.mjs --profile --post publish the bChat posting profile now (normally automatic before the first post)
@@ -33,8 +34,10 @@ const args = process.argv.slice(2);
 const live = args.includes('--post');
 const daily = args.includes('--daily');
 const oneOff = args.includes('--text') ? args[args.indexOf('--text') + 1] : null;
-const doX = !args.includes('--bchat-only');
-const doBchat = !args.includes('--x-only') && !oneOff;
+const only = ['--x-only', '--bchat-only', '--twetch-only'].find((f) => args.includes(f));
+const doX = !only || only === '--x-only';
+const doBchat = (!only || only === '--bchat-only') && !oneOff;
+const doTwetch = (!only || only === '--twetch-only') && !oneOff;
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 if (fs.existsSync(path.join(dir, 'PAUSED'))) { log('PAUSED file present: nothing posted'); process.exit(0); }
@@ -44,6 +47,10 @@ const statePath = path.join(dir, 'state.json');
 const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {};
 state.x ??= { posted: {} };
 state.bchat ??= { profile: null, posted: {} };
+if (!state.twetch) {
+  // First run: start Twetch level with bChat instead of replaying the whole backlog one a day.
+  state.twetch = { posted: Object.fromEntries(Object.keys(state.bchat.posted).map((u) => [u, { at: new Date().toISOString(), skipped: 'already posted elsewhere before Twetch was added' }])) };
+}
 state.history ??= [];
 // Migrate the old rotation format: anything already in history counts as posted to X.
 for (const h of state.history) {
@@ -210,6 +217,41 @@ if (doBchat) {
         }
       } catch (e) { failed = true; log('bChat FAILED:', e.message); }
     }
+  }
+}
+
+// ── Twetch ───────────────────────────────────────────────────────────────────
+// Same queue, posted once per item, signed by the bWalletX Twetch key (twetch.mjs), fee from the bChat poster.
+// Runs after bChat so the two share the poster's UTXO ledger one transaction at a time.
+if (doTwetch) {
+  let tw = null, bchatMod = null, k = null, key = null;
+  try {
+    bchatMod = await import('./bchat.mjs'); tw = await import('./twetch.mjs');
+    k = bchatMod.keys(env); key = tw.twetchKey(env);
+  } catch (e) { failed = true; log('Twetch: could not load poster:', e.message); }
+  const p0 = nextFor('twetch');
+  const rc = p0 ? null : recycleFor('twetch');
+  const p = p0 ?? rc?.p ?? null;
+  const text = rc ? rc.text : p && textOf(p);
+  if (!tw) { /* load error logged above */ }
+  else if (!key) log('Twetch: no TWETCH_SIGN_WIF in the poster env, skipped');
+  else if (!k) log('Twetch: no bChat poster keys to pay the fee (BCHAT_ROOT_WIF / BCHAT_SIGN_WIF), skipped');
+  else if (!p) log(state.recycle.enabled ? 'Twetch: queue finished, nothing eligible to recycle (30-day rule)' : 'Twetch: queue finished');
+  else if (!live) {
+    console.log(`Twetch as @bWalletX (${tw.TWETCH_ADDRESS}), fee from ${k.address}`);
+    console.log(`Twetch ${rc ? 'recycle next' : `next (${posts.indexOf(p) + 1}/${posts.length})`}:\n\n${text}\n`);
+    try { const d = await tw.publishTwetch(k, key, text, { dry: true }); console.log(`Twetch dry tx ${d.txid} spends ${d.input} (from ${d.source}), ${d.rawTx.length / 2} bytes`); }
+    catch (e) { log('Twetch dry build failed:', e.message); }
+  } else {
+    try {
+      const r = await tw.publishTwetch(k, key, text);
+      const at = new Date().toISOString();
+      if (!rc) state.twetch.posted[p.url] = { at, txid: r.txid };
+      state.history.push({ at, channel: 'twetch', url: p.url, txid: r.txid, ...(rc && { text, recycled: true }) });
+      save();
+      log('Twetch posted:', p.url, r.txid);
+      if (!rc && !nextFor('twetch')) log('Twetch: that was the last item, queue finished');
+    } catch (e) { failed = true; log('Twetch FAILED:', e.message); }
   }
 }
 

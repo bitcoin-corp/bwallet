@@ -171,7 +171,7 @@ async function broadcast(rawTx, txid) {
 }
 
 /** Fund, sign and broadcast a tx carrying `scripts` as 0-sat outputs. Returns { txid, rawTx }. dry: build only. */
-async function send(k, scripts, { dry = false } = {}) {
+async function send(k, scripts, { dry = false, ingest = true } = {}) {
   const l = ledgerLoad();
   const { utxos, sats, source } = await balance(k);
   if (sats < MIN_SATS) throw Object.assign(new Error(`unfunded: ${sats} sats at ${k.address}`), { unfunded: true });
@@ -197,7 +197,7 @@ async function send(k, scripts, { dry = false } = {}) {
   l.spent.push(op);
   l.tip = { txid, vout, value: tx.outputs[vout].satoshis, rawTx };
   ledgerSave(l);
-  const ingested = await Promise.all(INGEST.map((u) =>
+  const ingested = !ingest ? [] : await Promise.all(INGEST.map((u) =>
     fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rawTx }), signal: AbortSignal.timeout(10_000) })
       .then((x) => x.ok).catch(() => false)));
   return { txid, rawTx, ingested };
@@ -205,3 +205,6 @@ async function send(k, scripts, { dry = false } = {}) {
 
 export const publishProfile = (k, o) => send(k, profileScripts(k), o);
 export const publishPost = (k, text, o) => send(k, [postScript(text, k)], o);
+/** Any ready-made 0-sat scripts, paid from the bChat poster key (used by twetch.mjs). */
+export const publishScripts = (k, scripts, o) => send(k, scripts, o);
+export { aipSign, opReturn, push, B_PREFIX, MAP_PREFIX, PIPE };
