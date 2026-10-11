@@ -96,6 +96,12 @@
     ]
   },
   {
+    "url": "https://bwalletx.com/sign",
+    "lines": [
+      "Flip your bWalletX card and sign the back with your finger. It stays on your phone. Next: sign contracts with it and seal them on Bitcoin for under a penny."
+    ]
+  },
+  {
     "url": "https://bwalletx.com/blog/021-coordinate-on-bsv",
     "lines": [
       "021 · Coordinate on BSV: Big platforms put every community in one room, where a small one gets piled on. Advertise there, coordinate here. Part 1 of a series on chat on BSV."
@@ -126,6 +132,24 @@
     ]
   },
   {
+    "url": "https://bwalletx.com/blog/027-airdrops-not-dividends",
+    "lines": [
+      "027 · Airdrops, not dividends: why bWalletX issuers reward holders with airdrops, a filter that blocks returns wording, an airdrop inbox, and sandboxed NFT content."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/028-launch-something",
+    "lines": [
+      "028 · Launch something with your coin: token links for a website, app, X, Telegram and bChat. Holding gets you the room; anything else is \"Issuer says\". No company field."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/029-bpositive",
+    "lines": [
+      "029 · bPositive: sponsor someone's journey in bWalletX. Monthly support from pots, milestone pledges confirmed by witnesses, thank-you NFTs. Gifts only, 18+, 0% fee. Coming."
+    ]
+  },
+  {
     "url": "https://bwalletx.com/blog/015-launchpad",
     "lines": [
       "015 · Launchpad, and checking what we sign: bWalletX 5.1.74 can buy and sell bonding-curve coins. The wallet now checks every trade the server prepares before it signs anything."
@@ -153,84 +177,6 @@
     "url": "https://bwalletx.com/blog/020-sign-in-with-x",
     "lines": [
       "020 · Sign in with X: bWalletX can make a wallet from your X account. You get your X username as a verified paymail, b0asex.x@bwalletx.com for example, with your picture, a token and a room."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/027-airdrops-not-dividends",
-    "lines": [
-      "027 · Airdrops, not dividends: why bWalletX issuers reward holders with airdrops, a filter that blocks returns wording, an airdrop inbox, and sandboxed NFT content."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/028-launch-something",
-    "lines": [
-      "028 · Launch something with your coin: token links for a website, app, X, Telegram and bChat. Holding gets you the room; anything else is \"Issuer says\". No company field."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/029-bpositive",
-    "lines": [
-      "029 · bPositive: sponsor someone's journey in bWalletX. Monthly support from pots, milestone pledges confirmed by witnesses, thank-you NFTs. Gifts only, 18+, 0% fee. Coming."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/030-bphone",
-    "lines": [
-      "030 · bPhone: charge to receive calls in bWalletX. Set a price per second, minute, hour or call, paid wallet to wallet while you talk, with no middleman."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/031-calls-mics-menu",
-    "lines": [
-      "031 · bWalletX 5.1.88 is out: a Calls tab with Recents, Contacts, Services and a keypad, mics and cameras that work in Spaces and calls, up to 4 accounts in the menu, sign-in alerts."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/032-meet-bchatx",
-    "lines": [
-      "032 · Meet bChatX: chat's new home. Sign in with bWalletX, your wallet stays bWalletX, the feed arrives with the page, and posts from other apps are filtered."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/033-spaces-you-can-listen-to",
-    "lines": [
-      "033 · Spaces you can just listen to: public Spaces on bChatX need no sign-in to listen. Up to 12 speakers on stage, and a relay so office and hotel networks can join."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/034-open-apps-open-protocol",
-    "lines": [
-      "034 · Open apps, open protocol: MIT-licensed apps, the bChat Protocol on GitHub, a proposal for threads across apps. Your keys never leave your wallet."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/035-pots-and-locks",
-    "lines": [
-      "035 · Pots & Locks: the Lock screen groups your locks into pots like Pension and Savings goal, every lock feature kept, and a PNEEs pot for BSV locked to back PNEEs."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/036-subscriptions-in-dollars",
-    "lines": [
-      "036 · Subscriptions priced in dollars, paid in BSV at that day's rate, from a pot you choose. One list, Pause all, cancel any time. Nothing paid up front."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/037-portfolio-vs-market",
-    "lines": [
-      "037 · Portfolio vs market: tap the price tile to see your wallet against just holding BSV, holding BTC or keeping dollars, over a day, week, month, year or all time."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/blog/038-swap-into-bsv",
-    "lines": [
-      "038 · Swap into BSV: BTC, ETH and 1,000+ coins into BSV from the home screen. ChangeNOW runs the swap and the BSV comes straight to your own wallet."
-    ]
-  },
-  {
-    "url": "https://bwalletx.com/sign",
-    "lines": [
-      "Flip your bWalletX card and sign the back with your finger. It stays on your phone. Next: sign contracts with it and seal them on Bitcoin for under a penny."
     ]
   },
   {
@@ -402,6 +348,60 @@
     "url": "https://bwalletx.com/pnee",
     "lines": [
       "PNEEs are digital pennies on BSV, one US cent each, backed only by BSV locked in public vaults. No bank, no freeze. Live mainnet pilot."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/030-bphone",
+    "lines": [
+      "030 · bPhone: charge to receive calls in bWalletX. Set a price per second, minute, hour or call, paid wallet to wallet while you talk, with no middleman."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/031-calls-mics-menu",
+    "lines": [
+      "031 · bWalletX 5.1.88 is out: a Calls tab with Recents, Contacts, Services and a keypad, mics and cameras that work in Spaces and calls, up to 4 accounts in the menu, sign-in alerts."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/032-meet-bchatx",
+    "lines": [
+      "032 · Meet bChatX: chat's new home. Sign in with bWalletX, your wallet stays bWalletX, the feed arrives with the page, and posts from other apps are filtered."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/033-spaces-you-can-listen-to",
+    "lines": [
+      "033 · Spaces you can just listen to: public Spaces on bChatX need no sign-in to listen. Up to 12 speakers on stage, and a relay so office and hotel networks can join."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/034-open-apps-open-protocol",
+    "lines": [
+      "034 · Open apps, open protocol: MIT-licensed apps, the bChat Protocol on GitHub, a proposal for threads across apps. Your keys never leave your wallet."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/035-pots-and-locks",
+    "lines": [
+      "035 · Pots & Locks: the Lock screen groups your locks into pots like Pension and Savings goal, every lock feature kept, and a PNEEs pot for BSV locked to back PNEEs."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/036-subscriptions-in-dollars",
+    "lines": [
+      "036 · Subscriptions priced in dollars, paid in BSV at that day's rate, from a pot you choose. One list, Pause all, cancel any time. Nothing paid up front."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/037-portfolio-vs-market",
+    "lines": [
+      "037 · Portfolio vs market: tap the price tile to see your wallet against just holding BSV, holding BTC or keeping dollars, over a day, week, month, year or all time."
+    ]
+  },
+  {
+    "url": "https://bwalletx.com/blog/038-swap-into-bsv",
+    "lines": [
+      "038 · Swap into BSV: BTC, ETH and 1,000+ coins into BSV from the home screen. ChangeNOW runs the swap and the BSV comes straight to your own wallet."
     ]
   },
   {
