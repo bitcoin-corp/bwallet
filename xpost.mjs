@@ -8,6 +8,9 @@
 //   node xpost.mjs --post           post the next item on each channel
 //   node xpost.mjs --post --daily   scheduler mode: only acts at 10:xx Europe/London, once per London day
 //   --x-only / --bchat-only / --twetch-only   limit to one channel
+//   node xpost.mjs --twetch-pace 3|off   pace Twetch to one post per N hours (owner, 11 Oct 2026: a small community,
+//                                  don't flood it). While paced, the daily run skips Twetch and a separate cron runs
+//                                  `xpost.mjs --post --twetch-only --paced`, which posts only if N hours have passed.
 //   node xpost.mjs --post --url U   post just the queue item with url U (blog.mjs uses this at publish time)
 //   node xpost.mjs --text "..." --post   one-off X post (not part of the queue)
 //   node xpost.mjs --profile --post publish the bChat posting profile now (normally automatic before the first post)
@@ -40,6 +43,7 @@ const doBchat = (!only || only === '--bchat-only') && !oneOff;
 const doTwetch = (!only || only === '--twetch-only') && !oneOff;
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
+const paceArg = args.indexOf('--twetch-pace');
 if (fs.existsSync(path.join(dir, 'PAUSED'))) { log('PAUSED file present: nothing posted'); process.exit(0); }
 
 // ── state ────────────────────────────────────────────────────────────────────
@@ -64,6 +68,16 @@ const save = () => {
 };
 
 state.recycle ??= { enabled: false };
+
+if (paceArg >= 0) {
+  const v = args[paceArg + 1];
+  if (v === 'off') delete state.twetch.paceHours;
+  else if (Number(v) > 0) state.twetch.paceHours = Number(v);
+  else { console.log('usage: --twetch-pace <hours>|off'); process.exit(1); }
+  save();
+  console.log(state.twetch.paceHours ? `Twetch paced: one post every ${state.twetch.paceHours} h (daily run skips Twetch)` : 'Twetch pacing off: Twetch posts with the daily run');
+  process.exit(0);
+}
 
 if (args.includes('--recycle')) {
   const v = args[args.indexOf('--recycle') + 1];
@@ -223,7 +237,12 @@ if (doBchat) {
 // ── Twetch ───────────────────────────────────────────────────────────────────
 // Same queue, posted once per item, signed by the bWalletX Twetch key (twetch.mjs), fee from the bChat poster.
 // Runs after bChat so the two share the poster's UTXO ledger one transaction at a time.
-if (doTwetch) {
+const pace = state.twetch.paceHours;
+const lastTwetch = Math.max(0, ...state.history.filter((h) => h.channel === 'twetch').map((h) => Date.parse(h.at) || 0));
+const paceWait = pace ? lastTwetch + pace * 3600_000 - 10 * 60_000 - Date.now() : 0; // 10 min slack for cron timing
+if (doTwetch && pace && live && !args.includes('--paced')) log(`Twetch: paced (one every ${pace} h), left to its own cron`);
+else if (doTwetch && pace && live && paceWait > 0) log(`Twetch: paced, next post in ${Math.ceil(paceWait / 60_000)} min`);
+else if (doTwetch) {
   let tw = null, bchatMod = null, k = null, key = null;
   try {
     bchatMod = await import('./bchat.mjs'); tw = await import('./twetch.mjs');
