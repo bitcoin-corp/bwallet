@@ -141,7 +141,7 @@ const ARC = 'https://arc.gorillapool.io/v1/tx';
 
 async function txKnown(txid) {
   const a = await fetch(`${ARC}/${txid}`, { signal: AbortSignal.timeout(15_000) }).then((r) => r.ok ? r.json() : null).catch(() => null);
-  if (a && /SEEN|MINED|STORED|ANNOUNCED|SENT|ACCEPTED/i.test(a.txStatus ?? '') && !/DOUBLE|REJECT/i.test(a.txStatus)) return true;
+  if (a && /SEEN|MINED|STORED|ANNOUNCED|SENT|ACCEPTED/i.test(a.txStatus ?? '') && !/DOUBLE|REJECT|ORPHAN/i.test(a.txStatus)) return true;
   const w = await wocGet(`${WOC}/tx/hash/${txid}`);
   return w.ok;
 }
@@ -164,7 +164,9 @@ async function broadcast(rawTx, txid) {
   const body = await r.text();
   let status = '';
   try { status = JSON.parse(body).txStatus ?? ''; } catch {}
-  if (r.ok && !/REJECTED|DOUBLE_SPEND|INVALID|MALFORMED/i.test(status) || /already|known/i.test(body)) return 'arc';
+  // SEEN_IN_ORPHAN_MEMPOOL is not a broadcast: ARC lacks the parent and the tx never reaches miners (11-12 Oct 2026:
+  // ten posts chained off one orphan were logged as posted but never landed).
+  if (r.ok && !/REJECTED|DOUBLE_SPEND|INVALID|MALFORMED|ORPHAN/i.test(status) || /already|known/i.test(body)) return 'arc';
   await sleep(3000);
   if (await txKnown(txid)) return 'known';
   throw Object.assign(new Error(`broadcast refused: ${errors.join(', ')}; arc ${r.status} ${(status || body).slice(0, 200)}`), { doubleSpend: /DOUBLE_SPEND/i.test(status + body) });
