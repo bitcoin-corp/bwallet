@@ -208,7 +208,7 @@ async function send(k, scripts, { dry = false, ingest = true } = {}) {
   const ingested = !ingest ? [] : await Promise.all(INGEST.map((u) =>
     fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rawTx }), signal: AbortSignal.timeout(10_000) })
       .then((x) => x.ok).catch(() => false)));
-  return { txid, rawTx, ingested };
+  return { txid, rawTx, ingested, fee: tx.getFee() };
 }
 
 export const publishProfile = (k, o) => send(k, profileScripts(k), o);

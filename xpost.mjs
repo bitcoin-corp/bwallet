@@ -268,7 +268,8 @@ else if (doTwetch) {
       if (!rc) state.twetch.posted[p.url] = { at, txid: r.txid };
       state.history.push({ at, channel: 'twetch', url: p.url, txid: r.txid, ...(rc && { text, recycled: true }) });
       save();
-      log('Twetch posted:', p.url, r.txid);
+      log('Twetch posted:', p.url, r.txid, r.twetch?.id ? `twetch post ${r.twetch.id}` : `NOT registered with Twetch: ${r.twetchError}`);
+      if (r.twetchError) failed = true;
       if (!rc && !nextFor('twetch')) log('Twetch: that was the last item, queue finished');
     } catch (e) { failed = true; log('Twetch FAILED:', e.message); }
   }
