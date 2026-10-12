@@ -2,7 +2,7 @@
 // Builds posts exactly as Twetch does (decoded from tx 0d52a065…c717, 11 Oct 2026):
 //   B <text> text/markdown UTF-8 | MAP SET app twetch type post ts <ms> | AIP BITCOIN_ECDSA <address> <sig>
 // The AIP signature is made with the account's Twetch key, so Twetch shows the post as @bWalletX.
-// The fee is paid from the bChat poster key (bchat.mjs send/ledger); the Twetch key holds no coins.
+// The fee is paid by the Twetch key itself, from 1HQTpV… (Twetch only shows posts paid by the account).
 // Key comes from the environment only (TWETCH_SIGN_WIF), never from code.
 import { PrivateKey } from '@bsv/sdk';
 import { aipSign, B_PREFIX, MAP_PREFIX, opReturn, PIPE, publishScripts, push } from './bchat.mjs';
@@ -30,4 +30,8 @@ export function twetchPostScript(text, key, ts = Date.now()) {
 }
 
 /** Post `text` to Twetch as @bWalletX. `k` = bChat poster keys (pays the fee). Not sent to the bChat feed indexers. */
-export const publishTwetch = (k, key, text, o = {}) => publishScripts(k, [twetchPostScript(text, key)], { ...o, ingest: false });
+// Twetch only shows posts paid from the account's own address (12 Oct 2026: AIP-signed posts paid by the bChat
+// poster were mined but never appeared on twetch.com/u/220501). So the Twetch key pays too, from its own coins
+// and its own ledger; the bChat poster key is no longer involved.
+export const publishTwetch = (_k, key, text, o = {}) =>
+  publishScripts({ sign: key, address: key.toAddress(), ledger: key.toAddress() }, [twetchPostScript(text, key)], { ...o, ingest: false });

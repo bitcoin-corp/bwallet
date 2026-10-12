@@ -105,14 +105,18 @@ async function txHex(txid) {
 // post reused it (DOUBLE_SPEND_ATTEMPTED). We now chain from our own last change output and remember
 // every outpoint we have spent, so WoC's view is only a fallback, and checked.
 const LEDGER = path.join(path.dirname(fileURLToPath(import.meta.url)), 'bchat-utxo.json');
-const ledgerLoad = () => { try { return JSON.parse(fs.readFileSync(LEDGER, 'utf8')); } catch { return { spent: [], tip: null }; } };
+// One ledger per paying address: the bChat poster keeps bchat-utxo.json; any other payer (the Twetch key) gets its own file.
+let ledgerAddr = null;
+const ledgerPath = () => (ledgerAddr ? LEDGER.replace(/\.json$/, `-${ledgerAddr}.json`) : LEDGER);
+const ledgerLoad = () => { try { return JSON.parse(fs.readFileSync(ledgerPath(), 'utf8')); } catch { return { spent: [], tip: null }; } };
 function ledgerSave(l) {
   l.spent = l.spent.slice(-500);
-  fs.writeFileSync(LEDGER + '.tmp', JSON.stringify(l, null, 2));
-  fs.renameSync(LEDGER + '.tmp', LEDGER);
+  fs.writeFileSync(ledgerPath() + '.tmp', JSON.stringify(l, null, 2));
+  fs.renameSync(ledgerPath() + '.tmp', ledgerPath());
 }
 
 export async function balance(k) {
+  ledgerAddr = k.ledger ?? null;
   const l = ledgerLoad();
   if (l.tip && !l.spent.includes(`${l.tip.txid}:${l.tip.vout}`)) return { utxos: [l.tip], sats: l.tip.value, source: 'tip' };
   const utxos = await spendable(k, l);
