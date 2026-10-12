@@ -21,12 +21,13 @@ export function twetchKey(env) {
   return key;
 }
 
-export function twetchPostScript(text, key, ts = Date.now()) {
+// Matches what Twetch indexes (12 Oct 2026): no ts field, base64 AIP signature.
+export function twetchPostScript(text, key) {
   const s = opReturn();
   push(s, B_PREFIX); push(s, text.trim()); push(s, 'text/markdown'); push(s, 'UTF-8');
   s.writeBin([PIPE]); push(s, MAP_PREFIX); push(s, 'SET');
-  for (const v of ['app', 'twetch', 'type', 'post', 'ts', String(ts)]) push(s, v);
-  return aipSign(s, key);
+  for (const v of ['app', 'twetch', 'type', 'post']) push(s, v);
+  return aipSign(s, key, true);
 }
 
 /** Post `text` to Twetch as @bWalletX. `k` = bChat poster keys (pays the fee). Not sent to the bChat feed indexers. */

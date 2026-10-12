@@ -38,7 +38,7 @@ export function keys(env) {
 }
 
 // AIP: BSM over OP_RETURN + every push after it + trailing '|' (bit-sign aipMessage / @1sat getAipMessageBuffer).
-function aipSign(script, key) {
+function aipSign(script, key, b64 = false) {
   const msg = [];
   let found = false;
   for (const c of script.chunks) {
@@ -54,7 +54,9 @@ function aipSign(script, key) {
   push(out, AIP_PREFIX);
   push(out, 'BITCOIN_ECDSA');
   push(out, pub.toAddress());
-  out.writeBin(sig.toCompact(rec, true));
+  // Twetch only indexes a base64 text signature; bChat indexers take raw bytes.
+  if (b64) push(out, sig.toCompact(rec, true, 'base64'));
+  else out.writeBin(sig.toCompact(rec, true));
   return out;
 }
 
