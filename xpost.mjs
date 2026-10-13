@@ -98,6 +98,26 @@ for (const p of posts) if (textOf(p).length > 280) throw new Error(`too long (${
 for (const p of posts) for (const l of p.lines) if (`${l}\n\n${p.url}`.length > 280) throw new Error(`too long: ${p.url}`);
 const nextFor = (ch) => posts.find((p) => !state[ch].posted[p.url] && (!onlyUrl || p.url === onlyUrl)) ?? null;
 
+// Twetch order (owner, 13 Oct 2026: "not very impressed with our Twetch feed"): newest blog posts first, then
+// pages in queue order. Near-duplicates are skipped for good: the same page under another ?v= or a trailing
+// slash, or a /releases link (versions go stale; the releases post is made by hand).
+const normUrl = (u) => { try { const x = new URL(u); return (x.host + x.pathname).replace(/\/+$/, '').toLowerCase(); } catch { return u; } };
+const blogNo = (u) => Number(u.match(/\/blog\/(\d{3})-/)?.[1] ?? -1);
+function nextTwetch() {
+  const done = new Set(Object.keys(state.twetch.posted).filter((u) => !state.twetch.posted[u].skipped?.startsWith('near-duplicate')).map(normUrl));
+  const pending = [];
+  for (const p of posts) {
+    if (state.twetch.posted[p.url] || (onlyUrl && p.url !== onlyUrl)) continue;
+    if (!onlyUrl && (done.has(normUrl(p.url)) || /\/releases\b/.test(p.url))) {
+      if (live) state.twetch.posted[p.url] = { at: new Date().toISOString(), skipped: 'near-duplicate or stale' };
+      continue;
+    }
+    done.add(normUrl(p.url));
+    pending.push(p);
+  }
+  return pending.filter((p) => blogNo(p.url) >= 0).sort((a, b) => blogNo(b.url) - blogNo(a.url))[0] ?? pending[0] ?? null;
+}
+
 // Recycle: when the queue is finished and recycle is on, pick the posted item whose most recent post (first or
 // recycled) is oldest, skipping anything posted within 30 days. Alternate lines rotate: lines[1], lines[2], ... then lines[0].
 const DAY = 86_400_000;
@@ -240,15 +260,15 @@ if (doBchat) {
 const pace = state.twetch.paceHours;
 const lastTwetch = Math.max(0, ...state.history.filter((h) => h.channel === 'twetch').map((h) => Date.parse(h.at) || 0));
 const paceWait = pace ? lastTwetch + pace * 3600_000 - 10 * 60_000 - Date.now() : 0; // 10 min slack for cron timing
-if (doTwetch && pace && live && !args.includes('--paced')) log(`Twetch: paced (one every ${pace} h), left to its own cron`);
-else if (doTwetch && pace && live && paceWait > 0) log(`Twetch: paced, next post in ${Math.ceil(paceWait / 60_000)} min`);
+if (doTwetch && pace && live && !onlyUrl && !args.includes('--paced')) log(`Twetch: paced (one every ${pace} h), left to its own cron`);
+else if (doTwetch && pace && live && !onlyUrl && paceWait > 0) log(`Twetch: paced, next post in ${Math.ceil(paceWait / 60_000)} min`);
 else if (doTwetch) {
   let tw = null, bchatMod = null, k = null, key = null;
   try {
     bchatMod = await import('./bchat.mjs'); tw = await import('./twetch.mjs');
     k = bchatMod.keys(env); key = tw.twetchKey(env);
   } catch (e) { failed = true; log('Twetch: could not load poster:', e.message); }
-  const p0 = nextFor('twetch');
+  const p0 = nextTwetch();
   const rc = p0 ? null : recycleFor('twetch');
   const p = p0 ?? rc?.p ?? null;
   const text = rc ? rc.text : p && textOf(p);
@@ -259,18 +279,21 @@ else if (doTwetch) {
   else if (!live) {
     console.log(`Twetch as @bWalletX (${tw.TWETCH_ADDRESS}), fee from ${k.address}`);
     console.log(`Twetch ${rc ? 'recycle next' : `next (${posts.indexOf(p) + 1}/${posts.length})`}:\n\n${text}\n`);
-    try { const d = await tw.publishTwetch(k, key, text, { dry: true }); console.log(`Twetch dry tx ${d.txid} spends ${d.input} (from ${d.source}), ${d.rawTx.length / 2} bytes`); }
+    const image = await tw.ogImage(p.url);
+    console.log(image ? `Twetch image: ${image.src} -> ${image.mime} ${image.bytes.length} bytes` : 'Twetch image: none (text + link card only)');
+    try { const d = await tw.publishTwetch(k, key, text, { dry: true, image }); console.log(`Twetch dry tx ${d.txid} spends ${d.input} (from ${d.source}), ${d.rawTx.length / 2} bytes`); }
     catch (e) { log('Twetch dry build failed:', e.message); }
   } else {
     try {
-      const r = await tw.publishTwetch(k, key, text);
+      const image = await tw.ogImage(p.url);
+      const r = await tw.publishTwetch(k, key, text, { image });
       const at = new Date().toISOString();
-      if (!rc) state.twetch.posted[p.url] = { at, txid: r.txid };
+      if (!rc) state.twetch.posted[p.url] = { at, txid: r.txid, ...(r.twetch?.id && { twetchId: r.twetch.id }), ...(image && { image: image.src }) };
       state.history.push({ at, channel: 'twetch', url: p.url, txid: r.txid, ...(rc && { text, recycled: true }) });
       save();
       log('Twetch posted:', p.url, r.txid, r.twetch?.id ? `twetch post ${r.twetch.id}` : `NOT registered with Twetch: ${r.twetchError}`);
       if (r.twetchError) failed = true;
-      if (!rc && !nextFor('twetch')) log('Twetch: that was the last item, queue finished');
+      if (!rc && !onlyUrl && !nextTwetch()) log('Twetch: that was the last item, queue finished');
     } catch (e) { failed = true; log('Twetch FAILED:', e.message); }
   }
 }

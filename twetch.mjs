@@ -31,8 +31,65 @@ export function twetchPostScript(text, key) {
   return aipSign(s, key, true);
 }
 
+/**
+ * Image output, as Twetch's own app attaches a photo (decoded from tx 64225c39…77bc, 13 Oct 2026):
+ *   output 0 = the signed text post above, output 1 = OP_FALSE OP_RETURN B <bytes> <mime> (no encoding, no name).
+ * Twetch lists it as files ["b://<txid>@1"] and shows it under the text. The AIP signature covers output 0 only.
+ */
+export function twetchImageScript(bytes, mime) {
+  const s = opReturn();
+  push(s, B_PREFIX); s.writeBin(Array.from(bytes)); push(s, mime);
+  return s;
+}
+
+const MAX_IMAGE = 120_000; // bytes on chain; at 100 sat/kB about 12k sats
+
+/**
+ * The page's og:image as bytes ready to attach, or null. Re-encoded to a 1200px JPEG with ffmpeg when it is
+ * larger than MAX_IMAGE or not jpeg/png/webp/gif. Never throws: a post without an image is better than no post.
+ */
+export async function ogImage(url) {
+  try {
+    const html = await (await fetch(url, { signal: AbortSignal.timeout(20_000), redirect: 'follow' })).text();
+    const m = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+    if (!m) return null;
+    const imgUrl = new URL(m[1].replace(/&amp;/g, '&'), url).href;
+    const r = await fetch(imgUrl, { signal: AbortSignal.timeout(30_000) });
+    if (!r.ok) return null;
+    let bytes = Buffer.from(await r.arrayBuffer());
+    let mime = (r.headers.get('content-type') || '').split(';')[0].trim();
+    if (bytes.length > MAX_IMAGE || !/^image\/(jpeg|png|webp|gif)$/.test(mime)) {
+      const { execFileSync } = await import('node:child_process');
+      for (const q of [4, 7, 11, 16]) {
+        const out = execFileSync('ffmpeg', ['-loglevel', 'error', '-i', 'pipe:0', '-vf', 'scale=min(1200\\,iw):-2', '-frames:v', '1', '-q:v', String(q), '-f', 'image2', '-c:v', 'mjpeg', 'pipe:1'], { input: bytes, maxBuffer: 20e6 });
+        if (out.length <= MAX_IMAGE) { bytes = out; mime = 'image/jpeg'; break; }
+      }
+      if (bytes.length > MAX_IMAGE) return null;
+    }
+    return { bytes, mime, src: imgUrl };
+  } catch { return null; }
+}
+
 export const TWETCH_USER_ID = 220501;
 const TWETCH_API = 'https://api.twetch.com';
+
+/** Signed call to Twetch's API as @bWalletX (same headers as registerTwetch). */
+export async function twetchApi(key, method, path, bodyObj) {
+  const body = bodyObj === undefined ? '' : JSON.stringify(bodyObj);
+  const ts = Date.now();
+  const r = await fetch(TWETCH_API + path, {
+    method,
+    headers: {
+      ...(body && { 'content-type': 'application/json' }), accept: 'application/json', origin: 'https://twetch.com',
+      'x-twetch-user': String(TWETCH_USER_ID), 'x-twetch-ts': String(ts),
+      'x-twetch-sig': apiSign(key, `${method}\n${path}\n${TWETCH_USER_ID}\n${ts}\n${body}`),
+    },
+    ...(body && { body }), signal: AbortSignal.timeout(30_000),
+  });
+  const out = await r.text();
+  if (!r.ok) throw new Error(`Twetch ${method} ${path} -> ${r.status} ${out.slice(0, 300)}`);
+  try { return JSON.parse(out); } catch { return { raw: out }; }
+}
 
 /** Twetch's request signature: BSM base64 over "METHOD\npath\nuserId\nts\nbody" (as twetch.com's app does). */
 function apiSign(key, msg) {
@@ -70,8 +127,11 @@ export async function registerTwetch(key, text, rawTx, paidSats) {
 
 /** Post `text` to Twetch as @bWalletX: build + broadcast from the account's own address, then register with Twetch. */
 // Twetch only shows posts paid from the account's own address, and only once they're submitted to its API.
+// o.image = { bytes, mime } (from ogImage) attaches it as output 1, as Twetch's app does.
 export async function publishTwetch(_k, key, text, o = {}) {
-  const r = await publishScripts({ sign: key, address: key.toAddress(), ledger: key.toAddress() }, [twetchPostScript(text, key)], { ...o, ingest: false });
+  const scripts = [twetchPostScript(text, key)];
+  if (o.image) scripts.push(twetchImageScript(o.image.bytes, o.image.mime));
+  const r = await publishScripts({ sign: key, address: key.toAddress(), ledger: key.toAddress() }, scripts, { ...o, ingest: false });
   if (r.dry) return r;
   try { r.twetch = await registerTwetch(key, text, r.rawTx, r.fee); }
   catch (e) { r.twetchError = e.message; } // on chain already: report, don't retry (a retry would double-post)
