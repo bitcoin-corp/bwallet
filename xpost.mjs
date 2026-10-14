@@ -22,6 +22,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const dir = path.dirname(new URL(import.meta.url).pathname);
 const readEnv = (f) => Object.fromEntries(
@@ -45,6 +46,24 @@ const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 const paceArg = args.indexOf('--twetch-pace');
 if (fs.existsSync(path.join(dir, 'PAUSED'))) { log('PAUSED file present: nothing posted'); process.exit(0); }
+
+// ── lock ─────────────────────────────────────────────────────────────────────
+// One run at a time. The daily cron (09:00 UTC) and the paced Twetch cron (every 3 h, so also 09:00) each load
+// state.json, post, then write the whole file back: without this lock the later writer erased the earlier one's
+// record (14 Oct 2026: bChat posted 041, Twetch's save wiped it, so the next daily run would repost 041).
+const lockPath = path.join(dir, 'state.lock');
+function lock() {
+  for (let i = 0; i < 900; i++) {
+    try { fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' }); return; } catch {
+      const pid = Number(fs.readFileSync(lockPath, 'utf8'));
+      try { process.kill(pid, 0); } catch { fs.rmSync(lockPath, { force: true }); continue; }
+      execFileSync('sleep', ['1']);
+    }
+  }
+  throw new Error('xpost lock busy for 15 min');
+}
+lock();
+process.on('exit', () => { try { if (fs.readFileSync(lockPath, 'utf8') === String(process.pid)) fs.rmSync(lockPath); } catch {} });
 
 // ── state ────────────────────────────────────────────────────────────────────
 const statePath = path.join(dir, 'state.json');
