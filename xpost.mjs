@@ -8,6 +8,7 @@
 //   node xpost.mjs --post           post the next item on each channel
 //   node xpost.mjs --post --daily   scheduler mode: only acts at 10:xx Europe/London, once per London day
 //   --x-only / --bchat-only / --twetch-only   limit to one channel
+//   --no-twetch                    X + bChat only; Twetch keeps its own paced cron (use for backfills with --url)
 //   node xpost.mjs --twetch-pace 3|off   pace Twetch to one post per N hours (owner, 11 Oct 2026: a small community,
 //                                  don't flood it). While paced, the daily run skips Twetch and a separate cron runs
 //                                  `xpost.mjs --post --twetch-only --paced`, which posts only if N hours have passed.
@@ -41,7 +42,7 @@ const oneOff = args.includes('--text') ? args[args.indexOf('--text') + 1] : null
 const only = ['--x-only', '--bchat-only', '--twetch-only'].find((f) => args.includes(f));
 const doX = !only || only === '--x-only';
 const doBchat = (!only || only === '--bchat-only') && !oneOff;
-const doTwetch = (!only || only === '--twetch-only') && !oneOff;
+const doTwetch = (!only || only === '--twetch-only') && !oneOff && !args.includes('--no-twetch'); // --no-twetch: X + bChat, Twetch left to its paced cron (backfills)
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 const paceArg = args.indexOf('--twetch-pace');
