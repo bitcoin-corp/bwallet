@@ -6,7 +6,10 @@
     "dry": "node xpost.mjs",
     "post": "node xpost.mjs --post",
     "test": "node --test blog/test/*.test.mjs",
-    "blog": "node blog.mjs"
+    "blog": "node blog.mjs",
+    "bmovies-bot": "node bmovies-bot/bot.mjs",
+    "bmovies-bot:dry": "node bmovies-bot/bot.mjs --dry-run",
+    "test:bmovies-bot": "node --test bmovies-bot/test/*.test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
