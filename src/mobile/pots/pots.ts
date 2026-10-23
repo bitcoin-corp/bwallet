@@ -69,6 +69,8 @@ export type Subscription = {
   description?: string;
   /** The last payment that went through: the receipt the Subscriptions list and status call show. */
   lastReceipt?: { at: number; txid: string; usd: number; sats: number };
+  /** When the user cancelled. A tombstone: once set, no write can move this order out of 'cancelled'. */
+  cancelledAt?: number;
 };
 
 const POTS = 'bwallet.pots';
@@ -301,9 +303,22 @@ export const listSubs = (potId?: string): Subscription[] =>
 export const getSub = (id: string): Subscription | null => read<Record<string, Subscription>>(SUBS, {})[id] ?? null;
 
 const savePot = (p: Pot) => write(POTS, { ...read<Record<string, Pot>>(POTS, {}), [p.identityAddress]: p });
-export const saveSub = (s: Subscription) => {
-  const next = { ...s, nextDue: nextDue(s) ?? s.nextDue };
-  write(SUBS, { ...read<Record<string, Subscription>>(SUBS, {}), [s.id]: next });
+/**
+ * Write a subscription. The user's Pause and Cancel win over any stale copy: a cancelled order stays cancelled
+ * (and keeps its cancelledAt), and a paused one goes back to active/lowFunds only through resumeSub
+ * (`resume: true`). So a payment run that read the order before the user tapped can never undo the tap.
+ */
+export const saveSub = (s: Subscription, opts: { resume?: boolean } = {}) => {
+  const all = read<Record<string, Subscription>>(SUBS, {});
+  const stored = all[s.id];
+  let w = s;
+  if (stored && (stored.status === 'cancelled' || stored.cancelledAt !== undefined)) {
+    w = { ...s, status: 'cancelled', cancelledAt: stored.cancelledAt ?? s.cancelledAt };
+  } else if (stored?.status === 'paused' && (s.status === 'active' || s.status === 'lowFunds') && !opts.resume) {
+    w = { ...s, status: 'paused' };
+  }
+  const next = { ...w, nextDue: nextDue(w) ?? w.nextDue };
+  write(SUBS, { ...all, [s.id]: next });
   return next;
 };
 
@@ -439,14 +454,17 @@ export const resumeSub = (id: string, now = Date.now()) => {
   const s = getSub(id);
   if (!s || s.status !== 'paused') return;
   const periodIndex = resumeIndex(s, now);
-  saveSub({ ...s, periodIndex, status: finished(s, periodIndex) ? 'ended' : 'active', lastError: undefined });
+  saveSub(
+    { ...s, periodIndex, status: finished(s, periodIndex) ? 'ended' : 'active', lastError: undefined },
+    { resume: true },
+  );
   appendAgentLog(s.potId, { at: now, action: 'sub-resume', detail: `Resumed ${s.payee.name}`, usd: 0 });
 };
 
 export const cancelSub = (id: string, now = Date.now()) => {
   const s = getSub(id);
   if (!s || s.status === 'cancelled') return;
-  saveSub({ ...s, status: 'cancelled' });
+  saveSub({ ...s, status: 'cancelled', cancelledAt: now });
   appendAgentLog(s.potId, { at: now, action: 'sub-cancel', detail: `Cancelled ${s.payee.name}`, usd: 0 });
 };
 

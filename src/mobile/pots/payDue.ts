@@ -73,8 +73,24 @@ let running: Promise<PayOutcome[]> | null = null;
 export const payDue = (deps: PayDeps, now = Date.now()): Promise<PayOutcome[]> =>
   (running ??= run(deps, now).finally(() => (running = null)));
 
+/** Still payable right now, by what is in storage (not a snapshot): the user may have paused or cancelled. */
+const live = (id: string): Subscription | null => {
+  const cur = getSub(id);
+  return cur && (cur.status === 'active' || cur.status === 'lowFunds') ? cur : null;
+};
+
+/** Patch only the fields this run owns onto a fresh read; never write a snapshot back. */
+const patch = (id: string, f: (cur: Subscription) => Partial<Subscription>): Subscription | null => {
+  const cur = getSub(id);
+  return cur ? saveSub({ ...cur, ...f(cur) }) : null;
+};
+
 const fail = (s: Subscription, reason: string, deps: PayDeps, lowFunds = false): PayOutcome => {
-  saveSub({ ...s, lastError: reason, status: lowFunds ? 'lowFunds' : s.status });
+  // lastError always; status only moves between active and lowFunds, never out of paused/cancelled/ended.
+  patch(s.id, (cur) => ({
+    lastError: reason,
+    ...(lowFunds && (cur.status === 'active' || cur.status === 'lowFunds') ? { status: 'lowFunds' as const } : {}),
+  }));
   deps.notify?.(`Payment to ${s.payee.name} didn’t go through`, reason);
   return { id: s.id, ok: false, reason };
 };
@@ -83,20 +99,24 @@ async function run(deps: PayDeps, now: number): Promise<PayOutcome[]> {
   const cap = deps.cap ?? MAX_CATCH_UP;
   const subsOn = deps.subsOn ?? SUBSCRIPTIONS_ENABLED;
   const out: PayOutcome[] = [];
-  for (let s of listSubs()) {
-    const pending = getPending(s.id);
+  for (const { id } of listSubs()) {
+    let s = getSub(id);
+    if (!s) continue;
+    const pending = getPending(id);
     if (pending) {
       const r = await settlePending(s, pending, deps, now);
       out.push(r);
       if (!r.ok) continue; // still unsettled: never sign anything new for this order
-      s = getSub(s.id) ?? s;
     }
+    // Re-read: an earlier order in this run may have taken a while, and the user may have paused or cancelled.
+    s = live(id);
+    if (!s) continue;
     let plan = dueItems(s, now, cap);
     if (!plan.missed) continue;
     if (s.catchUp === 'latest' && plan.missed > 1) {
       // App subscriptions never stack up: skip every missed period but the latest, then pay that one once.
       const skip = plan.missed - 1;
-      s = saveSub({ ...s, periodIndex: s.periodIndex + skip });
+      s = patch(s.id, (cur) => ({ periodIndex: cur.periodIndex + skip }))!;
       appendAgentLog(s.potId, {
         at: now,
         action: 'sub-skip',
@@ -111,10 +131,12 @@ async function run(deps: PayDeps, now: number): Promise<PayOutcome[]> {
     }
     if (plan.needsConfirm) {
       const all = deps.confirm ? await deps.confirm(s, plan.missed).catch(() => false) : false;
+      if (!live(s.id)) continue; // paused or cancelled while we asked
       if (all) plan = dueItems(s, now, plan.missed);
       else {
         // Skip the older periods; pay only the most recent `cap`.
-        s = saveSub({ ...s, periodIndex: s.periodIndex + plan.missed - cap });
+        const skip = plan.missed - cap;
+        s = patch(s.id, (cur) => ({ periodIndex: cur.periodIndex + skip }))!;
         appendAgentLog(s.potId, {
           at: now,
           action: 'sub-skip',
@@ -154,6 +176,9 @@ async function run(deps: PayDeps, now: number): Promise<PayOutcome[]> {
       out.push(fail(s, e instanceof Error ? e.message : String(e), deps));
       continue;
     }
+    // Last look before anything is signed: a Pause or Cancel tapped while resolving stops it here.
+    const fresh = live(s.id);
+    if (!fresh || fresh.periodIndex !== s.periodIndex) continue;
     let signed: { rawTx: string; txid: string };
     try {
       signed = pnee
@@ -200,7 +225,7 @@ async function settlePending(s: Subscription, p: PendingPayment, deps: PayDeps, 
     const m = e instanceof Error ? e.message : String(e);
     if (!/already|duplicate/i.test(m)) {
       // Unknown outcome: keep the record and retry this exact tx next time.
-      saveSub({ ...s, lastError: m });
+      patch(s.id, () => ({ lastError: m }));
       deps.notify?.(`Payment to ${s.payee.name} is waiting to go through`, m);
       return { id: s.id, ok: false, reason: m };
     }

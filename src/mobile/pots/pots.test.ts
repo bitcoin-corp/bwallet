@@ -543,3 +543,140 @@ describe('notifications', () => {
     expect(plannedReminders([s], () => 'Rent', T('2026-03-04T10:00:00Z'))).toHaveLength(0);
   });
 });
+
+describe('payDue respects a Pause or Cancel tapped mid-run (b-Aware, 23 Oct 2026)', () => {
+  const NOW = T('2026-03-10T12:00:00Z');
+  beforeEach(() => mem.clear());
+  const setup = (name = 'Landlord') => {
+    makePot('1Pot', 'Rent', undefined, NOW);
+    setAgentDailyCap('1Pot', null);
+    return addSubscription(
+      {
+        potId: '1Pot',
+        payee: { name, address: `1${name}` },
+        amount: { value: 10, currency: 'USD' },
+        period: 'day',
+        start: NOW - 2 * DAY - 1000,
+        maxCount: null,
+      },
+      50,
+      NOW,
+    );
+  };
+
+  test('cancel during resolve, then resolve fails: stays cancelled', async () => {
+    const s = setup();
+    const r = await payDue(
+      {
+        bsvUsd: 50,
+        resolve: async () => {
+          cancelSub(s.id, NOW);
+          throw new Error('paymail down');
+        },
+        ...P(async () => 'tx'),
+      },
+      NOW,
+    );
+    expect(r[0].ok).toBe(false);
+    expect(getSub(s.id)?.status).toBe('cancelled');
+    expect(getSub(s.id)?.cancelledAt).toBe(NOW);
+    expect(await payDue({ bsvUsd: 50, resolve: async () => '1L', ...P(async () => 'tx2') }, NOW + DAY)).toEqual([]);
+  });
+
+  test('pause during sign, sign fails for low funds: stays paused', async () => {
+    const s = setup();
+    await payDue(
+      {
+        bsvUsd: 50,
+        resolve: async () => '1L',
+        ...P(async () => {
+          pauseSub(s.id, NOW);
+          throw new Error('Not enough in this pot');
+        }),
+      },
+      NOW,
+    );
+    expect(getSub(s.id)?.status).toBe('paused');
+    expect(getSub(s.id)?.lastError).toBe('Not enough in this pot');
+  });
+
+  test('cancel during sign, payment goes through: stays cancelled', async () => {
+    const s = setup();
+    const r = await payDue(
+      { bsvUsd: 50, resolve: async () => '1L', ...P(async () => (cancelSub(s.id, NOW), 'tx1')) },
+      NOW,
+    );
+    expect(r[0]).toMatchObject({ ok: true, txid: 'tx1' });
+    expect(getSub(s.id)?.status).toBe('cancelled');
+    expect(getSub(s.id)?.periodIndex).toBe(3);
+  });
+
+  test('a normal failure leaves the order active (or lowFunds)', async () => {
+    const s = setup();
+    await payDue(
+      {
+        bsvUsd: 50,
+        resolve: async () => {
+          throw new Error('paymail down');
+        },
+        ...P(async () => 'tx'),
+      },
+      NOW,
+    );
+    expect(getSub(s.id)?.status).toBe('active');
+    expect(getSub(s.id)?.lastError).toBe('paymail down');
+    await payDue(
+      {
+        bsvUsd: 50,
+        resolve: async () => '1L',
+        ...P(async () => {
+          throw new Error('insufficient funds');
+        }),
+      },
+      NOW,
+    );
+    expect(getSub(s.id)?.status).toBe('lowFunds');
+  });
+
+  test('two due orders: cancelling the second while the first pays means the second is never signed', async () => {
+    const a = setup('A');
+    const b = setup('B');
+    const signedFor: string[] = [];
+    const r = await payDue(
+      {
+        bsvUsd: 50,
+        resolve: async (p) => p.address!,
+        ...P(async (_pot, outs) => {
+          signedFor.push(outs[0].address);
+          if (outs[0].address === '1A') cancelSub(b.id, NOW);
+          if (outs[0].address === '1B') cancelSub(a.id, NOW);
+          return `tx${signedFor.length}`;
+        }),
+      },
+      NOW,
+    );
+    expect(signedFor.length).toBe(1);
+    const first = signedFor[0] === '1A' ? a : b;
+    const second = first === a ? b : a;
+    expect(r.map((x) => x.id)).toEqual([first.id]);
+    expect(getSub(second.id)?.status).toBe('cancelled');
+    expect(getSub(second.id)?.periodIndex).toBe(0);
+  });
+
+  test('a stale write cannot resurrect a cancelled order; only resume un-pauses', async () => {
+    const s = setup();
+    const { saveSub } = await import('./pots');
+    const stale = getSub(s.id)!;
+    cancelSub(s.id, NOW);
+    saveSub({ ...stale, status: 'active' });
+    expect(getSub(s.id)?.status).toBe('cancelled');
+
+    const t = setup('T');
+    const staleT = getSub(t.id)!;
+    pauseSub(t.id, NOW);
+    saveSub({ ...staleT, status: 'active' });
+    expect(getSub(t.id)?.status).toBe('paused');
+    resumeSub(t.id, NOW);
+    expect(getSub(t.id)?.status).toBe('active');
+  });
+});
