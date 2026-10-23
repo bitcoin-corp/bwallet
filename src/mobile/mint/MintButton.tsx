@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useBackClose } from '../backStack';
 import { createPortal } from 'react-dom';
 import { listOrdinals } from '@1sat/actions';
@@ -13,6 +13,7 @@ import {
   ExternalLink,
   FileSignature,
   FileText,
+  Gift,
   Globe,
   Image as ImageIcon,
   LineChart,
@@ -27,7 +28,7 @@ import { setAgentDraft } from '../agent/handoff';
 import { openAgentCreate } from '../agents/agentCreate';
 import { BottomMenuContext } from '../../contexts/BottomMenuContext';
 import { routeFor } from '../tabs/tabs';
-import { isBWalletX } from '../storeBuild';
+import { GREETING_CARDS_ENABLED, isBWalletX } from '../storeBuild';
 import { SendConfirmation } from '../../components/SendConfirmation';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { useTheme } from '../../hooks/useTheme';
@@ -36,6 +37,10 @@ import { TicketMint } from '../tickets/TicketMint';
 import { TokenMint } from '../tokens/TokenMint';
 import { DomainMint } from '../domains/DomainMint';
 import { mintChoicesFor } from '../storeBuild';
+
+/** Greeting cards (bWalletX only): lazy chunks, absent from a store build. */
+const CardMaker = GREETING_CARDS_ENABLED ? lazy(() => import('../cards/CardMaker')) : null;
+const CardSend = GREETING_CARDS_ENABLED ? lazy(() => import('../cards/CardSend')) : null;
 
 /** Store build: media (NFT) only (storeBuild.ts). */
 const CHOICES = new Set(mintChoicesFor());
@@ -121,7 +126,7 @@ const GOLD = 'var(--bw-accent-hi)';
 const PANEL = '#17191E';
 const BORDER = '#3a2f0c';
 
-type Step = 'choose' | 'ticket' | 'token' | 'domain' | 'media' | 'done';
+type Step = 'choose' | 'ticket' | 'token' | 'domain' | 'media' | 'done' | 'card';
 /** `type` is the content type to inscribe (3D: from magic bytes, not the browser's guess). */
 type Picked = { file: File; url: string; type: string };
 
@@ -224,6 +229,8 @@ export const MintSheet = ({
   const [busy, setBusy] = useState(false);
   const [txid, setTxid] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  // Set when a greeting card was handed to this mint ("Who's it for?" as a $name, or ''): Done offers Send it.
+  const [cardTo, setCardTo] = useState<string | null>(null);
 
   useEffect(() => () => void (picked && URL.revokeObjectURL(picked.url)), [picked]);
 
@@ -336,6 +343,17 @@ export const MintSheet = ({
     if (file && step === 'media') void pick(file);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on open
   }, []);
+
+  // Greeting card → the Picture mint, with the card picked and its title filled in.
+  const mintCard = async (f: File, cardTitle: string, to: string) => {
+    setKindSel('picture');
+    setMedia({ accept: 'image/*', label: 'an image' });
+    setStep('media');
+    setCardTo(to);
+    await pick(f);
+    setTitle(cardTitle);
+    titleTouched.current = true;
+  };
 
   const takeFrame = async () => {
     const el = videoRef.current;
@@ -454,11 +472,13 @@ export const MintSheet = ({
                 ? 'Mint a token'
                 : step === 'domain'
                   ? 'Tokenise a domain'
-                  : step === 'choose'
-                    ? 'Mint'
-                    : step === 'done'
-                      ? 'Minted'
-                      : 'Mint'}
+                  : step === 'card'
+                    ? 'Greeting card'
+                    : step === 'choose'
+                      ? 'Mint'
+                      : step === 'done'
+                        ? 'Minted'
+                        : 'Mint'}
           </span>
           <button type="button" onClick={onClose} className="bg-transparent border-0 cursor-pointer" aria-label="Close">
             <X size={20} color="#aaa" />
@@ -535,6 +555,12 @@ export const MintSheet = ({
               ))}
             </div>
           </div>
+        )}
+
+        {step === 'card' && CardMaker && (
+          <Suspense fallback={null}>
+            <CardMaker onBack={() => setStep('choose')} onMint={(f, t, to) => void mintCard(f, t, to)} />
+          </Suspense>
         )}
 
         {step === 'ticket' && CHOICES.has('ticket') && (
@@ -866,6 +892,11 @@ export const MintSheet = ({
             >
               {txid} <ExternalLink size={12} />
             </a>
+            {cardTo !== null && CardSend && (
+              <Suspense fallback={null}>
+                <CardSend txid={txid} title={title.trim()} to={cardTo} />
+              </Suspense>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -924,6 +955,19 @@ type MintTile = {
  * Media-like ones open the file mint with the right picker; contracts, strategies and apps open b with the request typed.
  */
 const MINT_TILES: MintTile[] = [
+  // In the store bundle not even as data (GREETING_CARDS_ENABLED inlines to false).
+  ...(GREETING_CARDS_ENABLED
+    ? [
+        {
+          id: 'card',
+          icon: <Gift size={18} />,
+          title: 'Greeting card or AI picture',
+          sub: 'Describe it, we make it, you mint it',
+          when: () => GREETING_CARDS_ENABLED,
+          step: 'card' as Step,
+        },
+      ]
+    : []),
   {
     id: 'art',
     icon: <ImageIcon size={18} />,
