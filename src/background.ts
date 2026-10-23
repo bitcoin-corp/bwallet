@@ -7,6 +7,7 @@ import { createMasterBackupGate } from './services/masterBackupGate';
 import { promptsShowInPanel } from './services/panelPrompt';
 import { isSessionExpired } from './utils/lockTimeout';
 import { originatorForOrigin } from './services/originKey';
+import { pairedGrantAllowed, takePendingFor } from './services/pairedPromptGuard';
 import {
   addGrant,
   decide as decideStream,
@@ -1042,6 +1043,8 @@ const pendingCounterpartyPermissionRequests = new Map<
 
 let popupWindowId: number | undefined;
 let denyAllPendingPrompts: () => void = () => undefined;
+/** Deny the open prompts of one originator (its grants were just revoked: Forget, unpair, lapse). */
+let denyPendingPromptsFor: (originator: string) => void = () => undefined;
 
 // bWalletX: when the wallet's side panel is open, approval prompts render inside it (an overlay of
 // prompt.html) instead of a separate popup window (owner, 6 Oct 2026). activePopupPorts are the open
@@ -3093,6 +3096,8 @@ if (!(
   ) => {
     try {
       const wpm = (await ensureWallet(true)) as LocalWalletPermissionsManager;
+      // Open sheets for this originator are denied first, so approving one afterwards writes nothing.
+      denyPendingPromptsFor(message.originator);
       const revoked = await wpm.revokeAllForOriginator(message.originator);
       // Forget site removes its basket grants and site-trust record too, whatever form the originator was
       // stored under, and drops the manager's short-lived memory of recent grants.
@@ -3127,6 +3132,14 @@ if (!(
 
     pendingPermissionRequests.delete(response.requestID);
     permissionBundler.removeRequest(response.requestID);
+
+    // A paired originator is granted only while its pairing is current (checked at approve time).
+    if (response.granted && !pairedGrantAllowed(pending.request.originator)) {
+      accountContext?.wallet.denyPermission(response.requestID).catch(console.error);
+      pending.reject(new Error('This pairing has ended'));
+      closeDappPopupIfNoUi();
+      return true;
+    }
 
     if (response.granted) {
       // Grant the permission through the manager
@@ -3368,6 +3381,17 @@ if (!(
       sendResponse({ type: 'BUNDLE_PERMISSION_RESPONSE', success: false, error: 'Request expired' });
       return true;
     }
+    if (result.granted.length > 0 && !pairedGrantAllowed(bundle.originator)) {
+      for (const r of [...result.granted, ...result.denied]) {
+        const pending = pendingPermissionRequests.get(r.requestID);
+        pendingPermissionRequests.delete(r.requestID);
+        accountContext?.wallet.denyPermission(r.requestID).catch(console.error);
+        pending?.reject(new Error('This pairing has ended'));
+      }
+      sendResponse({ type: 'BUNDLE_PERMISSION_RESPONSE', success: false, error: 'This pairing has ended' });
+      closeDappPopupIfNoUi();
+      return true;
+    }
     const remember = response.remember !== false;
     // Not remembered: the grants last this visit (an hour), then the site asks again.
     const expiry = remember ? 0 : Math.floor(Date.now() / 1000) + 3600;
@@ -3446,6 +3470,13 @@ if (!(
 
     pendingGroupedPermissionRequests.delete(response.requestID);
 
+    if (response.granted && !pairedGrantAllowed(pending.request.originator)) {
+      accountContext?.wallet.denyGroupedPermission(response.requestID).catch(console.error);
+      pending.reject(new Error('This pairing has ended'));
+      closeDappPopupIfNoUi();
+      return true;
+    }
+
     if (response.granted) {
       accountContext?.wallet
         .grantGroupedPermission({
@@ -3492,6 +3523,13 @@ if (!(
     }
 
     pendingCounterpartyPermissionRequests.delete(response.requestID);
+
+    if (response.granted && !pairedGrantAllowed(pending.request.originator)) {
+      accountContext?.wallet.denyCounterpartyPermission(response.requestID).catch(console.error);
+      pending.reject(new Error('This pairing has ended'));
+      closeDappPopupIfNoUi();
+      return true;
+    }
 
     if (response.granted) {
       accountContext?.wallet
@@ -4973,6 +5011,23 @@ if (!(
         waiter.reject(new Error('User dismissed the unlock request'));
       }
 
+  };
+
+  denyPendingPromptsFor = (originator: string) => {
+    for (const [requestID, pending] of takePendingFor(pendingPermissionRequests, originator)) {
+      permissionBundler.removeRequest(requestID);
+      accountContext?.wallet.denyPermission(requestID).catch(console.error);
+      pending.reject(new Error('The site was disconnected'));
+    }
+    for (const [requestID, pending] of takePendingFor(pendingGroupedPermissionRequests, originator)) {
+      accountContext?.wallet.denyGroupedPermission(requestID).catch(console.error);
+      pending.reject(new Error('The site was disconnected'));
+    }
+    for (const [requestID, pending] of takePendingFor(pendingCounterpartyPermissionRequests, originator)) {
+      accountContext?.wallet.denyCounterpartyPermission(requestID).catch(console.error);
+      pending.reject(new Error('The site was disconnected'));
+    }
+    closeDappPopupIfNoUi();
   };
 
   // In-page sheet: the site's tab closed or navigated away, so the sheet is gone. Deny what it was showing.
