@@ -1,4 +1,5 @@
-import { sendBsv, type OneSatContext } from '@1sat/actions';
+import { type OneSatContext } from '@1sat/actions';
+import { sendBsv } from '../../utils/guardedSendBsv';
 import type { WalletInterface } from '@bsv/sdk';
 import { sendMail } from '../bmail/client';
 import { destinationFor, parseRecipient, resolveRecipient } from '../names/names';

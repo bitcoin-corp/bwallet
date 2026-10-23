@@ -3,7 +3,7 @@ import { AGENT_HANDOFF_EVENT, takeAgentDraft, takeAgentNote, takeAgentSend } fro
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Flag, Loader2, X } from 'lucide-react';
-import { sendBsv } from '@1sat/actions';
+import { sendBsv } from '../../utils/guardedSendBsv';
 import { useBackClose } from '../backStack';
 import { useFloatingBarReserve } from '../ui/floatingBars';
 import { useServiceContext } from '../../hooks/useServiceContext';

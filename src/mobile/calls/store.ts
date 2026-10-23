@@ -1,4 +1,5 @@
-import { sendBsv, sendMnee, type OneSatContext } from '@1sat/actions';
+import { sendMnee, type OneSatContext } from '@1sat/actions';
+import { sendBsv } from '../../utils/guardedSendBsv';
 import { isNative } from '../native';
 import { isPermissionDenied, type MediaKind } from '../permissions/mediaPermission';
 import { defaultHttp } from '../chat/api';

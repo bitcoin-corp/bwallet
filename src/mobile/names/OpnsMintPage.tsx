@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { listOpns, sendBsv } from '@1sat/actions';
+import { listOpns } from '@1sat/actions';
+import { sendBsv } from '../../utils/guardedSendBsv';
 import { ApprovalCard, Chip } from '../../components/approval/ApprovalCard';
 import { CARD } from '../../components/approval/cardTheme';
 import { PayHero } from '../../components/approval/ApprovalHeroes';
