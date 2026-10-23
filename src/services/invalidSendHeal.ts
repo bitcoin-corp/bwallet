@@ -18,6 +18,10 @@
  */
 import { Transaction } from '@bsv/sdk';
 
+/** Shown when coins were cleared but the send did not go out. Plain words, no toolbox text. */
+export const SPENT_ELSEWHERE_MESSAGE =
+  'Some coins were already spent on another device. Refreshed your balance — please try again.';
+
 const TXID = /^[0-9a-f]{64}$/i;
 
 type ReviewError = Error & {
@@ -170,5 +174,7 @@ export const withHealMessage = (error: string, r: HealReport | null): string => 
   if (!r) return error;
   const m = healMessage(r).trim();
   if (!m) return error;
-  return r.released > 0 ? `${m} (${error})` : `${error} ${m}`;
+  // Coins cleared (and, for the wallet's own send, one automatic retry already tried): plain words only. The raw
+  // toolbox/broadcaster text stays in the console log; owner, 23 Oct 2026.
+  return r.released > 0 ? SPENT_ELSEWHERE_MESSAGE : `${error} ${m}`;
 };

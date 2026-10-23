@@ -126,9 +126,10 @@ describe('owner iPhone 19 Oct: WERR_REVIEW_ACTIONS + UTXO_SPENT, heal outcome mu
   test('the broadcaster names the input', () => {
     expect(named(reason, [`${IN}_1`, `${IN}_0`])).toEqual([`${IN}_1`]);
   });
-  test('cleared: "tap Send again" leads, so a 400-char cut keeps it', () => {
+  test('cleared: the plain message replaces the raw toolbox text', () => {
     const text = withHealMessage(raw + ' x'.repeat(300), { checked: 1, released: 1, inputs: [`${IN}_1`] });
-    expect(text.slice(0, 400)).toContain('tap Send again');
+    expect(text).toBe('Some coins were already spent on another device. Refreshed your balance — please try again.');
+    expect(text).not.toContain('UTXO_SPENT');
   });
   test('nothing cleared: error unchanged first', () => {
     expect(withHealMessage(raw, { checked: 0, released: 0 })).toBe(raw);

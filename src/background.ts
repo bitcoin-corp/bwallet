@@ -34,6 +34,7 @@ import {
   type HealReport,
 } from './services/invalidSendHeal';
 import { refusalFor } from './services/broadcastRefusals';
+import { createWithSpentRetry, retryEligible } from './services/spentRetry';
 import {
   AUTO_RESYNC_DELAY_MS,
   readAutoResyncCoins,
@@ -167,6 +168,17 @@ async function wocSpendStatus(outpoint: string): Promise<WocAnswer> {
   const j = (await r.json()) as { txid?: string; status?: string };
   if (typeof j.txid !== 'string') throw new Error('woc: no spender');
   return { txid: j.txid, confirmed: j.status === 'confirmed' };
+}
+
+/** Is this txid known to WhatsOnChain (mempool or mined)? false only on 404; null when it can't tell. */
+async function wocTxKnown(txid: string): Promise<boolean | null> {
+  try {
+    const r = await fetch(`https://api.whatsonchain.com/v1/bsv/main/tx/hash/${txid}`);
+    if (r.status === 404) return false;
+    return r.ok ? true : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The account's chain; WhatsOnChain lookups here are mainnet only. */
@@ -4038,6 +4050,7 @@ if (!(
     sendResponse: CallbackResponse,
   ) => {
     let fundingSnap: FundingSnapshot | undefined;
+    let spentHeal: HealReport | null | undefined;
     try {
       const w = await ensureWallet();
       await ensureUsbSeen('build and sign a transaction', message.originator);
@@ -4096,7 +4109,21 @@ if (!(
 
       let result: Awaited<ReturnType<typeof signer.createAction>>;
       try {
-        result = await signer.createAction(args, message.originator);
+        // UTXO_SPENT (coins spent from another device): heal, then retry ONCE when safe (services/spentRetry.ts).
+        const ctxForHeal = accountContext;
+        const outcome = await createWithSpentRetry({
+          create: () => signer.createAction(args, message.originator),
+          heal: (e) => (ctxForHeal ? healRejectedInputs(ctxForHeal, e) : Promise.resolve(null)),
+          txKnown: (txid) => (ctxForHeal && ctxChain(ctxForHeal) === 'main' ? wocTxKnown(txid) : Promise.resolve(null)),
+          reason: (txid) => refusalFor(txid),
+          eligible: retryEligible({ isAdmin, continuing, delayed, sendAll: usesSendAllSentinel, args }),
+          log: (m, d) => console.warn(m, d ?? ''),
+        });
+        spentHeal = outcome.heal;
+        if (spentHeal?.released) notifyBalanceUpdate();
+        if (!outcome.ok) throw outcome.error;
+        if (outcome.retried) console.warn('[createAction] sent on retry after clearing spent coins', spentHeal);
+        result = outcome.result;
       } catch (err) {
         // Queued to retry is not a failure: the wallet will send it. Say so, and guard against paying again.
         if (queuedSend(err)) {
@@ -4172,7 +4199,13 @@ if (!(
       const friendly = fundingSnap && isInsufficientFunds(error) ? insufficientFundsMessage(error, fundingSnap) : null;
       if (friendly) console.error('[createAction] Funding:', friendly);
       // Rejected as invalid: clear the inputs the chain proves spent, or the retry picks them again (invalidSendHeal.ts).
-      const heal = isInvalidTxReview(error) && accountContext ? await healRejectedInputs(accountContext, error) : null;
+      // Already done by createWithSpentRetry when the createAction itself failed (never heal twice).
+      const heal =
+        spentHeal !== undefined
+          ? spentHeal
+          : isInvalidTxReview(error) && accountContext
+            ? await healRejectedInputs(accountContext, error)
+            : null;
       if (heal) console.warn('[createAction] invalidTx heal:', heal);
       sendResponse({
         type: CWIEventName.CREATE_ACTION,

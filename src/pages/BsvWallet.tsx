@@ -1124,6 +1124,8 @@ export const BsvWallet = () => {
         if (!sendRes.txid || sendRes.error) {
           addSnackbar(getErrorMessage(sendRes.error), 'error');
           setIsProcessing(false);
+          // A refused send may have cleared coins spent on another device: show the corrected balance.
+          refreshUtxos().catch((err) => console.error('[handleSendBsv] refresh after failed send:', err));
           return;
         }
 
