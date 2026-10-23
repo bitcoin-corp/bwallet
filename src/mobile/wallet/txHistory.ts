@@ -61,6 +61,8 @@ export type HistoryRow = {
   app?: string;
   /** What the app said about the payment ("round 12 won"), from a `game:` / `app:` description or label. */
   appNote?: string;
+  /** What the payer said it was for (purpose/purpose.ts), saved on this device when it was sent. */
+  purpose?: string;
 };
 
 const SAT = 100_000_000;
@@ -358,6 +360,7 @@ export const CSV_COLUMNS = [
   'asset_qty',
   'app',
   'app_note',
+  'purpose',
 ] as const;
 
 /** RFC 4180 field: quote when it holds a comma, quote, CR or LF; double inner quotes. */
@@ -414,6 +417,7 @@ export const toCsv = (rows: HistoryRow[], account: string): string => {
         r.asset?.qty ?? '',
         r.app ?? '',
         r.appNote ?? '',
+        r.purpose ?? '',
       ]
         .map(csvField)
         .join(','),

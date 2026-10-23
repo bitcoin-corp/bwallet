@@ -22,6 +22,7 @@ import {
 import { classifyEvent, findListings } from './historyEvents';
 import { appsByTxid, loadConnectionLog } from './connectionLog';
 import { cacheBsvUsd } from './fiatRates';
+import { withPurposes } from './purpose/purpose';
 
 /**
  * The account's whole history as statement rows with the BSV/USD rate on each day (History screen, and the
@@ -97,5 +98,6 @@ export const loadHistoryRows = async ({
   ]);
   // Daily BSV/USD is cached on the device, so a failed price fetch still has the days seen before.
   // Daily BSV/USD is cached on the device, so a failed price fetch still has the days seen before.
-  return withRates(rows, cacheBsvUsd(ratesByDay(daily)), current);
+  // What each payment was for, saved on this device when it was sent (purpose/purpose.ts).
+  return withPurposes(withRates(rows, cacheBsvUsd(ratesByDay(daily)), current), identityAddress);
 };

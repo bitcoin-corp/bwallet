@@ -28,7 +28,7 @@ export const statementHtml = (opts: {
     .map(
       (r) => `<tr>
 <td>${esc(new Date(r.time).toLocaleString())}</td>
-<td>${esc(r.label)}${r.asset ? `<br><small>${esc(assetText(r.asset))}</small>` : ''}${r.app ? `<br><small>via ${esc(r.app)}</small>` : ''}${r.appNote ? `<br><small>${esc(r.appNote)}</small>` : ''}</td>
+<td>${esc(r.label)}${r.asset ? `<br><small>${esc(assetText(r.asset))}</small>` : ''}${r.app ? `<br><small>via ${esc(r.app)}</small>` : ''}${r.appNote ? `<br><small>${esc(r.appNote)}</small>` : ''}${r.purpose ? `<br><small>For: ${esc(r.purpose)}</small>` : ''}</td>
 <td>${esc(r.category ?? '')}</td>
 <td>${esc(r.direction)}</td>
 <td class="n">${bsvString(r.amountSats)}</td>

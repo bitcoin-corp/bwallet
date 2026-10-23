@@ -31,6 +31,8 @@ export const RESERVED_PROTOCOLS: readonly Protocol[] = [
   [2, 'bdnsx link'],
   [2, 'bwallet issuer'],
   [2, 'bwallet paymail'],
+  // Invoices (src/mobile/wallet/purpose/invoice.ts): an app must not sign an invoice in the user's name.
+  [2, 'bwallet invoice'],
   [2, 'bwallet agreement'],
   [2, 'bwx partnership'],
   [2, 'bshares director'],

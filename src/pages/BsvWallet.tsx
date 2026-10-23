@@ -87,7 +87,12 @@ import { decrypt } from '../utils/crypto';
 import type { Keys } from '../utils/keys';
 import { getPlatform } from '../platform';
 import { withTimeout } from '../mobile/withTimeout';
-import { onPay, takePay, takePayAmount } from '../mobile/wallet/payNav';
+import { onPay, takePay, takePayAmount, takePayExtra } from '../mobile/wallet/payNav';
+import { canWriteOnChain, cleanPurpose, onChainData, purposeMemo, savePurpose } from '../mobile/wallet/purpose/purpose';
+import { invoiceAmountText, notePaidInvoice, paidBefore, verifyInvoice } from '../mobile/wallet/purpose/invoice';
+import { onInvoiceLink, takeInvoiceLink } from '../mobile/wallet/purpose/invoiceLinks';
+import { resolvePaymail } from '../mobile/names/names';
+const InvoicesSheet = lazy(() => import('../mobile/wallet/purpose/InvoicesSheet'));
 import { onWalletAction, takeWalletAction } from '../mobile/phone/walletAction';
 import { FindTokensButton } from '../mobile/wallet/FindTokensButton';
 import { HiddenTokens } from '../mobile/wallet/HiddenTokens';
@@ -183,7 +188,15 @@ export const BsvWallet = () => {
     lineItems: SendLineItem[];
     total: string;
     onConfirm: () => void;
+    purpose?: string;
+    purposePublic?: boolean;
+    invoiceLine?: string;
   } | null>(null);
+  // Purpose of payment (purpose/purpose.ts) and the verified invoice a send pays, if any (purpose/invoice.ts).
+  const [purpose, setPurpose] = useState('');
+  const [purposeOnChain, setPurposeOnChain] = useState(false);
+  const [payInvoice, setPayInvoice] = useState<{ id: string; payee: string } | null>(null);
+  const [invoicesOpen, setInvoicesOpen] = useState(false);
   // Get identityAddress from chrome storage (selected account)
   const identityAddress = chromeStorageService.getCurrentAccountObject().account?.addresses?.identityAddress || '';
 
@@ -321,18 +334,65 @@ export const BsvWallet = () => {
     const take = () => {
       const to = takePay();
       const sats = takePayAmount();
+      const extra = takePayExtra();
       if (!to) return;
       // A scanned bitcoin: request with an amount fills it in BSV; the confirm sheet still shows it.
       setRecipients([
         sats
           ? { id: crypto.randomUUID(), address: to, satSendAmount: sats, usdSendAmount: null, amountType: 'bsv' }
-          : { id: crypto.randomUUID(), address: to, satSendAmount: null, usdSendAmount: null, amountType: 'usd' },
+          : {
+              id: crypto.randomUUID(),
+              address: to,
+              satSendAmount: null,
+              usdSendAmount: extra?.usd && extra.usd > 0 ? extra.usd : null,
+              amountType: 'usd',
+            },
       ]);
+      setPurpose(cleanPurpose(extra?.purpose));
+      setPurposeOnChain(false);
+      setPayInvoice(extra?.invoice ?? null);
       setPageState('send');
     };
     take();
     return onPay(take);
   }, []);
+
+  // An invoice pay link or QR (purpose/invoiceLinks.ts): verify the signature and the payee's published key, then
+  // pre-fill Send with payee, amount and purpose. Never pays by itself; the confirm sheet still asks.
+  useEffect(() => {
+    const take = async () => {
+      const signed = takeInvoiceLink();
+      if (!signed) return;
+      const res = await verifyInvoice(signed, (pm) => resolvePaymail(fetch, pm).then((r) => r.pubkey));
+      if (!res.ok) {
+        addSnackbar(res.reason, 'error');
+        return;
+      }
+      const inv = res.inv;
+      const before = paidBefore(identityAddress, inv.id);
+      if (before) addSnackbar(`You already paid invoice ${inv.id} (${before.txid.slice(0, 8)}…). Check before paying again.`, 'info');
+      setRecipients([
+        inv.sats !== undefined
+          ? { id: crypto.randomUUID(), address: inv.payee, satSendAmount: inv.sats, usdSendAmount: null, amountType: 'bsv' }
+          : {
+              id: crypto.randomUUID(),
+              address: inv.payee,
+              satSendAmount: null,
+              usdSendAmount: (inv.usdCents ?? 0) / 100,
+              amountType: 'usd',
+            },
+      ]);
+      setIsSendAllBsv(false);
+      setPurpose(inv.purpose);
+      setPurposeOnChain(false);
+      setPayInvoice({ id: inv.id, payee: inv.payee });
+      addSnackbar(`Invoice ${inv.id} from ${inv.payee}: ${invoiceAmountText(inv)}`, 'info');
+      setPageState('send');
+    };
+    void take();
+    return onInvoiceLink(() => void take());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identityAddress]);
 
   // Phone layout: HOME's / the dock's Send and Receive open the same screens as the buttons under the card.
   useEffect(() => {
@@ -880,6 +940,9 @@ export const BsvWallet = () => {
   const resetSendState = () => {
     setIsProcessing(false);
     resetRecipients();
+    setPurpose('');
+    setPurposeOnChain(false);
+    setPayInvoice(null);
     setIsSendAllBsv(false);
     setSatSendAmount(null);
   };
@@ -1060,14 +1123,30 @@ export const BsvWallet = () => {
       }
     }
 
+    const purposeText = cleanPurpose(purpose);
+    const invoiceNow = payInvoice;
+    const memo = purposeMemo(purposeText, invoiceNow?.id);
     //? multi-send calculate all amounts
     const sendRecipients = recipients.map((r) => {
       let satoshis = r.satSendAmount ?? 0;
       if (r.amountType === 'usd' && r.usdSendAmount) {
         satoshis = Math.ceil((r.usdSendAmount / exchangeRate) * BSV_DECIMAL_CONVERSION);
       }
-      return isValidEmail(r.address) ? { paymail: r.address, satoshis } : { address: r.address, satoshis };
+      // The purpose rides along as the memo where the payee's channel carries one (BRC-169 handle payments).
+      return isValidEmail(r.address)
+        ? { paymail: r.address, satoshis, ...(memo ? { memo } : {}) }
+        : { address: r.address, satoshis };
     });
+    // "Also write it on-chain (public)": one extra 0-sat OP_RETURN output, plain-address payments only.
+    const writeOnChain =
+      purposeOnChain &&
+      !!purposeText &&
+      canWriteOnChain(
+        recipients.map((r) => r.address),
+        isSendAllBsv,
+      );
+    const dataOut = writeOnChain ? onChainData(purposeText) : null;
+    const requests = dataOut ? [...sendRecipients, { data: dataOut, satoshis: 0 }] : sendRecipients;
 
     // Send-all from a cached (possibly stale) balance: wait for the fresh one.
     if (isSendAllBsv && !balanceFresh) {
@@ -1097,6 +1176,9 @@ export const BsvWallet = () => {
       icon: bsvCoin,
       lineItems,
       total: `${formatNumberWithCommasAndDecimals(totalSats / BSV_DECIMAL_CONVERSION, 8)} BSV`,
+      purpose: purposeText || undefined,
+      purposePublic: !!dataOut,
+      invoiceLine: invoiceNow ? `Paying invoice ${invoiceNow.id} from ${invoiceNow.payee}` : undefined,
       onConfirm: async () => {
         setSendConfirmation(null);
         setIsProcessing(true);
@@ -1118,7 +1200,7 @@ export const BsvWallet = () => {
             destination,
           });
         } else {
-          sendRes = await sendBsv.execute(sendContext(), { requests: sendRecipients });
+          sendRes = await sendBsv.execute(sendContext(), { requests });
         }
 
         if (!sendRes.txid || sendRes.error) {
@@ -1129,6 +1211,15 @@ export const BsvWallet = () => {
 
         setBsvBalance((prev) => Math.max(0, prev - totalSats / BSV_DECIMAL_CONVERSION));
         rememberSent(identityAddress, addressOrder);
+        // Keep what it was for with the transaction (History, CSV, statement), and mark the invoice paid.
+        savePurpose(identityAddress, sendRes.txid, {
+          text: purposeText,
+          invoiceId: invoiceNow?.id,
+          invoicePayee: invoiceNow?.payee,
+          onChain: !!dataOut && !isSendAllBsv,
+        });
+        if (invoiceNow)
+          notePaidInvoice(identityAddress, { ...invoiceNow, txid: sendRes.txid, at: Date.now() });
         refreshUtxos().catch((err) => console.error('[handleSendBsv] reconcile refresh failed:', err));
         resetSendState();
         setBsvHistoryRefreshKey((k) => k + 1);
@@ -1305,6 +1396,20 @@ export const BsvWallet = () => {
 
       {/* QR code */}
       <QrCode address={receiveAddress} onClick={handleCopyToClipboard} />
+
+      {/* Request / Invoice (purpose/InvoicesSheet.tsx): a signed pay link + QR that pre-fills the payer's Send. */}
+      <button
+        type="button"
+        onClick={() => setInvoicesOpen(true)}
+        className="mt-4 w-full min-h-[48px] rounded-xl text-sm font-semibold cursor-pointer"
+        style={{
+          background: 'color-mix(in srgb, var(--bw-accent-hi) 10%, transparent)',
+          color: 'var(--bw-accent-hi)',
+          border: '1px solid color-mix(in srgb, var(--bw-accent-hi) 30%, transparent)',
+        }}
+      >
+        Request / Invoice
+      </button>
 
       {/* Address copy row */}
       <motion.button
@@ -2245,6 +2350,15 @@ export const BsvWallet = () => {
         onMax={fillInputWithAllBsv}
         onAmountEdited={() => setSatSendAmount(null)}
         onSubmit={(e) => handleSendBsv(e)}
+        purpose={purpose}
+        onPurpose={setPurpose}
+        canOnChain={canWriteOnChain(
+          recipients.map((r) => r.address),
+          isSendAllBsv,
+        )}
+        onChain={purposeOnChain}
+        onOnChain={setPurposeOnChain}
+        invoice={payInvoice}
       />
 
       {/* Price chart and Buy BSV go BELOW the form (owner, 17 Oct 2026: "No one wants to see the price
@@ -2379,7 +2493,15 @@ export const BsvWallet = () => {
         isProcessing={isProcessing}
         onConfirm={() => sendConfirmation?.onConfirm()}
         onCancel={() => setSendConfirmation(null)}
+        purpose={sendConfirmation?.purpose}
+        purposePublic={sendConfirmation?.purposePublic}
+        invoiceLine={sendConfirmation?.invoiceLine}
       />
+      {invoicesOpen && (
+        <Suspense fallback={null}>
+          <InvoicesSheet account={identityAddress} onClose={() => setInvoicesOpen(false)} />
+        </Suspense>
+      )}
 
       {/* Legacy MNEE sweep prompt */}
       <AnimatePresence>
