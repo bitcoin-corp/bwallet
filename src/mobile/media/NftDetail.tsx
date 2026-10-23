@@ -41,7 +41,7 @@ const short = (s: string) => (s.length > 22 ? `${s.slice(0, 10)}…${s.slice(-8)
 
 /**
  * Wallet › NFTs detail: big viewer, name / collection / origin, and actions:
- * Set as my avatar (account icon = 1sat://<origin>, as AccountIconField does for a pasted NFT id),
+ * Use as my bAvatar (any image NFT you hold, cards you were sent too: account icon = 1sat://<origin>, as AccountIconField does for a pasted NFT id),
  * Send (sendOrdinals, like upstream's Ordinals manager, to an address / $handle / paymail).
  * Listing an NFT for sale is not offered: OrdLock listing creation is disabled for ordinals
  * (ORDLOCK_LISTING_DISABLED); bWallet's Sell covers BSV-21 only. Portalled like MediaViewer.
@@ -158,7 +158,7 @@ export const NftDetail = ({
       >);
       // A photo picked on this phone wins over the account icon: clear it (this also fires notifyAvatarChange).
       setLocalAvatar(id, '');
-      setMsg('This NFT is now your avatar.');
+      setMsg('This NFT is now your bAvatar.');
     } catch {
       setMsg("Couldn't set the avatar.");
     }
@@ -233,7 +233,7 @@ export const NftDetail = ({
         )}
         {item.kind === 'images' && (
           <button onClick={() => void setAvatar()} className={`${btn} bg-[#A1FF8B] text-[#010101]`}>
-            <UserCircle size={16} /> Set as my avatar
+            <UserCircle size={16} /> Use as my bAvatar
           </button>
         )}
         {burned || burning ? null : sent ? (

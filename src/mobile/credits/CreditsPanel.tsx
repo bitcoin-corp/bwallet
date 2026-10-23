@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { sendBsv } from '@1sat/actions';
+import { sendBsv } from '../../utils/guardedSendBsv';
 import { publishBalance } from '../wallet/balanceStore';
 import { History, X } from 'lucide-react';
 import { onCreditsSheet, takeCreditsSheet } from './creditsNav';

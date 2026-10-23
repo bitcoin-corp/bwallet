@@ -1,5 +1,6 @@
 import { Utils } from '@bsv/sdk';
-import { sendBsv, type OneSatContext } from '@1sat/actions';
+import { type OneSatContext } from '@1sat/actions';
+import { sendBsv } from '../../utils/guardedSendBsv';
 import { fetchExchangeRate } from '../../utils/wallet';
 import { usdToSats } from '../money/money';
 import type { NameFee } from './paymail';

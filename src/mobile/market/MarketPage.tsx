@@ -48,6 +48,7 @@ import {
   type Listing,
   type RoomMarket,
 } from './indexer';
+import { hotRoomSafe, roomListingSafe } from './roomSafety';
 import { categoryOf, listingsIn, nftFeed, type Feed as BaseFeed, type NftCategory, type NftListing } from './classify';
 import { onSafetyChange, refreshSafety, reportItem, safety } from './safety';
 import { Blurred, ContentImg, NftCard } from './NftCard';
@@ -175,12 +176,7 @@ const readKind = (): Kind => {
 const isTokenOutput = (o: WalletOutput) => !!o.tags?.some((t) => t === 'bsv21' || t.startsWith('bsv21:'));
 
 /** Market-side safety check for a trending room (token or collection). */
-const roomSafe = (r: HotRoom) =>
-  !safety().check({
-    ids: [r.ref.id],
-    collectionId: r.ref.kind === 'coll' ? r.ref.id : null,
-    texts: [r.title, r.subtitle],
-  }).blocked;
+const roomSafe = (r: HotRoom) => hotRoomSafe(r);
 const nftSafe = (n: NftListing) =>
   !safety().check({ ids: [n.outpoint, n.origin], collectionId: n.collectionId, texts: [n.name, n.collectionName] })
     .blocked;
@@ -942,9 +938,7 @@ const MarketPage = () => {
         .filter(
           (l) =>
             room.ref.kind === 'bsv21' ||
-            (!!categoryOf(l.contentType) &&
-              !safety().check({ ids: [l.outpoint, l.origin], collectionId: room.ref.id, texts: [l.label, room.title] })
-                .blocked),
+            (!!categoryOf(l.contentType) && roomListingSafe(l, { id: room.ref.id, title: room.title })),
         )
         .map((l) => (
           <div key={l.outpoint} className="flex items-center gap-3 rounded-xl bg-[var(--bw-surface)] px-3 py-2.5">

@@ -25,7 +25,8 @@ import { BSV_DECIMAL_CONVERSION, YOURS_DEV_WALLET, featuredApps } from '../utils
 import { formatNumberWithCommasAndDecimals, truncate } from '../utils/format';
 import { TopNav } from '../components/TopNav';
 import { useServiceContext } from '../hooks/useServiceContext';
-import { lockBsv, unlockBsv, sendBsv } from '@1sat/actions';
+import { lockBsv, unlockBsv } from '@1sat/actions';
+import { sendBsv } from '../utils/guardedSendBsv';
 import { LOCK_BASKET } from '@1sat/types';
 import { type ParseContext } from '@1sat/wallet-browser';
 import { Input } from '../components/Input';

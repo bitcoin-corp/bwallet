@@ -6,6 +6,7 @@ import {
   mergeBlocklists,
   metadataFlagsAdult,
   normalizeBlocklist,
+  normalizeForMatch,
   remoteBlocklist,
   SafetyFilter,
 } from './safety';
@@ -147,5 +148,50 @@ describe('remote blocklist', () => {
     } finally {
       globalThis.fetch = orig;
     }
+  });
+});
+
+describe('unicode obfuscation', () => {
+  test('zero-width, joiner, BOM and soft hyphen inside a word are blocked', () => {
+    for (const t of [
+      'po\u200brn',
+      'por\u200bn',
+      'po\u2060rn',
+      'po\ufeffrn',
+      'p\u200co\u200drn',
+      'ns\u00adfw',
+      'nude\ufe0f art',
+    ])
+      expect(blocked(t)).toBe(true);
+  });
+  test('fullwidth forms are blocked', () => {
+    for (const t of ['\uff30\uff2f\uff32\uff2e', '\uff2e\uff33\uff26\uff37', '\uff53\uff45\uff58'])
+      expect(blocked(t)).toBe(true);
+  });
+  test('Cyrillic/Greek lookalike mixes are blocked', () => {
+    for (const t of ['\u0440\u03bfrn', 'p\u043ern', '\u0445\u0445\u0445', 'n\u0455fw', 's\u0435x'])
+      expect(blocked(t)).toBe(true);
+  });
+  test('combining marks are ignored', () => {
+    expect(blocked('po\u0301rn')).toBe(true);
+  });
+  test('normalizeForMatch folds without touching the original', () => {
+    const original = '\uff30o\u200brn';
+    expect(normalizeForMatch(original)).toBe('porn');
+    expect(original).toBe('\uff30o\u200brn');
+  });
+  test('ordinary text is not blocked', () => {
+    for (const t of [
+      'Essex sunset',
+      'Café au lait',
+      'Привет, как дела?',
+      'Москва — столица России',
+      'Καλημέρα κόσμε',
+      'Ελληνική τέχνη',
+      '日本の風景',
+      'emoji 👍🏽 family 👨‍👩‍👧',
+      'cockpit view',
+    ])
+      expect(blocked(t)).toBe(false);
   });
 });

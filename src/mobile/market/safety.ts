@@ -69,6 +69,67 @@ export const BUNDLED: Blocklist = normalizeBlocklist(bundled);
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// Cyrillic/Greek letters that look like Latin ones. Used only for matching, never for display.
+const CONFUSABLES: Record<string, string> = {
+  а: 'a',
+  в: 'b',
+  е: 'e',
+  ё: 'e',
+  к: 'k',
+  м: 'm',
+  н: 'h',
+  о: 'o',
+  р: 'p',
+  с: 'c',
+  т: 't',
+  у: 'y',
+  х: 'x',
+  і: 'i',
+  ї: 'i',
+  ј: 'j',
+  ѕ: 's',
+  ԁ: 'd',
+  ԛ: 'q',
+  ԝ: 'w',
+  һ: 'h',
+  ү: 'y',
+  α: 'a',
+  β: 'b',
+  ε: 'e',
+  η: 'n',
+  ι: 'i',
+  κ: 'k',
+  μ: 'u',
+  ν: 'v',
+  ο: 'o',
+  ρ: 'p',
+  τ: 't',
+  υ: 'u',
+  χ: 'x',
+  ω: 'w',
+  ς: 's',
+  ϲ: 'c',
+  ϳ: 'j',
+};
+const CONFUSABLE_RE = new RegExp(`[${Object.keys(CONFUSABLES).join('')}]`, 'g');
+
+/**
+ * Fold text for keyword matching: NFKC (fullwidth → ASCII), drop invisible
+ * format characters (zero-width, joiners, BOM, soft hyphen, variation
+ * selectors) and combining marks, lowercase, then map Cyrillic/Greek
+ * lookalikes to Latin. Only the folded copy is matched; the original is shown.
+ */
+export function normalizeForMatch(text: string): string {
+  return text
+    .normalize('NFKC')
+    .replace(/[\p{Default_Ignorable_Code_Point}\p{Cf}]/gu, '')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(CONFUSABLE_RE, (c) => CONFUSABLES[c] ?? c)
+    .normalize('NFC');
+}
+
 /** Whole-word, case-insensitive match. "Word" edges are letters/digits, so "18+" and "r-18" work too. */
 export function compileKeywords(keywords: string[], substrings: string[] = []): RegExp | null {
   const parts = [...keywords.map((k) => `(?<![a-z0-9])${escape(k)}(?![a-z0-9])`), ...substrings.map((k) => escape(k))];
@@ -142,7 +203,7 @@ export class SafetyFilter {
   }
 
   matchesText(text: string): boolean {
-    return !!this.re && this.re.test(text);
+    return !!this.re && this.re.test(normalizeForMatch(text));
   }
 
   check(s: SafetySubject): Verdict {
