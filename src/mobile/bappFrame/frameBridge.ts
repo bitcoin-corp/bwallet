@@ -10,6 +10,7 @@
  * Only origins in the bApps tile list may frame, and only the frame we created may call.
  */
 import { isCWIEventName } from '@1sat/wallet-browser';
+import { USER_DENIED_CODE, USER_DENIED_MESSAGE, isUserDenied } from '../../services/userDenied';
 
 /** Exact origins (scheme://host[:port]) of the given URLs; invalid or non-https URLs are skipped. */
 export const frameAllowlist = (urls: readonly string[]): Set<string> => {
@@ -70,8 +71,19 @@ export const toXdmResponse = (id: string, reply: unknown) => {
     success?: boolean;
     data?: unknown;
     error?: unknown;
+    code?: unknown;
   };
   if (r.success === true) return { type: 'CWI', isInvocation: false, id, status: 'success', result: r.data } as const;
+  // The user declined: the standard code, never the generic 1 (services/userDenied.ts).
+  if (r.code === USER_DENIED_CODE || isUserDenied(r.error))
+    return {
+      type: 'CWI',
+      isInvocation: false,
+      id,
+      status: 'error',
+      description: USER_DENIED_MESSAGE,
+      code: USER_DENIED_CODE,
+    } as const;
   const description = typeof r.error === 'string' && r.error ? r.error : 'Request failed';
   return { type: 'CWI', isInvocation: false, id, status: 'error', description, code: 1 } as const;
 };

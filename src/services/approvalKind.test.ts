@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { approvalKindForSheet, isOverAllowance, siteName } from './approvalKind';
+import { approvalKindForSheet, isOverAllowance, privateTitleLabel, siteName } from './approvalKind';
 import { buildSheetModel, type BundleRequest } from './permissionBundle';
 
 const o = 'bchatx.com';
@@ -17,8 +17,34 @@ describe('approvalKindForSheet', () => {
   test('signature anyone can check → SIGN IN', () => {
     expect(kind([proto('a', { counterparty: 'anyone' })])).toBe('signin');
   });
-  test('plain protocol signing for the site → SIGN IN', () => {
-    expect(kind([proto('a'), proto('b', { protocolID: [2, 'x'], counterparty: 'self' })])).toBe('signin');
+  test('a sign-in protocol for the site → SIGN IN', () => {
+    expect(kind([proto('a')])).toBe('signin');
+    expect(kind([proto('a', { protocolID: [2, 'bchatx auth'], counterparty: 'self' })])).toBe('signin');
+  });
+  test('a self key that is not a sign-in protocol is never titled SIGN IN', () => {
+    expect(kind([proto('a'), proto('b', { protocolID: [2, 'x'], counterparty: 'self' })])).toBe('connect');
+    expect(kind([proto('a', { protocolID: [2, 'bchatx agent history'], counterparty: 'self' })])).toBe('private');
+  });
+  test('encrypting Ask b history → "Keep your Ask b chats private"', () => {
+    const model = buildSheetModel({
+      originator: o,
+      items: [proto('a', { protocolID: [2, 'bchatx agent history'], counterparty: 'self' })],
+    });
+    expect(approvalKindForSheet(model)).toBe('private');
+    expect(privateTitleLabel(model)).toBe('Ask b chats');
+  });
+  test("a site's first post (bap basket + sigma signature + spend) → one POST sheet, amount kept", () => {
+    const items: BundleRequest[] = [
+      { requestID: 'b', type: 'basket', originator: o, basket: 'bap' },
+      proto('s', { protocolID: [1, 'sigma'], counterparty: 'self' }),
+      { requestID: 'p', type: 'spending', originator: o, spending: { satoshis: 120 } },
+    ];
+    const model = buildSheetModel({ originator: o, items });
+    expect(model.purpose).toBe('post');
+    expect(approvalKindForSheet(model)).toBe('post');
+    expect(model.payment?.satoshis).toBe(120);
+    // Risk still wins over a post.
+    expect(kind([...items, proto('x', { privileged: true })])).toBe('careful');
   });
   test('sharing keys with a named counterparty is not sign-in → CONNECT', () => {
     expect(kind([proto('a', { protocolID: [2, 'x'], counterparty: '02abc' })])).toBe('connect');
