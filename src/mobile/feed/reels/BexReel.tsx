@@ -62,7 +62,7 @@ const LIVE_MS = 30_000;
 const STATS_CAP = 80;
 
 const tokenSafe = (r: HotRoom) =>
-  !safety().check({ ids: [r.ref.id], collectionId: null, texts: [r.title, r.subtitle] }).blocked;
+  !safety().check({ ids: [r.ref.id], collectionId: null, texts: [r.title, r.subtitle], map: r.map }).blocked;
 
 type Live = { stats: DayStats; trades: Trade[]; floor: number | null };
 

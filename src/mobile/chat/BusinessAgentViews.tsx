@@ -10,7 +10,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { BIZ_AGENT_ACCOUNT_ENABLED } from '../storeBuild';
 import { createPortal } from 'react-dom';
-import { sendBsv } from '@1sat/actions';
+import { sendBsv } from '../../utils/guardedSendBsv';
 import { Bot, Plus, Trash2, X } from 'lucide-react';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { useSnackbar } from '../../hooks/useSnackbar';

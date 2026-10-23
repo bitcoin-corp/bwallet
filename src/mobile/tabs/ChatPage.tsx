@@ -34,7 +34,8 @@ import {
   Loader2,
   Store,
 } from 'lucide-react';
-import { sendBsv, type Bsv21Balance } from '@1sat/actions';
+import { type Bsv21Balance } from '@1sat/actions';
+import { sendBsv } from '../../utils/guardedSendBsv';
 import { SendBsv21View } from '../../components/SendBsv21View';
 import { NameInput } from '../names/NameInput';
 import { useTheme } from '../../hooks/useTheme';

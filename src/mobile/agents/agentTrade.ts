@@ -12,7 +12,8 @@
  * book; live mode buys the cheapest listing or sends BSV.
  */
 import { MARKET_ENABLED } from '../storeBuild';
-import { buyBsv21, sendBsv, type OneSatContext } from '@1sat/actions';
+import { buyBsv21, type OneSatContext } from '@1sat/actions';
+import { sendBsv } from '../../utils/guardedSendBsv';
 import { assertOrdLockV2 } from '../market/ordlockVersion';
 import { appendAgentLog, getAgentAccount } from './agentAccounts';
 import { checkAgentAction, getLoadedStrategy, getPaperBook, type ActionRequest, type StrategyAction } from './strategy';

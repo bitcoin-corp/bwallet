@@ -155,7 +155,15 @@ export async function itemInfo(outpoint: string): Promise<ItemMeta | null> {
   return value;
 }
 
-type ItemInfo = { id: string; name: string | null; origin: string; image: boolean; contentType: string | null };
+type ItemInfo = {
+  id: string;
+  name: string | null;
+  origin: string;
+  image: boolean;
+  contentType: string | null;
+  /** Raw MAP fields, for the safety filter. */
+  map: Record<string, unknown>;
+};
 
 /** Collection (and item name) of the inscription at this outpoint, from its origin. */
 export async function itemCollection(outpoint: string): Promise<ItemInfo | null> {
@@ -167,6 +175,7 @@ export async function itemCollection(outpoint: string): Promise<ItemInfo | null>
     origin: m.origin,
     image: !!m.contentType?.startsWith('image/'),
     contentType: m.contentType,
+    map: m.map,
   };
 }
 
@@ -182,6 +191,8 @@ export type RecentListing = {
   seller: string;
   height: number | null;
   contentType?: string | null;
+  /** The item's MAP fields (collections), for the safety filter. */
+  map?: Record<string, unknown> | null;
 };
 
 const heightOf = (score?: number) => (score && score < 1e8 ? Math.floor(score) : null);
@@ -226,6 +237,7 @@ async function liveListings(): Promise<RecentListing[]> {
           seller,
           height: heightOf(r.score),
           contentType: item.contentType,
+          map: item.map,
         }
       : null;
   });
@@ -258,6 +270,7 @@ async function sales(): Promise<RecentListing[]> {
           seller: '',
           height: heightOf(lock.spend_score),
           contentType: item.contentType,
+          map: item.map,
         }
       : null;
   });
@@ -377,7 +390,15 @@ export const activeTokens = (limit = 20) =>
   ).then((ids) => ids.slice(0, limit));
 
 // ── metadata ─────────────────────────────────────────────────────────────────
-export type RoomMeta = { title: string; subtitle: string; icon: string | null; dec: number; sym: string };
+export type RoomMeta = {
+  title: string;
+  subtitle: string;
+  icon: string | null;
+  dec: number;
+  sym: string;
+  /** The collection inscription's MAP fields (collections only), for the safety filter. */
+  map?: Record<string, unknown> | null;
+};
 
 type Bsv21Token = { token?: { sym?: string; icon?: string; dec?: string | number } };
 
@@ -413,6 +434,7 @@ export const roomMeta = (kind: RoomKind, id: string): Promise<RoomMeta | null> =
           icon: m.contentType?.startsWith('image/') ? id : null,
           dec: 0,
           sym: '',
+          map: m.map ? { ...m.map, subTypeData: parseStd(m.map.subTypeData) } : null,
         };
       } catch {
         return null;
@@ -452,6 +474,8 @@ export type Listing = {
   origin: string | null; // art (collections)
   seller: string;
   contentType?: string | null;
+  /** The item's MAP fields (collections), for the safety filter. */
+  map?: Record<string, unknown> | null;
   /** Can be bought in-app (BSV-21: the overlay recognises it; buyBsv21 validates against it). */
   buyable: boolean;
 };
@@ -523,6 +547,7 @@ async function loadMarket(room: RoomRef, limit: number): Promise<RoomMarket> {
           origin: l.origin,
           seller: l.seller,
           contentType: l.contentType,
+          map: l.map ?? null,
           buyable: true,
         }),
       )
@@ -619,6 +644,8 @@ export type HotRoom = {
   heat: number;
   /** Token outputs in the overlay (a holder/usage proxy); tokens only. */
   outputs?: number;
+  /** The collection's MAP fields (collections only), for the safety filter. */
+  map?: Record<string, unknown> | null;
 };
 
 /** Tokens and collections ranked by recent sales and new listings (1satsocial's hot board, no chat signal). */
@@ -665,6 +692,7 @@ export const hotBoard = (onPartial?: (rooms: HotRoom[]) => void): Promise<HotRoo
         newListings: a.newListings,
         floorLabel: market?.floorLabel ?? null,
         heat: a.trades + Math.min(a.newListings, 20) * 2,
+        map: meta.map ?? null,
       };
       partial.push(room);
       onPartial?.(rank(partial));
