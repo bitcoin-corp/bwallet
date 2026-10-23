@@ -239,11 +239,15 @@ export function NpgMelt({
               <b>The RelayX NFT will be destroyed</b> (burned on chain). It can&apos;t be undone.
             </li>
             {q.note && <li style={{ color: '#F7A8CF' }}>{q.note}</li>}
-            <li>Melt fee: free</li>
-            <li>
-              Minting and network fees: {q.fee_sats.toLocaleString()} sats
-              {usd(q.fee_sats) ? ` (${usd(q.fee_sats)})` : ''}, plus a few sats for the network, at cost
-            </li>
+            {q.fee_sats > 0 ? (
+              <li>
+                Minting fees: {q.fee_sats.toLocaleString()} sats
+                {usd(q.fee_sats) ? ` (${usd(q.fee_sats)})` : ''} to NPG at{' '}
+                <span className="font-mono break-all">{q.fee_to}</span>, plus a few sats for the network
+              </li>
+            ) : (
+              <li>No melt or minting fee. You pay only a few sats for the network.</li>
+            )}
             <li>The new 1Sat Ordinals arrive in Collectibles.</li>
           </ul>
         )}
