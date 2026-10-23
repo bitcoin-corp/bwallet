@@ -16,6 +16,7 @@ import type { WalletInterface } from '@bsv/sdk';
 import { createCWI, CWIEventName } from '@1sat/wallet-browser';
 import icon from '../../assets/bwalletx-ext/icon128.png?inline';
 import { announceWallet, claimWindowCwi } from './discovery';
+import { replyError } from '../services/userDenied';
 
 export { CWIEventName };
 
@@ -30,10 +31,10 @@ const transport = (action: string, params: unknown) =>
     self.addEventListener(
       messageId,
       (e) => {
-        const { success, data, error } = (e as CustomEvent<{ success: boolean; data?: unknown; error?: string }>)
-          .detail;
-        if (success) resolve(data);
-        else reject(new Error(error || 'Unknown error'));
+        const detail = (e as CustomEvent<{ success: boolean; data?: unknown; error?: string; code?: unknown }>).detail;
+        // A refusal by the user rejects with code ERR_PERMISSION_DENIED (services/userDenied.ts).
+        if (detail.success) resolve(detail.data);
+        else reject(replyError(detail));
       },
       { once: true },
     );

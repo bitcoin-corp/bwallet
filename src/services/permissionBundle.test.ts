@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  postPackCompanions,
   allowanceSats,
   buildSheetModel,
   isAutoGrantable,
@@ -349,5 +350,38 @@ describe('sheetDecisions (chat.bwalletx.com, 23 Oct 2026)', () => {
     const m = buildSheetModel({ originator: 'chat.bwalletx.com', items: [risky, history, spend('pay', 100)] });
     expect(sheetDecisions(m, true, {}, false)).toEqual({ p1: false, h1: true, pay: true });
     expect(sheetDecisions(m, false, { p1: true }, false)).toEqual({ p1: false, h1: false, pay: false });
+  });
+});
+
+describe('first-post companions', () => {
+  const o = 'bchatx.com';
+  test('a bap listing asks for the post signature too, and the other way round', () => {
+    expect(postPackCompanions([{ type: 'basket', basket: 'bap' }])).toEqual(['protocol']);
+    expect(postPackCompanions([{ type: 'protocol', protocolID: [1, 'sigma'] }])).toEqual(['basket']);
+    expect(
+      postPackCompanions([
+        { type: 'basket', basket: 'bap' },
+        { type: 'protocol', protocolID: [1, 'sigma'] },
+      ]),
+    ).toEqual([]);
+  });
+  test('anything else asks for nothing extra', () => {
+    expect(postPackCompanions([{ type: 'basket', basket: 'tickets' }])).toEqual([]);
+    expect(postPackCompanions([{ type: 'protocol', protocolID: [1, 'sigma'], privileged: true }])).toEqual([]);
+  });
+  test('the post lines say what they do in plain words', () => {
+    const m = buildSheetModel({
+      originator: o,
+      items: [
+        { requestID: 'b', type: 'basket', originator: o, basket: 'bap' },
+        { requestID: 's', type: 'protocol', originator: o, protocolID: [1, 'sigma'], counterparty: 'self' },
+      ],
+    });
+    expect(m.purpose).toBe('post');
+    expect(m.lines.map((l) => l.text)).toEqual([
+      'Use your public profile (name and picture) on its posts',
+      'Sign your posts and likes as you',
+    ]);
+    expect(m.lines.every((l) => !l.signIn)).toBe(true);
   });
 });

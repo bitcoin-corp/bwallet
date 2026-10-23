@@ -53,6 +53,7 @@ import { RequestParams, ResponseEventDetail, YoursEventName } from './inject';
 import { recordCall, recordPayment, requestedSats, updateConnectionLog } from './mobile/wallet/connectionLog';
 import { CWIEventName } from './cwi';
 import { describeWalletError } from './brand/walletError';
+import { userDeniedError, withDenialCode } from './services/userDenied';
 import { HANDOFF_ENABLED } from './mobile/passkey/extHandoff';
 import { HANDOFF_ALARM, handleExternalHandoff, sweepExpiredHandoff } from './mobile/passkey/extHandoffStore';
 import {
@@ -126,6 +127,9 @@ import {
   TRUST_SITE_BASKET,
   trustCovers,
   trustedBasketsFrom,
+  POST_BASKET,
+  POST_PROTOCOL,
+  postPackCompanions,
   type BundleRequest,
 } from './services/permissionBundle';
 import { normalizeOriginator } from '@1sat/wallet';
@@ -1379,9 +1383,42 @@ const showPermissionPrompt = (request: PermissionRequest & { requestID: string }
           return;
         }
         pendingPermissionRequests.set(request.requestID, { request, resolve, reject });
-        permissionBundler.add(request as BundledRequest & BundleRequest);
+        const bundle = permissionBundler.add(request as BundledRequest & BundleRequest);
+        askPostCompanions(request.originator, bundle.items);
       }),
   );
+};
+
+/**
+ * A site's first post: when one of the first-post set (identity basket "bap", post signature "sigma") reaches a
+ * sheet, ask for the others at the same moment, so they join the SAME sheet ("Allow <site> to post for you")
+ * instead of arriving one after another. The manager only asks for what the site has not been granted, and the
+ * site's later real call finds the grant (or joins the pending request). A refusal here only rejects this
+ * pre-ask; the site still gets the standard denial on its own call.
+ */
+const postAskedAt = new Map<string, number>();
+const askPostCompanions = (originator: string, items: BundleRequest[]) => {
+  const wallet = accountContext?.wallet;
+  if (!wallet || !originator || originator === ADMIN_ORIGINATOR) return;
+  if (postPackCompanions(items).length === 0) return;
+  // Once per site per minute: the companions' own sheets come back through here.
+  const last = postAskedAt.get(originator);
+  if (last !== undefined && Date.now() - last < 60_000) return;
+  postAskedAt.set(originator, Date.now());
+  for (const kind of postPackCompanions(items)) {
+    const ask =
+      kind === 'basket'
+        ? wallet.ensureBasketAccess({ originator, basket: POST_BASKET, usageType: 'listing', reason: 'Post as you' })
+        : wallet.ensureProtocolPermission({
+            originator,
+            privileged: false,
+            protocolID: POST_PROTOCOL,
+            counterparty: 'self',
+            usageType: 'signing',
+            reason: 'Sign your posts',
+          });
+    ask.catch(() => undefined);
+  }
 };
 
 /**
@@ -1664,7 +1701,10 @@ if (isInServiceWorker) {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  chrome.runtime.onMessage.addListener((message: any, sender, sendResponse: CallbackResponse) => {
+  chrome.runtime.onMessage.addListener((message: any, sender, answer: CallbackResponse) => {
+    // Every refusal by the user carries code ERR_PERMISSION_DENIED (services/userDenied.ts), so a site can tell
+    // "declined" from "failed" on every path (extension, phone dApp browser, bApp frames, pairing).
+    const sendResponse: CallbackResponse = (response) => answer(withDenialCode(response));
     console.log(
       '[background] Received message:',
       message.action,
@@ -3160,7 +3200,7 @@ if (!(
       accountContext?.wallet
         .denyPermission(response.requestID)
         .then(() => {
-          pending.reject(new Error('Permission denied by user'));
+          pending.reject(userDeniedError());
         })
         .catch((error) => {
           pending.reject(error);
@@ -3442,7 +3482,7 @@ if (!(
           try {
             await wallet?.denyPermission(r.requestID);
           } finally {
-            pending.reject(new Error('Permission denied by user'));
+            pending.reject(userDeniedError());
           }
         }),
       ]);
@@ -3500,7 +3540,7 @@ if (!(
       accountContext?.wallet
         .denyGroupedPermission(response.requestID)
         .then(() => {
-          pending.reject(new Error('Grouped permission denied by user'));
+          pending.reject(userDeniedError());
         })
         .catch((error) => {
           pending.reject(error);
@@ -3548,7 +3588,7 @@ if (!(
       accountContext?.wallet
         .denyCounterpartyPermission(response.requestID)
         .then(() => {
-          pending.reject(new Error('Counterparty permission denied by user'));
+          pending.reject(userDeniedError());
         })
         .catch((error) => {
           pending.reject(error);
