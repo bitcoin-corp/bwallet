@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { markSiteConnected } from '../../mobile/theme/connectSiteTheme';
 import { motion } from 'framer-motion';
 import { Shield, Loader2 } from 'lucide-react';
 import { Show } from '../../components/Show';
@@ -75,6 +76,7 @@ export const GroupedPermissionRequestPage = (props: GroupedPermissionRequestProp
         setIsProcessing(false);
         return;
       }
+      markSiteConnected(request.originator); // its sheets may now wear its theme (docs/SITE-THEME.md)
       sendMessage({
         action: 'GROUPED_PERMISSION_RESPONSE',
         requestID: request.requestID,

@@ -10,6 +10,7 @@ import {
   type PermissionGroup as Group,
 } from './connectionLog';
 import { ErrorActions } from '../errors/ErrorActions';
+import { forgetSiteConnected, setSiteThemeAllowed, siteThemeAllowed } from '../theme/connectSiteTheme';
 
 const CARD = '#17191E';
 const LINE = '#2b2f36';
@@ -39,6 +40,8 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  // "Use this site's theme" per site (docs/SITE-THEME.md); bumped to re-read after a toggle.
+  const [, setThemeTick] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,6 +69,7 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
       error: String(e),
     }));
     if (!res.success) setError(res.error || 'Could not revoke');
+    else forgetSiteConnected(r.host);
     setBusy('');
     await load();
   };
@@ -128,6 +132,17 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
                   .join(', ')}
               </div>
             )}
+            <label className="flex items-center gap-2 text-xs mt-2" style={{ color: MUTED }}>
+              <input
+                type="checkbox"
+                checked={siteThemeAllowed(r.host)}
+                onChange={(e) => {
+                  setSiteThemeAllowed(r.host, e.target.checked);
+                  setThemeTick((n) => n + 1);
+                }}
+              />
+              Use this site&apos;s theme
+            </label>
             {r.originator && (
               <button
                 type="button"

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { markSiteConnected } from '../../mobile/theme/connectSiteTheme';
 import { motion } from 'framer-motion';
 import { Users, Loader2 } from 'lucide-react';
 import { Show } from '../../components/Show';
@@ -51,6 +52,7 @@ export const CounterpartyPermissionRequestPage = (props: CounterpartyPermissionR
         setIsProcessing(false);
         return;
       }
+      markSiteConnected(request.originator); // its sheets may now wear its theme (docs/SITE-THEME.md)
       sendMessage({
         action: 'COUNTERPARTY_PERMISSION_RESPONSE',
         requestID: request.requestID,

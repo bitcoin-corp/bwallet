@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { markSiteConnected } from '../../mobile/theme/connectSiteTheme';
 import { motion } from 'framer-motion';
 import { useBottomMenu } from '../../hooks/useBottomMenu';
 import { useAccountNames } from '../../mobile/names/accountNames';
@@ -107,6 +108,7 @@ export const BundleSheet = (props: {
           return;
         }
       }
+      if (approve) markSiteConnected(request.originator); // its sheets may now wear its theme (docs/SITE-THEME.md)
       const decisions: Record<string, boolean> = {};
       for (const l of model.lines) decisions[l.requestID] = approve && isChecked(l.requestID, l.checked);
       if (model.payment) decisions[model.payment.requestID] = approve;

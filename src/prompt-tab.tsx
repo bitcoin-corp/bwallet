@@ -25,6 +25,7 @@ import { BundleSheet, type BundlePayload } from './pages/requests/BundleSheet';
 import type { OneSatPromptStorageEntry } from './services/oneSatPrompt';
 import { sendMessageAsync } from './utils/chromeHelpers';
 import type { PromptKind, UsbCheckRequest } from './promptProtocol';
+import { SiteThemeFrame } from './mobile/theme/SiteThemeFrame';
 import './index.css';
 
 global.Buffer = Buffer;
@@ -42,6 +43,10 @@ type PromptScreen =
   | { kind: 'counterpartyPermission'; requestID: string; payload: CounterpartyPermissionRequest }
   | { kind: 'oneSatPermission'; requestID: string; payload: OneSatPromptStorageEntry }
   | { kind: 'usbCheck'; requestID: string; payload: UsbCheckRequest };
+
+/** The site a request screen is for (from the request the background checked), for the frame's origin strip. */
+const screenOriginator = (s: PromptScreen): string | undefined =>
+  'payload' in s ? (s.payload as { originator?: string }).originator || undefined : undefined;
 
 const WAITING_CLOSE_MS = 10000;
 const EXPIRED_CLOSE_MS = 2000;
@@ -326,36 +331,39 @@ const PromptApp = () => {
           </p>
         )}
         {screen.kind === 'unlock' && <UnlockWallet onUnlock={() => void advance()} />}
-        {screen.kind === 'permission' && (
-          <PermissionRequestPage key={screen.requestID} request={screen.payload} onResponse={() => void advance()} />
-        )}
-        {screen.kind === 'bundle' && (
-          <BundleSheet key={screen.requestID} request={screen.payload} onResponse={() => void advance()} />
-        )}
-        {screen.kind === 'groupedPermission' && (
-          <GroupedPermissionRequestPage
-            key={screen.requestID}
-            request={screen.payload}
-            onResponse={() => void advance()}
-          />
-        )}
-        {screen.kind === 'counterpartyPermission' && (
-          <CounterpartyPermissionRequestPage
-            key={screen.requestID}
-            request={screen.payload}
-            onResponse={() => void advance()}
-          />
-        )}
-        {screen.kind === 'oneSatPermission' && (
-          <OneSatPermissionRequestPage
-            key={screen.requestID}
-            request={screen.payload}
-            onResponse={() => void advance()}
-          />
-        )}
-        {screen.kind === 'usbCheck' && (
-          <UsbCheckRequestPage key={screen.requestID} request={screen.payload} onResponse={() => void advance()} />
-        )}
+        {/* Wallet strip (true origin) + the connected site's theme banner (docs/SITE-THEME.md); the sheet is untouched. */}
+        <SiteThemeFrame originator={screenOriginator(screen)}>
+          {screen.kind === 'permission' && (
+            <PermissionRequestPage key={screen.requestID} request={screen.payload} onResponse={() => void advance()} />
+          )}
+          {screen.kind === 'bundle' && (
+            <BundleSheet key={screen.requestID} request={screen.payload} onResponse={() => void advance()} />
+          )}
+          {screen.kind === 'groupedPermission' && (
+            <GroupedPermissionRequestPage
+              key={screen.requestID}
+              request={screen.payload}
+              onResponse={() => void advance()}
+            />
+          )}
+          {screen.kind === 'counterpartyPermission' && (
+            <CounterpartyPermissionRequestPage
+              key={screen.requestID}
+              request={screen.payload}
+              onResponse={() => void advance()}
+            />
+          )}
+          {screen.kind === 'oneSatPermission' && (
+            <OneSatPermissionRequestPage
+              key={screen.requestID}
+              request={screen.payload}
+              onResponse={() => void advance()}
+            />
+          )}
+          {screen.kind === 'usbCheck' && (
+            <UsbCheckRequestPage key={screen.requestID} request={screen.payload} onResponse={() => void advance()} />
+          )}
+        </SiteThemeFrame>
       </div>
     </MemoryRouter>
   );

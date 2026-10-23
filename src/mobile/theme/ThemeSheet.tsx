@@ -17,6 +17,7 @@ import {
 } from './accents';
 import { loadAccent, loadMix, loadStorePack, previewMix, saveAccent, saveMix, wearSiteTheme } from './accent';
 import { forgetSiteTheme, wornSiteThemes } from './siteTheme';
+import { setSiteThemesOn, siteThemesOn } from './connectSiteTheme';
 import { accentOfPack } from './themePack';
 import { deriveMix, mixFromPack, nextMixerOpen, type MixSpec } from './mixer';
 import { THEME_ORDERS_ENABLED, THEME_STORE_PAID_ENABLED } from '../storeBuild';
@@ -155,6 +156,8 @@ function AppColours({
   const derived = useMemo(() => deriveMix(mix), [mix]);
   // From sites: family sites' themes this device has worn (theme/siteTheme.ts). They paint as the 'custom' pack.
   const [sites, setSites] = useState(() => wornSiteThemes());
+  // Connected sites' themes on their approval sheets (connectSiteTheme.ts, docs/SITE-THEME.md); on by default.
+  const [connectThemes, setConnectThemes] = useState(() => siteThemesOn());
   const [sitePackId, setSitePackId] = useState(() => loadStorePack(account)?.id ?? null);
   const siteOn = (id: string) => current === 'custom' && sitePackId === id;
   const mixOn = current === 'custom' && !sites.some((p) => p.id === sitePackId);
@@ -264,6 +267,21 @@ function AppColours({
           </div>
         </>
       )}
+      <p className="bw-theme-group">Connected sites</p>
+      <label className="flex items-center gap-3 text-sm" style={{ padding: '4px 0 12px' }}>
+        <input
+          type="checkbox"
+          checked={connectThemes}
+          onChange={(e) => {
+            setSiteThemesOn(e.target.checked);
+            setConnectThemes(e.target.checked);
+          }}
+        />
+        <span>
+          Wear a connected site&apos;s theme on its approval sheets. The site and amounts always show in bWalletX&apos;s
+          own colours.
+        </span>
+      </label>
       <p className="bw-theme-group">Mono</p>
       <div className="bw-pack-grid" role="radiogroup" aria-label="Mono">
         {MONO_PACKS.map((a) => (
