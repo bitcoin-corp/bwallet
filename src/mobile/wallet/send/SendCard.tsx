@@ -10,6 +10,7 @@ import { NameInput } from '../../names/NameInput';
 import { useContacts } from '../../chat/useContacts';
 import { payTarget } from '../../chat/contacts';
 import { noteContacts } from './payee';
+import { applyChip, PURPOSE_CHIPS, PURPOSE_MAX } from '../purpose/purpose';
 import {
   balanceLine,
   fmtBsv,
@@ -56,6 +57,15 @@ type Props = {
   /** The amount was edited after Max: it is no longer a send-all. */
   onAmountEdited: () => void;
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
+  /** What the payment is for (purpose/purpose.ts): optional, kept with the transaction, shown on the confirm sheet. */
+  purpose: string;
+  onPurpose: (v: string) => void;
+  /** "Also write it on-chain (public)": offered only for payments to plain addresses (canWriteOnChain). */
+  canOnChain: boolean;
+  onChain: boolean;
+  onOnChain: (v: boolean) => void;
+  /** Set when this send pays a verified invoice (purpose/invoice.ts). */
+  invoice?: { id: string; payee: string } | null;
 };
 
 const GOLD = 'var(--bw-accent-hi)';
@@ -438,6 +448,56 @@ export const SendCard = (p: Props) => {
           </motion.div>
         );
       })}
+
+      {/* What's it for? (owner, 23 Oct 2026: "the whole world economy will fit inside that little memo") */}
+      <div className="w-full rounded-2xl p-4 flex flex-col gap-2" style={{ background: row }}>
+        {p.invoice && (
+          <p role="status" className="text-xs font-semibold" style={{ color: GOLD }}>
+            Paying invoice {p.invoice.id} from {p.invoice.payee}
+          </p>
+        )}
+        <label htmlFor="send-purpose">{step(3, "What's it for?")}</label>
+        <textarea
+          id="send-purpose"
+          aria-label="What's it for? (optional)"
+          placeholder="Optional: a few words, like a memo"
+          maxLength={PURPOSE_MAX}
+          rows={2}
+          value={p.purpose}
+          onChange={(e) => p.onPurpose(e.target.value)}
+          className="w-full rounded-xl p-3 text-sm outline-none resize-none"
+          style={{ background: 'transparent', color: fg, border: `1px solid ${gray}50` }}
+        />
+        <div className="flex flex-wrap gap-2">
+          {PURPOSE_CHIPS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => p.onPurpose(applyChip(p.purpose, c))}
+              className="min-h-[36px] px-3 rounded-full text-xs font-semibold cursor-pointer"
+              style={chipStyle}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-between gap-2 text-[11px]" style={{ color: gray }}>
+          <span>
+            {p.onChain && p.canOnChain
+              ? 'Public: anyone can read this on the blockchain.'
+              : 'Private: saved on this device with the payment.'}
+          </span>
+          <span className="tabular-nums">
+            {p.purpose.length}/{PURPOSE_MAX}
+          </span>
+        </div>
+        {p.canOnChain && p.purpose.trim() && (
+          <label className="flex items-center gap-2 text-xs cursor-pointer min-h-[36px]" style={{ color: fg }}>
+            <input type="checkbox" checked={p.onChain} onChange={(e) => p.onOnChain(e.target.checked)} />
+            Also write it on-chain (public)
+          </label>
+        )}
+      </div>
 
       {/* Secondary: a quiet outline button. The bMail note stays hidden until it works (live features only). */}
       {!p.sendAll && (

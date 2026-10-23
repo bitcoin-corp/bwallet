@@ -514,6 +514,11 @@ const Row = ({ r }: { r: HistoryRow }) => {
             )}
           </div>
         )}
+        {r.purpose && (
+          <div className="text-xs mt-1 break-words" style={{ color: '#fff' }}>
+            <span style={{ color: MUTED }}>For:</span> {r.purpose}
+          </div>
+        )}
         {(r.feeSats > 0 || r.counterparty || r.note) && (
           <div className="text-xs mt-1 break-all" style={{ color: MUTED }}>
             {r.feeSats > 0 && <span>Fee {fmtSats(r.feeSats)} </span>}
@@ -577,6 +582,7 @@ const TxTable = ({ rows, all }: { rows: HistoryRow[]; all: HistoryRow[] }) => {
               r.appNote ? `“${r.appNote}”` : '',
               r.counterparty ? `${r.direction === 'in' ? 'from' : 'to'} ${r.counterparty}` : '',
               r.note,
+              r.purpose ? `For: ${r.purpose}` : '',
             ]
               .filter(Boolean)
               .join(' · ');

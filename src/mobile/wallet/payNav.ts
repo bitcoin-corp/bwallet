@@ -7,10 +7,21 @@ const EVENT = 'bwallet:pay-to';
 let pending: string | null = null;
 let pendingSats: number | null = null;
 
+/** What a pay hand-off can carry besides who and how much: the purpose, a dollar amount, the invoice it pays. */
+export type PayExtra = {
+  purpose?: string;
+  /** A US-dollar amount (USD invoices): Send shows it in dollars and converts at the current rate. */
+  usd?: number;
+  /** A verified invoice (purpose/invoice.ts verifyInvoice): the confirm sheet says "Paying invoice … from …". */
+  invoice?: { id: string; payee: string };
+};
+let pendingExtra: PayExtra | null = null;
+
 /** `amountSats`: from a scanned payment request (scan/parseScan.ts); the user still confirms. */
-export const requestPay = (to: string, amountSats?: number) => {
+export const requestPay = (to: string, amountSats?: number, extra?: PayExtra) => {
   pending = to.trim();
   pendingSats = amountSats && amountSats > 0 ? Math.round(amountSats) : null;
+  pendingExtra = extra ?? null;
   try {
     window.dispatchEvent(new Event(EVENT));
   } catch {
@@ -48,6 +59,13 @@ export const takePayAmount = (): number | null => {
   const a = pendingSats;
   pendingSats = null;
   return a;
+};
+
+/** Purpose / dollar amount / invoice that came with the last requestPay (read once, right after takePay). */
+export const takePayExtra = (): PayExtra | null => {
+  const e = pendingExtra;
+  pendingExtra = null;
+  return e;
 };
 
 export const onPay = (fn: () => void) => {

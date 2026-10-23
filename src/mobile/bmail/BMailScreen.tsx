@@ -3,6 +3,8 @@
  * top, unstamped mail in Requests; tokens and NFTs sent without asking (airdrops) in Quarantine, with a pointer to
  * them from Inbox and Requests and counted on the Quarantine tab, so the badge and the boxes agree. Postage is utility: a stamp to reach someone.
  */
+import { findInvoiceLink, invoiceAmountText } from '../wallet/purpose/invoice';
+import { offerInvoiceLink } from '../wallet/purpose/invoiceLinks';
 import {
   Archive as TabArchive,
   Inbox as TabInbox,
@@ -565,6 +567,23 @@ const Reader = ({
               ),
             )}
           </div>
+          {(() => {
+            // An invoice link in the letter: Pay opens the same pre-filled Send (payee, amount, purpose). The
+            // wallet verifies the invoice's signature and the payee's key first, so this works for any sender.
+            const found = findInvoiceLink(mail.body);
+            return (
+              found && (
+                <button
+                  type="button"
+                  onClick={() => offerInvoiceLink(found.url)}
+                  className={gold}
+                  style={{ background: GOLD }}
+                >
+                  Pay invoice {found.s.inv.id} · {invoiceAmountText(found.s.inv)}
+                </button>
+              )
+            );
+          })()}
           {!trusted && mailSegments(mail.body, false).some((x) => x.link) && (
             <div className="flex items-center gap-2 text-[11px]" style={{ color: MUTED }}>
               <span className="flex-1">Links from senders you haven&apos;t trusted are shown as text only.</span>

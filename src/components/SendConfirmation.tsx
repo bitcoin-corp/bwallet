@@ -37,10 +37,17 @@ export type SendConfirmationProps = {
   isProcessing?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /** What the payer said it is for (purpose/purpose.ts), shown again before approval. */
+  purpose?: string;
+  /** The purpose will also be written on-chain, readable by anyone. */
+  purposePublic?: boolean;
+  /** "Paying invoice INV-… from alice@…" when this pays a verified invoice. */
+  invoiceLine?: string;
 };
 
 export const SendConfirmation = (props: SendConfirmationProps) => {
   const { show, theme, icon, lineItems, total, isProcessing = false, onConfirm, onCancel } = props;
+  const { purpose, purposePublic, invoiceLine } = props;
 
   const contrast = theme.color.global.contrast;
   const gray = theme.color.global.gray;
@@ -121,6 +128,25 @@ export const SendConfirmation = (props: SendConfirmationProps) => {
                 <h2 className="text-xl font-bold mb-4" style={{ color: contrast }}>
                   Confirm Send
                 </h2>
+
+                {invoiceLine && (
+                  <p role="status" className="w-full mb-2 text-sm font-semibold" style={{ color: GOLD }}>
+                    {invoiceLine}
+                  </p>
+                )}
+                {purpose && (
+                  <div
+                    className="w-full mb-3 px-3 py-2 rounded-lg text-sm text-left"
+                    style={{ backgroundColor: `${contrast}08` }}
+                  >
+                    <span className="block text-xs font-bold uppercase tracking-wide" style={{ color: gray }}>
+                      What it's for{purposePublic ? ' · public, written on-chain' : ''}
+                    </span>
+                    <span className="block break-words whitespace-pre-wrap" style={{ color: contrast }}>
+                      {purpose}
+                    </span>
+                  </div>
+                )}
 
                 {/* Line items */}
                 <div className="w-full mb-4 space-y-3 overflow-y-auto" style={{ maxHeight: '12rem' }}>

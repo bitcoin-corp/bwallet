@@ -1,3 +1,4 @@
+import { offerInvoiceLink } from '../wallet/purpose/invoiceLinks';
 import { lazy, Suspense, useContext, useState } from 'react';
 import { SEEDLESS_ENABLED } from '../passkey/prf';
 import { createPortal } from 'react-dom';
@@ -68,6 +69,11 @@ export default function ScanSheet({
     // A room X invite link (key in its fragment): straight to the Chat claim screen, never shown or kept here.
     if (XINVITES_ENABLED && parseXInviteLink(text)) {
       offerAppLink(text.trim());
+      onClose();
+      return;
+    }
+    // An invoice QR (wallet/purpose/invoice.ts): the Wallet verifies it and pre-fills Send (still needs confirm).
+    if (offerInvoiceLink(text)) {
       onClose();
       return;
     }

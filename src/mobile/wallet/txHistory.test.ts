@@ -164,7 +164,7 @@ describe('CSV', () => {
     expect(csv.startsWith(BOM)).toBe(true);
     const lines = csv.slice(1).split('\r\n');
     expect(lines[0]).toBe(
-      'date_iso,date_local,txid,direction,amount_sats,amount_bsv,fee_sats,usd_value,usd_rate,counterparty,label,note,account,block_height,confirmations,category,type,asset_kind,asset_id,asset_symbol,asset_qty,app,app_note',
+      'date_iso,date_local,txid,direction,amount_sats,amount_bsv,fee_sats,usd_value,usd_rate,counterparty,label,note,account,block_height,confirmations,category,type,asset_kind,asset_id,asset_symbol,asset_qty,app,app_note,purpose',
     );
     expect(lines.length).toBe(rows.length + 2); // header + rows + trailing empty
     const b = lines.find((l) => l.includes('b'.repeat(64))) as string;
