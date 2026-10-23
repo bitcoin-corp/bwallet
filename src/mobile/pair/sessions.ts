@@ -157,12 +157,45 @@ const ALLOW_LOCAL_RELAY =
 export const dropUntrustedRelays = (all: StoredSession[], allowLocal = ALLOW_LOCAL_RELAY) =>
   all.filter((s) => isAllowedRelay(s.r, allowLocal));
 
+const isCurrent = (s: StoredSession, now = Date.now()) =>
+  s.agent ? now < s.agent.expiresAt : now - s.lastUsed < IDLE_MS;
+
+/**
+ * A session that lapses (24 h idle, agent grant expired, unpinned relay) is dropped like a Disconnect: its socket
+ * closes and the paired key's grants are queued for revocation (b-Aware report, 23 Oct 2026), unless another
+ * current session still uses the same paired key. The queue is written before anything else so a revoke is
+ * never lost.
+ */
+const dropLapsed = (dropped: StoredSession[], kept: StoredSession[]) => {
+  const inUse = new Set(kept.map((s) => pairedOrigin(s.origin)));
+  const origins = [...new Set(dropped.map((s) => pairedOrigin(s.origin)))].filter((o) => !inUse.has(o));
+  if (origins.length) writeQueue([...readQueue(), ...origins]);
+  for (const s of dropped) {
+    replies.forget(s.c);
+    const l = live.get(s.c);
+    if (!l) continue;
+    if (l.retry) clearTimeout(l.retry);
+    live.delete(s.c);
+    l.ws.close();
+  }
+  if (origins.length) void flushRevocations();
+};
+
 const load = (): StoredSession[] => {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? '[]') as StoredSession[];
-    const all = dropUntrustedRelays(raw);
-    if (all.length !== raw.length) localStorage.setItem(KEY, JSON.stringify(all));
-    return all.filter((s) => (s.agent ? Date.now() < s.agent.expiresAt : Date.now() - s.lastUsed < IDLE_MS));
+    if (!Array.isArray(raw)) return [];
+    const now = Date.now();
+    const trusted = new Set(dropUntrustedRelays(raw));
+    const kept = raw.filter((s) => trusted.has(s) && isCurrent(s, now));
+    if (kept.length !== raw.length) {
+      localStorage.setItem(KEY, JSON.stringify(kept));
+      dropLapsed(
+        raw.filter((s) => !kept.includes(s)),
+        kept,
+      );
+    }
+    return kept;
   } catch {
     return [];
   }
@@ -375,6 +408,11 @@ export function beginPairing(scanned: string): Promise<PendingPair> {
       };
       ws.send(JSON.stringify(hello));
       const { key, code } = await deriveSession(P, link.k, link.c);
+      // A new pairing starts with nothing: withdraw whatever an earlier, lapsed pairing for this host left under the
+      // paired key, unless this channel is being resumed or another current session for the host still uses it.
+      if (!load().some((s) => s.c === link.c || s.origin === f.verifiedOrigin))
+        await flushRevocations([pairedOrigin(f.verifiedOrigin)]);
+      if (settled) return;
       settled = true;
       ws.onclose = null;
       ws.onerror = null;
