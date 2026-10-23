@@ -5,7 +5,7 @@ import type { SheetModel } from './permissionBundle';
  * kind looks different: SIGN IN (gold key), CONNECT (wallet ↔ site), PAY (the dollar amount), MINT
  * (the bAvatar), CAREFUL (red, the safe answer is the big button).
  */
-export type ApprovalKind = 'signin' | 'connect' | 'pay' | 'mint' | 'careful';
+export type ApprovalKind = 'signin' | 'connect' | 'pay' | 'mint' | 'careful' | 'post' | 'private';
 
 export interface ApprovalContext {
   /**
@@ -19,21 +19,32 @@ export interface ApprovalContext {
 export const isOverAllowance = (model: Pick<SheetModel, 'payment'>, ctx: ApprovalContext = {}): boolean =>
   !!model.payment && ctx.existingAllowanceSats !== undefined;
 
-/** The card for a one-sheet bundle. Risk wins over everything; then payment; then sign-in vs connect. */
+/**
+ * The card for a one-sheet bundle. Risk wins over everything; then a first post (POST, its cost shown); then
+ * payment; then sign-in, private data, or connect.
+ */
 export const approvalKindForSheet = (
-  model: Pick<SheetModel, 'lines' | 'payment' | 'mode'>,
+  model: Pick<SheetModel, 'lines' | 'payment' | 'mode'> & Partial<Pick<SheetModel, 'purpose'>>,
   ctx: ApprovalContext = {},
 ): ApprovalKind => {
   if (model.lines.some((l) => l.risky)) return 'careful';
   if (isOverAllowance(model, ctx)) return 'careful';
+  if (model.purpose === 'post') return 'post';
   if (model.payment) return 'pay';
   if (model.lines.length > 0 && model.lines.every(isSignInLine)) return 'signin';
+  if (model.lines.length > 0 && model.lines.every((l) => l.signIn || l.privateLabel)) return 'private';
   return 'connect';
 };
 
-/** Sign-in style: a signature/key use for the site itself, nothing kept, nothing shared, nothing seen. */
-const isSignInLine = (l: SheetModel['lines'][number]): boolean =>
-  /^protocol /.test(l.detail) && !/counterparty (?!anyone|self)\S/.test(l.detail);
+/**
+ * Sign-in style: a real sign-in (a signature anyone can check, the public identity key, or a sign-in protocol).
+ * A key for the site with counterparty self is NOT a sign-in ("bchatx agent history" encrypts your Ask b chats).
+ */
+const isSignInLine = (l: SheetModel['lines'][number]): boolean => l.signIn === true;
+
+/** "Keep your Ask b chats private": the label for a PRIVATE card (first private line's label). */
+export const privateTitleLabel = (model: Pick<SheetModel, 'lines'>): string =>
+  model.lines.find((l) => l.privateLabel)?.privateLabel ?? 'data';
 
 /** "bchatx.com" → "bchatx"; "www.app.example.co.uk" → "app.example". Display only. */
 export const siteName = (originator: string): string => {

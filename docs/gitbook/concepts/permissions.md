@@ -23,15 +23,36 @@ Each prompt may be a one-time grant or a session-long grant, depending on the us
 
 ## Handling rejection
 
-When the user denies a prompt, the action returns `error: 'user-rejected'` (or throws — depends on the action):
+When the user declines (Not now, Deny, closing the sheet, or a request a remembered answer refuses), every
+BRC-100 call rejects with one standard error, so a site can tell "the user said no" from "the wallet failed":
 
-```tsx
-const result = await sendBsv.execute(ctx, { requests: [...] });
-if (result.error === 'user-rejected') {
-  // surface a friendly message; let them retry
-  return;
+```ts
+{
+  message: 'Permission denied.',   // unchanged, for sites that match on text
+  code: 'ERR_PERMISSION_DENIED',   // stable machine code (the same code @bsv/wallet-toolbox uses)
+  status: 403,
+  isError: true,
 }
 ```
+
+The same code is used on every path: the extension (`window.CWI`), the phone and web in-app browser, bApps in a
+frame (XDM reply `{ status: 'error', code: 'ERR_PERMISSION_DENIED', description: 'Permission denied.' }`) and
+phone-paired sessions (`{ t: 'res', error: { code: 'ERR_PERMISSION_DENIED', message: 'Permission denied.' } }`).
+Anything else (insufficient funds, locked wallet, network) never carries this code.
+
+```ts
+try {
+  await window.CWI.createAction(args);
+} catch (e) {
+  if ((e as { code?: string }).code === 'ERR_PERMISSION_DENIED') {
+    // the user said no: say nothing alarming, offer to try again
+    return;
+  }
+  throw e; // a real failure
+}
+```
+
+Older 1sat-actions helpers may still report `error: 'user-rejected'`.
 
 {% hint style="info" %}
 Always design your UI to recover gracefully. Users sometimes click reject by mistake, or want to inspect the prompt and try again.

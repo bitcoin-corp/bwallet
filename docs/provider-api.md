@@ -939,6 +939,11 @@ try {
 }
 ```
 
+**The user declined.** A refused BRC-100 call (Not now / Deny, or a remembered deny) rejects with
+`{ message: 'Permission denied.', code: 'ERR_PERMISSION_DENIED', status: 403, isError: true }` on every path
+(extension, in-app browser, bApp frames, paired sessions). Check `err.code === 'ERR_PERMISSION_DENIED'` to tell a
+refusal from a failure. See `docs/gitbook/concepts/permissions.md`.
+
 ---
 
 ## Packages

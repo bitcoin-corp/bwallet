@@ -49,6 +49,9 @@ export type ResponseEventDetail = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data?: any;
   error?: string | undefined | boolean;
+  /** 'ERR_PERMISSION_DENIED' when the user declined (services/userDenied.ts); absent for failures. */
+  code?: string;
+  status?: number;
 };
 
 export type ResponseEvent = {

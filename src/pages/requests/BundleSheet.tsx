@@ -17,7 +17,7 @@ import {
   sheetDecisions,
   type BundleRequest,
 } from '../../services/permissionBundle';
-import { approvalKindForSheet, siteName } from '../../services/approvalKind';
+import { approvalKindForSheet, privateTitleLabel, siteName } from '../../services/approvalKind';
 import { ApprovalCard, Check, Chip, Cross, SiteTile } from '../../components/approval/ApprovalCard';
 import { CARD } from '../../components/approval/cardTheme';
 import { CarefulHero, ConnectHero, PayHero, SignInHero } from '../../components/approval/ApprovalHeroes';
@@ -138,15 +138,21 @@ export const BundleSheet = (props: {
       ? (allowance.existingSats / 1e8) * allowance.usdPerBsv
       : undefined;
   const primary =
-    kind === 'signin'
-      ? 'Sign in'
-      : kind === 'pay'
-        ? model.mode === 'connectAndPay'
-          ? `Connect & pay ${payLabel}`
-          : `Pay ${payLabel}`
-        : many
-          ? 'Allow all'
-          : 'Connect';
+    kind === 'post'
+      ? model.payment
+        ? `Allow & pay ${payLabel}`
+        : 'Allow posting'
+      : kind === 'private'
+        ? 'Allow'
+        : kind === 'signin'
+          ? 'Sign in'
+          : kind === 'pay'
+            ? model.mode === 'connectAndPay'
+              ? `Connect & pay ${payLabel}`
+              : `Pay ${payLabel}`
+            : many
+              ? 'Allow all'
+              : 'Connect';
   const nextAllowance = () => {
     const i = ALLOWANCE_CHOICES_USD.indexOf(allowanceUsd as (typeof ALLOWANCE_CHOICES_USD)[number]);
     const next = ALLOWANCE_CHOICES_USD[(i + 1) % ALLOWANCE_CHOICES_USD.length];
@@ -359,6 +365,50 @@ export const BundleSheet = (props: {
             : 'Every payment asks you first'}
         </div>
       </>
+    );
+  } else if (kind === 'post') {
+    // One sheet for a site's first post (identity basket, post signature, the post's cost). The amount is plain
+    // text, never themed or hidden (one-sheet rule).
+    hero = <ConnectHero site={request.originator} />;
+    siteSub = 'Wants to post for you';
+    title = <>Allow {gold(name)} to post for you</>;
+    body = (
+      <>
+        <div className="flex flex-wrap" style={{ gap: 8 }}>
+          <Chip>
+            <Check />
+            Post and like as you
+          </Chip>
+          <Chip>
+            <Check />
+            Nothing else moves
+          </Chip>
+        </div>
+        <div className="flex items-center gap-2" style={{ fontSize: 14 }} data-testid="post-cost">
+          <Check size={18} />
+          {model.payment
+            ? `This post costs ${payLabel}${payUsd !== undefined ? ` (${model.payment.satoshis.toLocaleString()} sats)` : ''}`
+            : allowanceSetsUsd > 0
+              ? `Posts cost a little each, up to ${fmtUsd(allowanceSetsUsd)} a month without asking`
+              : 'Each paid post asks you first'}
+        </div>
+      </>
+    );
+  } else if (kind === 'private') {
+    hero = <SignInHero />;
+    siteSub = 'Private data';
+    title = <>Keep your {gold(privateTitleLabel(model))} private</>;
+    body = (
+      <div className="flex flex-wrap" style={{ gap: 8, marginTop: 4 }}>
+        <Chip>
+          <Check />
+          Only you can read them
+        </Chip>
+        <Chip>
+          <Check />
+          No money moves
+        </Chip>
+      </div>
     );
   } else if (kind === 'signin') {
     hero = <SignInHero />;
