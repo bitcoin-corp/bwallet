@@ -351,8 +351,11 @@ export const initWallet = async (
   //    One store per account (b-Aware report, 23-24 Oct 2026): grants and allowances never cross accounts.
   const accountId =
     chromeStorageService.getCurrentAccountObject().selectedAccount || account?.addresses?.identityAddress;
-  if (!accountId) throw new Error('No current account for the permission store');
-  const permissionStore = await openAccountPermissionStore(accountId, chromeStorageService.getAllAccounts().length);
+  // No account yet (fresh install): a store of its own, never the legacy shared one, so start-up cannot fail here.
+  const permissionStore = await openAccountPermissionStore(
+    accountId || 'no-account',
+    chromeStorageService.getAllAccounts().length,
+  );
 
   // 4. Build per-asset permission modules (1sat / opns / bsv21 / lock).
   //    Shared toolkit; separate BRC-99 scheme ids. Base wallet is used for
