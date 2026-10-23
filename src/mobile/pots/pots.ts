@@ -39,6 +39,11 @@ export type Payee = {
   merchantKey?: string;
   /** One of ownServicePayees() (bChat, $b agent). Absent = a person / paymail standing order. */
   service?: string;
+  /**
+   * The paymail's identity key when the order was set up (or first verified, for older orders). Automatic payments
+   * only go to this key; a different one flags the order for review (payeeBinding.ts).
+   */
+  pinnedKey?: string;
 };
 
 export type Subscription = {
@@ -71,6 +76,11 @@ export type Subscription = {
   lastReceipt?: { at: number; txid: string; usd: number; sats: number };
   /** When the user cancelled. A tombstone: once set, no write can move this order out of 'cancelled'. */
   cancelledAt?: number;
+  /**
+   * The payee's destination failed verification (changed key, bad binding): nothing is paid until the user
+   * confirms the new destination (confirmPayeeReview).
+   */
+  needsReview?: { reason: string; at: number; servedKey?: string };
 };
 
 const POTS = 'bwallet.pots';
@@ -459,6 +469,19 @@ export const resumeSub = (id: string, now = Date.now()) => {
     { resume: true },
   );
   appendAgentLog(s.potId, { at: now, action: 'sub-resume', detail: `Resumed ${s.payee.name}`, usd: 0 });
+};
+
+/** The user checked and accepted the payee's current destination: pin its key and let payments go again. */
+export const confirmPayeeReview = (id: string, key: string | undefined, now = Date.now()) => {
+  const s = getSub(id);
+  if (!s) return;
+  saveSub({ ...s, payee: { ...s.payee, pinnedKey: key }, needsReview: undefined, lastError: undefined });
+  appendAgentLog(s.potId, {
+    at: now,
+    action: 'sub-review',
+    detail: `Confirmed new destination for ${s.payee.name}`,
+    usd: 0,
+  });
 };
 
 export const cancelSub = (id: string, now = Date.now()) => {

@@ -1,4 +1,5 @@
 import { openAccountPermissionStore } from './services/accountPermissionStore';
+import { openSpendLedger, withLocalSpendLedger } from './services/spendLedger';
 import { rememberRefusals } from './services/broadcastRefusals';
 import { knownOnChain, recoverMinedFailedActions, type RecoverReport } from './services/recoverFailed';
 import { singleFlight } from './services/addressResync';
@@ -358,6 +359,10 @@ export const initWallet = async (
     chromeStorageService.getAllAccounts().length,
   );
 
+  // Month-to-date app spend kept on this device, per account, so a remote storage server cannot under-report it
+  // and let payments past a monthly allowance through (services/spendLedger.ts, b-Aware report 23 Oct 2026).
+  const spendLedger = await openSpendLedger(accountId || 'no-account');
+
   // 4. Build per-asset permission modules (1sat / opns / bsv21 / lock).
   //    Shared toolkit; separate BRC-99 scheme ids. Base wallet is used for
   //    internal apply crypto so createSignature does not re-prompt.
@@ -379,11 +384,14 @@ export const initWallet = async (
   const wallet = guardReservedBaskets(
     guardReservedProtocols(
       preserveOriginalErrors(
-        new LocalWalletPermissionsManager(
-          baseWallet,
-          ADMIN_ORIGINATOR,
-          { permissionModules: assetModules },
-          { store: permissionStore },
+        withLocalSpendLedger(
+          new LocalWalletPermissionsManager(
+            baseWallet,
+            ADMIN_ORIGINATOR,
+            { permissionModules: assetModules },
+            { store: permissionStore },
+          ),
+          spendLedger,
         ),
       ),
       ADMIN_ORIGINATOR,

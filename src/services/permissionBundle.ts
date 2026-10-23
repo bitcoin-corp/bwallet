@@ -213,6 +213,10 @@ export interface SheetLine {
   risky: boolean;
   /** Initial tick. */
   checked: boolean;
+  /** A real sign-in line (a signature anyone can check, the public identity key, or a sign-in protocol). */
+  signIn?: boolean;
+  /** For a key used only for your own data (counterparty self): what it keeps private, e.g. "Ask b chats". */
+  privateLabel?: string;
 }
 
 export interface SheetPayment {
@@ -229,6 +233,8 @@ export interface SheetModel {
   payment?: SheetPayment;
   /** Title verb for the header and the main button. */
   mode: 'connect' | 'pay' | 'connectAndPay';
+  /** 'post': a site's first post (identity basket and/or post signature, maybe the post's cost) on one sheet. */
+  purpose?: 'post';
 }
 
 const protoName = (r: BundleRequest) => String(r.protocolID?.[1] ?? 'unknown');
@@ -257,17 +263,75 @@ export const isIdentityKeyRequest = (r: BundleRequest): boolean =>
   r.protocolID?.[1] === 'identity key retrieval' &&
   (r.counterparty === undefined || r.counterparty === 'self');
 
+/** Protocol names that are a sign-in (the site checks who you are), not general key use. */
+const SIGN_IN_PROTOCOL = /\b(auth|authentication|sign[- ]?in|login|log[- ]?in)\b/i;
+
+/** True for a line that really is a sign-in: nothing kept, nothing shared, only "this is you". */
+export const isSignInRequest = (r: BundleRequest): boolean =>
+  r.type === 'protocol' &&
+  !r.privileged &&
+  (r.counterparty === 'anyone' ||
+    isIdentityKeyRequest(r) ||
+    (SIGN_IN_PROTOCOL.test(protoName(r)) &&
+      (r.counterparty === undefined || r.counterparty === 'self' || r.counterparty === 'anyone')));
+
+/** Self-only keys we can name in plain words (protocol name → what they keep private). */
+const PRIVATE_LABELS: [RegExp, string][] = [
+  [/agent history/i, 'Ask b chats'],
+  [/\b(chat|message)s?\b/i, 'chats'],
+  [/\bnotes?\b/i, 'notes'],
+  [/\b(history|private|backup|vault|encrypt)/i, 'data'],
+];
+
+/** "Keep your … private" label for a key used only on your own data, or undefined. */
+export const privateLabelFor = (r: BundleRequest): string | undefined => {
+  if (r.type !== 'protocol' || r.privileged || r.counterparty !== 'self' || isSignInRequest(r)) return undefined;
+  const name = protoName(r);
+  return PRIVATE_LABELS.find(([re]) => re.test(name))?.[1];
+};
+
+/**
+ * A site's first post asks for several things at once: its identity basket ("bap"), the post signature (protocol
+ * "sigma") and the post's cost. These are the companions the wallet asks for together, so the user sees ONE sheet
+ * ("Allow <site> to post for you") rather than three in a row.
+ */
+export const POST_BASKET = 'bap';
+export const POST_PROTOCOL: [1, 'sigma'] = [1, 'sigma'];
+
+const isPostSignature = (r: BundleRequest): boolean =>
+  r.type === 'protocol' && !r.privileged && protoName(r).toLowerCase() === POST_PROTOCOL[1];
+const isPostBasket = (r: BundleRequest): boolean => r.type === 'basket' && r.basket === POST_BASKET;
+
+/** True when a request is one of the first-post set (so its companions are asked for on the same sheet). */
+export const isPostPackRequest = (r: BundleRequest): boolean => isPostSignature(r) || isPostBasket(r);
+
+/** The first-post companions still missing from a bundle, given one of its requests. */
+export const postPackCompanions = (
+  items: Pick<BundleRequest, 'type' | 'basket' | 'protocolID' | 'privileged'>[],
+): ('basket' | 'protocol')[] => {
+  const all = items as BundleRequest[];
+  if (!all.some(isPostPackRequest)) return [];
+  const missing: ('basket' | 'protocol')[] = [];
+  if (!all.some(isPostBasket)) missing.push('basket');
+  if (!all.some(isPostSignature)) missing.push('protocol');
+  return missing;
+};
+
 const lineText = (r: BundleRequest): string => {
   switch (r.type) {
     case 'protocol': {
       if (isIdentityKeyRequest(r)) return 'See your public identity (the key that names you)';
       if (r.counterparty === 'anyone') return "Prove it's you (a signature anyone can check)";
+      if (isPostSignature(r)) return 'Sign your posts and likes as you';
+      const kept = privateLabelFor(r);
+      if (kept) return `Keep your ${kept} private (encrypted with your keys, only for you)`;
       if (protoLevel(r) === 2 && r.counterparty && r.counterparty !== 'self')
         return `Sign and encrypt with your "${protoName(r)}" keys, shared with one named person or service`;
       // Not "sign in": this lets the app sign anything with keys derived from your wallet (audit C1).
       return `Sign and encrypt anything with your "${protoName(r)}" keys`;
     }
     case 'basket':
+      if (isPostBasket(r)) return 'Use your public profile (name and picture) on its posts';
       return 'Keep its tickets and tokens in your wallet';
     case 'certificate': {
       const fields = r.certificate?.fields ?? [];
@@ -333,10 +397,19 @@ export const buildSheetModel = (bundle: Pick<PermissionBundle, 'originator' | 'i
     // The public identity key is the other exception: Sign in with bWalletX asks for it first, and an unticked line
     // made Allow answer "denied" for it ("Permission denied." on every site since 5.2.35, 20 Oct 2026).
     const checked = !risky && (r.type !== 'protocol' || r.counterparty === 'anyone' || isIdentityKeyRequest(r));
-    lines.push({ requestID: r.requestID, text: lineText(r), detail: lineDetail(r), risky, checked });
+    lines.push({
+      requestID: r.requestID,
+      text: lineText(r),
+      detail: lineDetail(r),
+      risky,
+      checked,
+      signIn: isSignInRequest(r),
+      privateLabel: privateLabelFor(r),
+    });
   }
   const mode: SheetModel['mode'] = payment ? (lines.length ? 'connectAndPay' : 'pay') : 'connect';
-  return { originator: bundle.originator, lines, payment, mode };
+  const post = bundle.items.some(isPostSignature) || bundle.items.some(isPostBasket);
+  return { originator: bundle.originator, lines, payment, mode, ...(post ? { purpose: 'post' as const } : {}) };
 };
 
 /**
