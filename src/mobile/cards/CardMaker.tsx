@@ -31,6 +31,11 @@ import {
   type MakeKind,
   type Occasion,
   priceFor,
+  AD_LIMITS,
+  adPriceFor,
+  adTitle,
+  getAdQuote,
+  type AdFormatId,
 } from './api';
 import { SPICY_ENABLED } from '../storeBuild';
 import { isWebApp } from '../webApp';
@@ -64,13 +69,22 @@ type State =
   | { k: 'failed'; pay: CardPayment; msg: string; canRetry: boolean }
   | { k: 'error'; msg: string; quote?: CardQuote };
 
+const AD_FORMAT_LABELS: [AdFormatId, string][] = [
+  ['square', 'Square'],
+  ['story', 'Story'],
+  ['banner', 'Banner'],
+];
+
 const usd = (n: number) => `$${n < 1 ? n.toFixed(2) : n.toFixed(2).replace(/\.00$/, '')}`;
 
 export default function CardMaker({
   onBack,
   onMint,
+  initialKind = 'card',
 }: {
   onBack: () => void;
+  /** 'ad' opens on the Advert tab (/m/bmint/mint/ad, bwalletx.com/bads). */
+  initialKind?: MakeKind;
   /** Hand the card to the Picture mint (the user pays the normal mint fee there). */
   onMint: (file: File, title: string, to: string) => void;
 }) {
@@ -78,7 +92,13 @@ export default function CardMaker({
   const [price, setPrice] = useState<CardPrice | null>(null);
   const [closed, setClosed] = useState(false);
   const [priceErr, setPriceErr] = useState('');
-  const [make_, setMake] = useState<MakeKind>('card');
+  const [make_, setMake] = useState<MakeKind>(initialKind);
+  const [business, setBusiness] = useState('');
+  const [offer, setOffer] = useState('');
+  const [audience, setAudience] = useState('');
+  const [adStyle, setAdStyle] = useState('');
+  const [colours, setColours] = useState('');
+  const [format, setFormat] = useState<AdFormatId>('square');
   const [model, setModel] = useState('');
   const [spicy, setSpicy] = useState(false);
   const [adultOk, setAdultOk] = useState(() => SPICY_ENABLED && adultConfirmedThisSession());
@@ -107,26 +127,32 @@ export default function CardMaker({
   }, []);
 
   const chosen = price?.models?.find((m) => m.id === model);
-  const canSpicy = SPICY_ENABLED && spicyAvailable(chosen, { web, optIn });
+  const isAd = make_ === 'ad';
+  const adPrice = isAd && price ? adPriceFor(price, format) : undefined;
+  const adsOffered = !!price?.ads?.formats.length;
+  const canSpicy = !isAd && SPICY_ENABLED && spicyAvailable(chosen, { web, optIn });
   const wantSpicy = canSpicy && spicy && adultOk;
   const kind = price ? (price.kinds.find((k) => k.id === make_) ?? price.kinds[0]) : undefined;
-  const shownSats = price ? priceFor(price, make_, model || undefined) : undefined;
-  // USD only for the kind's own price (display only; sats are what is paid).
-  const shownUsd = kind && shownSats === kind.sats ? usd(kind.usd) : '';
-  const canAsk = !!price && !closed && prompt.trim().length > 0 && (st.k === 'form' || st.k === 'error');
+  const shownSats = isAd ? adPrice?.sats : price ? priceFor(price, make_, model || undefined) : undefined;
+  // USD only for the kind's (or the ad format's) own price (display only; sats are what is paid).
+  const shownUsd = isAd ? (adPrice ? usd(adPrice.usd) : '') : kind && shownSats === kind.sats ? usd(kind.usd) : '';
+  const filled = isAd ? !!adPrice && !!business.trim() && !!offer.trim() : prompt.trim().length > 0;
+  const canAsk = !!price && !closed && filled && (st.k === 'form' || st.k === 'error');
 
   const ask = async () => {
     if (!price) return;
     setSt({ k: 'quoting' });
     try {
-      const quote = await getQuote(f, {
-        prompt,
-        kind: make_,
-        model: model || undefined,
-        occasion,
-        to,
-        spicy: wantSpicy,
-      });
+      const quote = isAd
+        ? await getAdQuote(f, { business, offer, audience, style: adStyle, colours, format })
+        : await getQuote(f, {
+            prompt,
+            kind: make_,
+            model: model || undefined,
+            occasion,
+            to,
+            spicy: wantSpicy,
+          });
       setSt({ k: 'ready', quote });
     } catch (e) {
       if (e instanceof CardError && e.code === 'unavailable') {
@@ -176,10 +202,34 @@ export default function CardMaker({
     void make(st.pay, 0);
   };
 
+  const resultTitle = () =>
+    make_ === 'card' ? cardTitle(occasion, to) : isAd ? adTitle(business) : prompt.trim().slice(0, 60) || 'My picture';
+
+  /** Download: the same checked file the mint gets, saved to the device. */
+  const download = async () => {
+    if (st.k !== 'made') return;
+    setHanding(true);
+    try {
+      const file = await cardFile(f, st.card, resultTitle());
+      const url = URL.createObjectURL(file);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (e) {
+      setPriceErr(e instanceof Error ? e.message : "Couldn't download it");
+    } finally {
+      setHanding(false);
+    }
+  };
+
   const mintIt = async () => {
     if (st.k !== 'made') return;
     setHanding(true);
-    const title = make_ === 'card' ? cardTitle(occasion, to) : prompt.trim().slice(0, 60) || 'My picture';
+    const title = resultTitle();
     try {
       onMint(await cardFile(f, st.card, title), title, make_ === 'card' ? recipientHandle(to) : '');
     } catch (e) {
@@ -193,8 +243,13 @@ export default function CardMaker({
   if (st.k === 'ready' || st.k === 'paying' || (st.k === 'error' && st.quote)) {
     const quote = st.quote!;
     const busy = st.k === 'paying';
-    const dollars = kind && kind.sats === quote.sats ? usd(kind.usd) : `${quote.sats.toLocaleString()} sats`;
-    const what = make_ === 'card' ? 'card' : 'picture';
+    const dollars =
+      isAd && adPrice && adPrice.sats === quote.sats
+        ? usd(adPrice.usd)
+        : !isAd && kind && kind.sats === quote.sats
+          ? usd(kind.usd)
+          : `${quote.sats.toLocaleString()} sats`;
+    const what = make_ === 'card' ? 'card' : isAd ? 'advert' : 'picture';
     return createPortal(
       <div
         className="fixed inset-0 z-[1110] flex flex-col"
@@ -208,7 +263,7 @@ export default function CardMaker({
         <ApprovalCard
           ours
           site="bWalletX"
-          siteSub={make_ === 'card' ? 'Greeting card' : 'AI picture'}
+          siteSub={make_ === 'card' ? 'Greeting card' : isAd ? 'bAd · b makes your advert' : 'AI picture'}
           onClose={() => setSt({ k: 'form' })}
           closeLabel="Close"
           closeDisabled={busy}
@@ -224,7 +279,7 @@ export default function CardMaker({
           details={
             <span>
               {quote.sats.toLocaleString()} sats to {quote.payTo} for one AI {what}
-              {chosen ? ` (${chosen.label})` : ''}. The price holds until{' '}
+              {isAd ? ' (Grok Imagine)' : chosen ? ` (${chosen.label})` : ''}. The price holds until{' '}
               {new Date(quote.expiresAt).toLocaleTimeString()}. If the card fails to come out you get one free retry;
               minting it afterwards costs the normal network fee.
             </span>
@@ -238,8 +293,8 @@ export default function CardMaker({
               To <span style={{ fontFamily: 'monospace', color: '#fff', wordBreak: 'break-all' }}>{quote.payTo}</span>
             </div>
             <div className="flex flex-wrap" style={{ gap: 8 }}>
-              <Chip>{make_ === 'card' ? occasion || 'Card' : 'Picture'}</Chip>
-              {chosen && <Chip>{chosen.label}</Chip>}
+              <Chip>{make_ === 'card' ? occasion || 'Card' : isAd ? `${adPrice?.label ?? 'Advert'}` : 'Picture'}</Chip>
+              {isAd ? <Chip>Grok Imagine</Chip> : chosen && <Chip>{chosen.label}</Chip>}
               <Chip>Paid in BSV</Chip>
             </div>
           </div>
@@ -281,7 +336,7 @@ export default function CardMaker({
               key={st.at}
               startedAt={st.at}
               imageUrl={st.k === 'made' ? st.card.imageUrl : undefined}
-              alt={make_ === 'card' ? cardTitle(occasion, to) : 'Your picture'}
+              alt={make_ === 'card' ? cardTitle(occasion, to) : isAd ? adTitle(business) : 'Your picture'}
               blurred={st.k === 'made' && SPICY_ENABLED && !!st.card.spicy && !revealed}
             >
               {st.k === 'made' && SPICY_ENABLED && st.card.spicy && (
@@ -317,9 +372,21 @@ export default function CardMaker({
               >
                 {handing ? 'Getting it ready…' : 'Mint it'}
               </button>
+              {isAd && (
+                <button
+                  type="button"
+                  disabled={handing}
+                  onClick={() => void download()}
+                  className="h-11 rounded-xl font-bold border cursor-pointer bg-transparent disabled:opacity-50"
+                  style={{ borderColor: GOLD, color: GOLD }}
+                >
+                  Download
+                </button>
+              )}
               <p className="text-xs m-0" style={{ color: '#999' }}>
                 Mint it: a 1-sat NFT in your wallet, in your name, for the normal network fee.
                 {make_ === 'card' ? ' Then you can send it to their $name.' : ''}
+                {isAd ? ' Or download it and post it anywhere. The ad is yours.' : ''}
               </p>
             </>
           )}
@@ -343,7 +410,7 @@ export default function CardMaker({
         <>
           {inFlight && (
             <div className="rounded-xl border p-3 flex flex-col gap-2" style={{ borderColor: GOLD }}>
-              <span>You paid for a card that hasn&apos;t come out yet.</span>
+              <span>You paid for a card, picture or advert that hasn&apos;t come out yet.</span>
               <button
                 type="button"
                 onClick={() => {
@@ -357,11 +424,16 @@ export default function CardMaker({
               </button>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-1 rounded-xl p-1 border" style={{ borderColor: BORDER }} role="tablist">
+          <div
+            className={`grid ${adsOffered || isAd ? 'grid-cols-3' : 'grid-cols-2'} gap-1 rounded-xl p-1 border`}
+            style={{ borderColor: BORDER }}
+            role="tablist"
+          >
             {(
               [
                 ['card', 'Greeting card'],
                 ['image', 'Any picture'],
+                ...(adsOffered || isAd ? ([['ad', 'Advert']] as const) : []),
               ] as const
             ).map(([id, label]) => (
               <button
@@ -406,20 +478,102 @@ export default function CardMaker({
               onChange={(e) => setTo(e.target.value)}
             />
           )}
-          <textarea
-            className={input}
-            style={{ borderColor: BORDER, color: '#fff' }}
-            placeholder="What should it show? A cat in a party hat on a gold beach…"
-            aria-label="What should the card show?"
-            rows={3}
-            value={prompt}
-            maxLength={MAX_PROMPT}
-            onChange={(e) => setPrompt(e.target.value)}
-          />
-          <div className="text-xs" style={{ color: '#999' }}>
-            {prompt.length}/{MAX_PROMPT}
-          </div>
-          {!!price?.models?.length && (
+          {isAd ? (
+            <div className="flex flex-col gap-2" data-testid="ad-form">
+              <p className="m-0 text-xs" style={{ color: '#bbb' }}>
+                Describe your business. b makes the ad with Grok Imagine; you pay in BSV and it&apos;s yours, minted.
+              </p>
+              {price && !adsOffered && (
+                <div className="rounded-xl border p-3" style={{ borderColor: GOLD }}>
+                  <b>Adverts are coming soon.</b> Nothing to pay yet.
+                </div>
+              )}
+              <input
+                className={input}
+                style={{ borderColor: BORDER, color: '#fff' }}
+                placeholder="Your business name"
+                aria-label="Your business name"
+                value={business}
+                maxLength={AD_LIMITS.business}
+                onChange={(e) => setBusiness(e.target.value)}
+              />
+              <textarea
+                className={input}
+                style={{ borderColor: BORDER, color: '#fff' }}
+                placeholder="What should the ad sell? Fresh sourdough every morning, 20% off this week…"
+                aria-label="What should the ad sell?"
+                rows={3}
+                value={offer}
+                maxLength={AD_LIMITS.offer}
+                onChange={(e) => setOffer(e.target.value)}
+              />
+              <div className="text-xs" style={{ color: '#999' }}>
+                {offer.length}/{AD_LIMITS.offer}
+              </div>
+              <input
+                className={input}
+                style={{ borderColor: BORDER, color: '#fff' }}
+                placeholder="Who is it for? (optional)"
+                aria-label="Who is it for?"
+                value={audience}
+                maxLength={AD_LIMITS.audience}
+                onChange={(e) => setAudience(e.target.value)}
+              />
+              <input
+                className={input}
+                style={{ borderColor: BORDER, color: '#fff' }}
+                placeholder="Style, e.g. bold and modern (optional)"
+                aria-label="Style"
+                value={adStyle}
+                maxLength={AD_LIMITS.style}
+                onChange={(e) => setAdStyle(e.target.value)}
+              />
+              <input
+                className={input}
+                style={{ borderColor: BORDER, color: '#fff' }}
+                placeholder="Brand colours, e.g. navy and orange (optional)"
+                aria-label="Brand colours"
+                value={colours}
+                maxLength={AD_LIMITS.colours}
+                onChange={(e) => setColours(e.target.value)}
+              />
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Format">
+                {AD_FORMAT_LABELS.map(([id, label]) => {
+                  const fp = price ? adPriceFor(price, id) : undefined;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      aria-pressed={format === id}
+                      onClick={() => setFormat(id)}
+                      className="rounded-full border px-3 py-1.5 text-xs font-bold cursor-pointer"
+                      style={chip(format === id)}
+                    >
+                      {label}
+                      {fp ? ` · ${fp.aspect}` : ''}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <>
+              <textarea
+                className={input}
+                style={{ borderColor: BORDER, color: '#fff' }}
+                placeholder="What should it show? A cat in a party hat on a gold beach…"
+                aria-label="What should the card show?"
+                rows={3}
+                value={prompt}
+                maxLength={MAX_PROMPT}
+                onChange={(e) => setPrompt(e.target.value)}
+              />
+              <div className="text-xs" style={{ color: '#999' }}>
+                {prompt.length}/{MAX_PROMPT}
+              </div>
+            </>
+          )}
+          {!isAd && !!price?.models?.length && (
             <label className="flex flex-col gap-1 text-xs" style={{ color: '#bbb' }}>
               Model
               <select

@@ -411,3 +411,68 @@ describe('generating screen helpers', () => {
     expect(statusLine(999)).toBe(STATUS_LINES[STATUS_LINES.length - 1]);
   });
 });
+
+describe('bAds (advert maker)', () => {
+  const priced = (ads: unknown) =>
+    fake([200, { kinds: [{ id: 'card', label: 'Card', sats: 5000, usd: 0.5 }], ads, payTo: ADDR }]);
+  test('price: ad formats kept when valid, dropped when broken; limits cover the dearest ad', async () => {
+    const { adPriceFor } = await import('./api');
+    const p = await getPrice(
+      priced({
+        model: 'grok-imagine',
+        formats: [
+          { id: 'square', label: 'Square post', aspect: '1:1', sats: 10_000, usd: 1 },
+          { id: 'story', label: 'Story', aspect: '9:16', sats: 12_000, usd: 1.2 },
+          { id: 'poster', label: 'x', aspect: '1:1', sats: 1, usd: 0 },
+          { id: 'banner', label: 'Banner', aspect: '16:9', sats: 0, usd: 0 },
+        ],
+      }).f,
+    );
+    expect(p.ads?.formats.map((x) => x.id)).toEqual(['square', 'story']);
+    expect(adPriceFor(p, 'story')?.sats).toBe(12_000);
+    expect(adPriceFor(p, 'banner')).toBeUndefined();
+    expect(limitsFrom(p).maxSats).toBe(24_000);
+    expect((await getPrice(priced(null).f)).ads).toBeNull();
+    expect((await getPrice(priced(undefined).f)).ads).toBeNull();
+  });
+  test('quote body: trims, caps, requires business + offer, drops empty optionals', async () => {
+    const { adQuoteBody } = await import('./api');
+    expect(adQuoteBody({ business: '  Rosa  ', offer: ' Bread ', audience: ' ', format: 'story' })).toEqual({
+      kind: 'ad',
+      business: 'Rosa',
+      offer: 'Bread',
+      format: 'story',
+    });
+    expect(adQuoteBody({ business: 'x'.repeat(99), offer: 'y'.repeat(999), format: 'square' }).offer).toHaveLength(200);
+    expect(() => adQuoteBody({ business: '', offer: 'x', format: 'square' })).toThrow();
+    expect(() => adQuoteBody({ business: 'x', offer: '  ', format: 'square' })).toThrow();
+    expect(adQuoteBody({ business: 'A', offer: 'B', colours: 'navy', style: 'bold', format: 'banner' })).toMatchObject({
+      colours: 'navy',
+      style: 'bold',
+    });
+  });
+  test('getAdQuote posts the brief to /quote and checks the quote like a card', async () => {
+    const { getAdQuote } = await import('./api');
+    const { f, calls } = fake([200, quote()]);
+    const q = await getAdQuote(f, { business: 'Rosa', offer: 'Bread', format: 'square' });
+    expect(q.quoteId).toBe('q1');
+    expect(calls[0].url).toBe(`${CARDS_API}/v1/cards/quote`);
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({
+      kind: 'ad',
+      business: 'Rosa',
+      offer: 'Bread',
+      format: 'square',
+    });
+    const bad = fake([200, quote({ payTo: 'nope' })]);
+    await expect(getAdQuote(bad.f, { business: 'Rosa', offer: 'Bread', format: 'square' })).rejects.toThrow();
+    const refused = fake([422, { error: "Ads can't use other brands' logos." }]);
+    await expect(getAdQuote(refused.f, { business: 'Nike', offer: 'Shoes', format: 'square' })).rejects.toThrow(
+      /can't be made: Ads can't use other brands' logos\. Nothing was charged/,
+    );
+  });
+  test('adTitle names the mint', async () => {
+    const { adTitle } = await import('./api');
+    expect(adTitle("Rosa's Bakery")).toBe("Rosa's Bakery advert");
+    expect(adTitle('  ')).toBe('My advert');
+  });
+});

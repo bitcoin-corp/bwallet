@@ -14,6 +14,7 @@ import {
   FileSignature,
   FileText,
   Gift,
+  Megaphone,
   Globe,
   Image as ImageIcon,
   LineChart,
@@ -126,7 +127,7 @@ const GOLD = 'var(--bw-accent-hi)';
 const PANEL = '#17191E';
 const BORDER = '#3a2f0c';
 
-type Step = 'choose' | 'ticket' | 'token' | 'domain' | 'media' | 'done' | 'card';
+type Step = 'choose' | 'ticket' | 'token' | 'domain' | 'media' | 'done' | 'card' | 'ad';
 /** `type` is the content type to inscribe (3D: from magic bytes, not the browser's guess). */
 type Picked = { file: File; url: string; type: string };
 
@@ -474,11 +475,13 @@ export const MintSheet = ({
                   ? 'Tokenise a domain'
                   : step === 'card'
                     ? 'Greeting card'
-                    : step === 'choose'
-                      ? 'Mint'
-                      : step === 'done'
-                        ? 'Minted'
-                        : 'Mint'}
+                    : step === 'ad'
+                      ? 'Order a bAd'
+                      : step === 'choose'
+                        ? 'Mint'
+                        : step === 'done'
+                          ? 'Minted'
+                          : 'Mint'}
           </span>
           <button type="button" onClick={onClose} className="bg-transparent border-0 cursor-pointer" aria-label="Close">
             <X size={20} color="#aaa" />
@@ -560,6 +563,15 @@ export const MintSheet = ({
         {step === 'card' && CardMaker && (
           <Suspense fallback={null}>
             <CardMaker onBack={() => setStep('choose')} onMint={(f, t, to) => void mintCard(f, t, to)} />
+          </Suspense>
+        )}
+        {step === 'ad' && CardMaker && (
+          <Suspense fallback={null}>
+            <CardMaker
+              initialKind="ad"
+              onBack={() => setStep('choose')}
+              onMint={(f, t, to) => void mintCard(f, t, to)}
+            />
           </Suspense>
         )}
 
@@ -965,6 +977,14 @@ const MINT_TILES: MintTile[] = [
           sub: 'Describe it, we make it, you mint it',
           when: () => GREETING_CARDS_ENABLED,
           step: 'card' as Step,
+        },
+        {
+          id: 'ad',
+          icon: <Megaphone size={18} />,
+          title: 'Order a bAd',
+          sub: 'Describe your business, b makes the ad',
+          when: () => GREETING_CARDS_ENABLED,
+          step: 'ad' as Step,
         },
       ]
     : []),

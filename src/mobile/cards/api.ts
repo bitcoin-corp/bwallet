@@ -26,9 +26,20 @@ export const MAX_PROMPT = 300;
 export type CardKind = { id: string; label: string; sats: number; usd: number };
 /** A model / provider the user can pick; `spicy` = it can make 18+ images (bWalletX only, opt-in). */
 export type CardModel = { id: string; label: string; sats: number; spicy?: boolean };
-export type CardPrice = { kinds: CardKind[]; models?: CardModel[]; payTo: string; expiresAt: string };
-/** 'card' = greeting card (occasion + who it's for); 'image' = any picture from a free prompt. */
-export type MakeKind = 'card' | 'image';
+/** bAds: one price per advert format (b makes the ad with Grok Imagine). */
+export type AdFormatId = 'square' | 'story' | 'banner';
+export type AdFormatPrice = { id: AdFormatId; label: string; aspect: string; sats: number; usd: number };
+export type AdPrices = { model?: string; formats: AdFormatPrice[] };
+export type CardPrice = {
+  kinds: CardKind[];
+  models?: CardModel[];
+  /** Absent / null until the card service offers adverts. */
+  ads?: AdPrices | null;
+  payTo: string;
+  expiresAt: string;
+};
+/** 'card' = greeting card (occasion + who it's for); 'image' = any picture from a free prompt; 'ad' = a bAd. */
+export type MakeKind = 'card' | 'image' | 'ad';
 export type CardQuote = { quoteId: string; sats: number; payTo: string; expiresAt: string };
 export type CardResult = { cardId: string; imageUrl: string; sha256: string; mime: string; spicy?: boolean };
 
@@ -128,8 +139,57 @@ export const getPrice = async (f: Fetch): Promise<CardPrice> => {
   const models = Array.isArray(p?.models)
     ? p.models.filter((m) => m && typeof m.id === 'string' && m.id && isSats(m.sats))
     : [];
-  return { ...p, kinds, models };
+  const formats = Array.isArray(p?.ads?.formats)
+    ? p.ads.formats.filter((x) => x && (x.id === 'square' || x.id === 'story' || x.id === 'banner') && isSats(x.sats))
+    : [];
+  return { ...p, kinds, models, ads: formats.length ? { ...p.ads, formats } : null };
 };
+
+/** The advert brief (bAds). business + offer are required; the rest is optional. */
+export type AdBrief = {
+  business: string;
+  offer: string;
+  audience?: string;
+  style?: string;
+  colours?: string;
+  format: AdFormatId;
+};
+export const AD_LIMITS = { business: 60, offer: 200, audience: 80, style: 80, colours: 60 } as const;
+
+/** Trim, cap and drop empty optionals. Throws when the business or the offer is missing. */
+export const adQuoteBody = (b: AdBrief) => {
+  const t = (v: string | undefined, n: number) => (v ?? '').trim().slice(0, n);
+  const business = t(b.business, AD_LIMITS.business);
+  const offer = t(b.offer, AD_LIMITS.offer);
+  if (!business) throw new CardError("Say your business's name.", 'bad_quote');
+  if (!offer) throw new CardError('Say what the ad is for.', 'bad_quote');
+  const audience = t(b.audience, AD_LIMITS.audience);
+  const style = t(b.style, AD_LIMITS.style);
+  const colours = t(b.colours, AD_LIMITS.colours);
+  return {
+    kind: 'ad' as const,
+    business,
+    offer,
+    format: b.format,
+    ...(audience ? { audience } : {}),
+    ...(style ? { style } : {}),
+    ...(colours ? { colours } : {}),
+  };
+};
+
+export const getAdQuote = async (f: Fetch, b: AdBrief): Promise<CardQuote> => {
+  const r = await call<CardQuote>(f, 'quote', adQuoteBody(b));
+  checkQuote(r);
+  return r;
+};
+
+/** The advert price for a format (sats), or undefined when ads aren't offered. */
+export const adPriceFor = (p: CardPrice, format: AdFormatId): AdFormatPrice | undefined =>
+  p.ads?.formats.find((x) => x.id === format);
+
+/** "Rosa's Bakery advert" for the mint title. */
+export const adTitle = (business: string): string =>
+  `${business.trim().replace(/^[$@]/, '') || 'My'} advert`.slice(0, 100);
 
 export type QuoteInput = {
   prompt: string;
@@ -173,7 +233,12 @@ export const getQuote = async (f: Fetch, q: QuoteInput): Promise<CardQuote> => {
  * `payTo` (the address /price named) must match the quote's.
  */
 export const limitsFrom = (p: CardPrice): QuoteLimits => ({
-  maxSats: Math.max(...p.kinds.map((k) => k.sats), ...(p.models ?? []).map((m) => m.sats)) * 2,
+  maxSats:
+    Math.max(
+      ...p.kinds.map((k) => k.sats),
+      ...(p.models ?? []).map((m) => m.sats),
+      ...(p.ads?.formats ?? []).map((x) => x.sats),
+    ) * 2,
   ...(p.payTo ? { payTo: p.payTo } : {}),
 });
 export type QuoteLimits = { maxSats?: number; payTo?: string };
