@@ -29,6 +29,8 @@ import { useLocation } from 'react-router-dom';
 import { TokenIcon } from './TokenIcon';
 import { TokenIdentity } from '../tokens/TokenIdPanel';
 import { PriceChart } from './PriceChart';
+import { TokenFacts } from './TokenFacts';
+import { STALE_LISTING_MESSAGE, dropSpent, listingSpendState, nextAsk } from '../market/tokenPage';
 import { chartSeries } from './chartSeries';
 import { TokenLabelsRow } from './Categories';
 import { LAUNCH_DISCLAIMER, localLaunches } from './launch/launch';
@@ -111,6 +113,8 @@ export const TradeView = ({
   const [busy, setBusy] = useState(false);
   const [selling, setSelling] = useState<SellTarget | null>(null);
   const [histRev, setHistRev] = useState(0);
+  // Listings found already bought before a buy (stale 1Sat rows): dropped from the book (plan §2.4).
+  const [spent, setSpent] = useState<ReadonlySet<string>>(new Set());
   useBackClose(!!pending && !busy, () => setPending(null));
 
   const load = useCallback(() => {
@@ -144,9 +148,13 @@ export const TradeView = ({
   const sym = meta?.sym ?? id.slice(0, 8);
   const perToken = (l: Listing) => l.priceSats / (Number(l.amount ?? 0) / 10 ** dec || 1);
   const asks = useMemo(
-    () => [...(market?.listings ?? [])].sort((a, b) => perToken(a) - perToken(b)),
+    () =>
+      dropSpent(
+        [...(market?.listings ?? [])].sort((a, b) => perToken(a) - perToken(b)),
+        spent,
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [market, dec],
+    [market, dec, spent],
   );
   const best = asks.find((l) => l.buyable);
   const stats = dayStats(trades, tip);
@@ -160,6 +168,16 @@ export const TradeView = ({
     setBusy(true);
     try {
       const outpoint = walletOutpoint(listing.outpoint);
+      // Pre-buy: is the listing still there? 1Sat's search can lag a sale by minutes.
+      if ((await listingSpendState(listing.outpoint)) === 'spent') {
+        setSpent((s) => new Set([...s, listing.outpoint.replace('.', '_')]));
+        const next = nextAsk(asks, listing.outpoint);
+        addSnackbar(STALE_LISTING_MESSAGE, 'info');
+        setPending(next ? { listing: next, perToken: perToken(next) } : null);
+        clearMarketCache();
+        load();
+        return;
+      }
       await assertOrdLockV2(outpoint);
       const res = await buyBsv21.execute(purchaseContext(apiContext, outpoint), {
         tokenId: id,
@@ -230,6 +248,7 @@ export const TradeView = ({
           Launched on the bWalletX Launchpad. {LAUNCH_DISCLAIMER}
         </p>
       )}
+      <TokenFacts tokenId={id} sym={sym} dec={dec} rate={rate} priceSats={price} held={held} />
       <IndexerFundPanel tokenId={id} ticker={sym} />
       {launched && <CreatorVesting tokenId={id} />}
 

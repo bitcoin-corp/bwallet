@@ -6,7 +6,7 @@
  * Pins and archive are per device (tokenRows.ts). Not in the browser extension (no Chat tab there).
  */
 import { useState, type ReactNode } from 'react';
-import { Archive, ArrowDownLeft, ArrowUpRight, Lock, MessageCircle, Pin, PinOff } from 'lucide-react';
+import { Archive, ArrowDownLeft, ArrowUpRight, Lock, MessageCircle, Pin, PinOff, Tag } from 'lucide-react';
 import { SwipeRow, type SwipeAction } from '../swipe/SwipeRow';
 import { showUndo, UndoToastHost } from '../swipe/undo';
 import { IS_EXTENSION } from '../extension';
@@ -27,6 +27,8 @@ export type TokenSwipeProps = {
   onChat: () => void;
   /** Omitted: no Lock in the tray (rows that can't lock in this build). */
   onLock?: () => void;
+  /** Omitted: no Sell in the tray (BSV, MNEE, builds where listing is off). Opens List for sale. */
+  onSell?: () => void;
   children: ReactNode;
 };
 
@@ -37,6 +39,14 @@ export const TokenSwipe = (p: TokenSwipeProps) => {
     { id: 'receive', label: 'Receive', color: '#1f9d55', icon: <ArrowDownLeft size={18} />, onPress: p.onReceive },
     { id: 'send', label: 'Send', color: '#e0a400', icon: <ArrowUpRight size={18} />, onPress: p.onSend },
   ];
+  if (p.onSell)
+    left.splice(left.length - 1, 0, {
+      id: 'sell',
+      label: 'Sell',
+      color: '#d9480f',
+      icon: <Tag size={18} />,
+      onPress: p.onSell,
+    });
   const right: SwipeAction[] = [
     {
       id: 'pin',

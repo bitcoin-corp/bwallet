@@ -18,6 +18,10 @@ import { AssetRow } from './AssetRow';
 import { Show } from './Show';
 import { IS_EXTENSION } from '../mobile/extension';
 import { TokenSwipe } from '../mobile/wallet/TokenSwipe';
+import { useNavigate } from 'react-router-dom';
+import { SELL_ENABLED } from '../mobile/sell/sell';
+import { marketTradingEnabled } from '../mobile/storeBuild';
+import { sellRoute } from '../mobile/exchange/rowActions';
 import { UndoToastHost } from '../mobile/swipe/undo';
 import { arrange, useTokenRows } from '../mobile/wallet/tokenRows';
 import { useListCoin } from '../mobile/wallet/useListCoin';
@@ -78,6 +82,7 @@ const TokenAssetRow = ({ t, usdBalance, still }: { t: Bsv21Balance; usdBalance: 
 };
 
 export const Bsv21TokensList = (props: Bsv21TokensListProps) => {
+  const navigate = useNavigate();
   const { tokens: tokensProp, theme, onTokenClick, hideStatusLabels = false } = props;
   const { chromeStorageService, apiContext } = useServiceContext();
   const [priceData, setPriceData] = useState<PriceData[]>([]);
@@ -196,6 +201,7 @@ export const Bsv21TokensList = (props: Bsv21TokensListProps) => {
         onReceive={() => props.onReceive?.()}
         onChat={() => props.onChat?.(t)}
         onLock={() => props.onLock?.(t)}
+        onSell={SELL_ENABLED && marketTradingEnabled() ? () => navigate(sellRoute(t.id)) : undefined}
       >
         <div
           style={{ display: 'flex', justifyContent: 'center', width: '100%' }}

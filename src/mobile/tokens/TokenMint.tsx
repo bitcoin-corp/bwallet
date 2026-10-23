@@ -16,6 +16,10 @@ import { TOKEN_COPY, emptyTokenForm, tokenCost, validateToken, type TokenForm } 
 import { money, moneyWithSats } from '../money/money';
 import { RETURNS_BLOCK, RETURNS_WARNING, hasReturnsWording } from './returnsWording';
 import { ErrorActions } from '../errors/ErrorActions';
+import { CurvePicker } from '../curves/CurvePicker';
+import { ListAfterMint } from '../sell/ListAfterMint';
+import { STANDARD_SUPPLY, curveProblem } from '../curves/curveChoice';
+import { DEFAULT_PRESET, maxPrice, standardCurve, usd, type Curve, type PresetId } from '../../lib/curves';
 
 /**
  * MINT → "Mint a token": a plain BSV-21 token (name, ticker, supply, decimals, optional icon and
@@ -33,6 +37,7 @@ export const TokenMint = ({
   initial,
   map,
   onMinted,
+  curvePreset = DEFAULT_PRESET,
 }: {
   exchangeRate: number;
   onBack: () => void;
@@ -43,11 +48,14 @@ export const TokenMint = ({
   map?: { script: LockingScript; description: string };
   /** When set, called with the minted token instead of showing this form's own "minted" screen. */
   onMinted?: (token: MintedToken) => void;
+  /** Preselected climb (Standard unless a caller says otherwise). */
+  curvePreset?: PresetId;
 }) => {
   const { apiContext, chromeStorageService } = useServiceContext();
   const { theme } = useTheme();
   const { handleSelect } = useBottomMenu();
-  const [form, setForm] = useState<TokenForm>(() => ({ ...emptyTokenForm(), ...initial }));
+  // Every launch is the standard 1,000,000,000 supply, all on the curve (owner, 23 Oct 2026).
+  const [form, setForm] = useState<TokenForm>(() => ({ ...emptyTokenForm(), supply: STANDARD_SUPPLY, ...initial }));
   const [tickerTouched, setTickerTouched] = useState(!!initial?.ticker);
   const [icon, setIcon] = useState<{ file: File; url: string } | null>(null);
   const [error, setError] = useState('');
@@ -55,6 +63,9 @@ export const TokenMint = ({
   const [busy, setBusy] = useState('');
   const [done, setDone] = useState<{ token: MintedToken; room: string | null } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const supplyNum = Number((form.supply || '0').replace(/[,_\s]/g, '')) || 0;
+  const [curve, setCurve] = useState<Curve>(() => standardCurve(curvePreset));
+  const [curveOk, setCurveOk] = useState(false);
 
   useEffect(() => () => void (icon && URL.revokeObjectURL(icon.url)), [icon]);
 
@@ -84,7 +95,9 @@ export const TokenMint = ({
   const review = () => {
     // Hard block at sign time while returns wording is present (returnsWording.ts).
     const err =
-      validateToken(form) ?? (hasReturnsWording(`${form.name ?? ''} ${form.description ?? ''}`) ? RETURNS_BLOCK : null);
+      validateToken(form) ??
+      (hasReturnsWording(`${form.name ?? ''} ${form.description ?? ''}`) ? RETURNS_BLOCK : null) ??
+      curveProblem(curve, curveOk, supplyNum);
     setError(err ?? '');
     if (!err) setConfirming(true);
   };
@@ -101,6 +114,7 @@ export const TokenMint = ({
         icon: iconOutpoint,
         feeSats: cost.feeSats,
         ...(map ? { map } : {}),
+        curve,
       });
       void showOnWallet(chromeStorageService, token.tokenId);
       setConfirming(false);
@@ -153,6 +167,7 @@ export const TokenMint = ({
         >
           {token.tokenId} <ExternalLink size={12} />
         </a>
+        <ListAfterMint tokenId={token.tokenId} symbol={token.ticker} dec={token.decimals} curve={curve} />
         <button
           type="button"
           onClick={() => go('chat', token)}
@@ -263,6 +278,15 @@ export const TokenMint = ({
         </p>
       )}
 
+      <CurvePicker
+        curve={curve}
+        onChange={setCurve}
+        accepted={curveOk}
+        onAccept={setCurveOk}
+        tokenSupply={supplyNum}
+        onUseStandardSupply={() => set('supply')(STANDARD_SUPPLY)}
+      />
+
       <p className="text-xs" style={{ color: '#bbb' }}>
         Estimated network fee: {money(cost.networkSats, exchangeRate)}
         {cost.txCount > 1 ? ' (2 transactions: icon + token)' : ''}
@@ -299,6 +323,7 @@ export const TokenMint = ({
         lineItems={[
           // SendConfirmation truncates labels over 16 characters: keep them short.
           { address: `$${form.ticker.trim()}`.slice(0, 16), amount: `${form.supply.trim() || '0'} tokens` },
+          { address: 'Curve (fixed)', amount: `${usd(curve.floorUsd)} → ${usd(maxPrice(curve))}` },
           ...(icon ? [{ address: 'Icon', amount: formatBytes(icon.file.size) }] : []),
           { address: 'Network fee', amount: `${money(cost.networkSats, exchangeRate)}` },
           ...(cost.feeSats > 0 ? [{ address: 'Mint fee (1%)', amount: `${money(cost.feeSats, exchangeRate)}` }] : []),

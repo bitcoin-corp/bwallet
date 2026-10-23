@@ -72,6 +72,10 @@ import {
   marketTradingEnabled,
 } from '../storeBuild';
 import { MyTokenListings } from '../sell/MyTokenListings';
+import { TokenFacts } from '../exchange/TokenFacts';
+import { STALE_LISTING_MESSAGE, listingSpendState } from './tokenPage';
+import { sellRoute } from '../exchange/rowActions';
+import { useNavigate } from 'react-router-dom';
 import { SELL_ENABLED, ticketResaleFeeOptions, ticketResaleFeeSats } from '../sell/sell';
 import { TicketsPanel } from '../tickets/TicketsPanel';
 import { openTicketRoomInChat } from '../tickets/ticketRoom';
@@ -182,6 +186,7 @@ const nftSafe = (n: NftListing) =>
     .blocked;
 
 const MarketPage = () => {
+  const navigate = useNavigate();
   const { theme } = useTheme();
   const { apiContext, chromeStorageService } = useServiceContext();
   const { addSnackbar } = useSnackbar();
@@ -364,6 +369,14 @@ const MarketPage = () => {
       const fee = ticketPage ? ticketResaleFeeOptions() : marketFeeOptions();
       const outpoint = walletOutpoint(listing.outpoint);
       const ctx = purchaseContext(apiContext, outpoint);
+      // Pre-buy: drop a listing someone already bought (1Sat's search can lag a sale).
+      if ((await listingSpendState(listing.outpoint)) === 'spent') {
+        addSnackbar(STALE_LISTING_MESSAGE, 'info');
+        setMarket((m) => (m ? { ...m, listings: m.listings.filter((x) => x.outpoint !== listing.outpoint) } : m));
+        setPending(null);
+        clearMarketCache();
+        return;
+      }
       await assertOrdLockV2(outpoint);
       const res =
         r.ref.kind === 'bsv21'
@@ -911,6 +924,19 @@ const MarketPage = () => {
         />
       )}
       {room.ref.kind === 'bsv21' && !ticketPage && <TokenLinks tokenId={room.ref.id} sym={room.title} />}
+      {room.ref.kind === 'bsv21' && !ticketPage && (
+        <TokenFacts tokenId={room.ref.id} sym={room.title.replace(/^\$/, '')} priceSats={market?.floorSats ?? null} />
+      )}
+      {room.ref.kind === 'bsv21' && !ticketPage && SELL_ENABLED && TRADING && (
+        <button
+          type="button"
+          onClick={() => navigate(sellRoute(room.ref.id))}
+          className="rounded-xl py-2.5 text-xs font-bold border"
+          style={{ background: '#2a2208', color: 'var(--bw-accent-hi)', borderColor: '#3a2f0c' }}
+        >
+          <Tag size={12} className="inline mr-1" /> List mine for sale
+        </button>
+      )}
       {ticketPage && (
         <div className="text-[11px] leading-relaxed text-[#98A2B3] rounded-xl bg-[var(--bw-surface)] px-3 py-2.5">
           {TICKET_COPY}

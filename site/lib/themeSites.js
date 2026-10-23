@@ -31,6 +31,7 @@ const THEME_SITES = [
   { id: 'npg-store', host: 'ninjapunkgirls.store' },
   { id: 'npgx', host: 'npgx.website' },
   { id: 'bmovies', host: 'bmovies.online' },
+  { id: 'bmovies-app', host: 'bmovies.app' },
   { id: 'tokenblaster', host: 'tokenblaster.com' },
   { id: 'bchatx', host: 'bchatx.com' },
 ];

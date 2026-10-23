@@ -106,6 +106,8 @@ import {
   TypingRow,
 } from '../chat/BubbleExtras';
 import { BDraftCard, BDraftSheet } from '../chat/BDraftCard';
+import { CommissionCard, CommissionComposer } from '../chat/CommissionCard';
+import { commissionCardNo, parseCommissionCommand } from '../chat/commissions';
 import { AiLabel, BusinessSheet, OrderCard } from '../chat/BusinessAgentViews';
 import { isBusinessAgentMessage, orderCardInfo, orderStatuses, useBusinessPresence } from '../chat/businessAgent';
 import { bDraftInfo, canAskBDraft } from '../chat/bDraft';
@@ -334,6 +336,7 @@ const Conversation = ({
   onXInvites = null,
   onBans,
   onBounties,
+  onMarket,
   peer = null,
   openRoom = null,
   hidden,
@@ -355,6 +358,8 @@ const Conversation = ({
   onXInvites?: (() => void) | null;
   /** Room admin: the ban list. */
   onBans: (() => void) | null;
+  /** Token rooms: Buy / sell this token (its Market page). */
+  onMarket?: (() => void) | null;
   /** Null hides the Bounties button (1:1 DMs). */
   onBounties: (() => void) | null;
   /** A 1:1's other person: shows Report / Block (Apple 1.2). */
@@ -402,6 +407,7 @@ const Conversation = ({
   };
   /** Inline edit of one of your own messages: the bubble becomes a text box (Save / Cancel). */
   const [editing, setEditing] = useState<{ id: string; text: string; busy?: boolean } | null>(null);
+  const [commissionDraft, setCommissionDraft] = useState<{ assignee: string | null; draft: string } | null>(null);
   const [polledTyping, setTyping] = useState<string[]>([]);
   // Live (chat/live.ts): typing arrives over the stream and the typing GET poll stops.
   const liveOn = useLiveHealth() === 'live';
@@ -619,6 +625,13 @@ const Conversation = ({
   const send = (text: string, existing?: ChatMessage) => {
     const body = text.trim();
     if (!body) return;
+    // /commission opens the composer (chat/CommissionCard.tsx); it is never posted as a message.
+    const commission = existing ? null : parseCommissionCommand(body);
+    if (commission) {
+      setCommissionDraft(commission);
+      setDraft('');
+      return;
+    }
     const prior = existing?.localId ? paidFor.current.get(existing.localId) : undefined;
     if (
       !prior &&
@@ -768,6 +781,15 @@ const Conversation = ({
           {openRoom && (
             <button onClick={openRoom.onInfo} className="p-2 rounded-full active:opacity-60" aria-label="Room info">
               <Info size={20} color={GOLD} />
+            </button>
+          )}
+          {onMarket && (
+            <button
+              onClick={onMarket}
+              className="p-2 rounded-full active:opacity-60"
+              aria-label="Buy or sell this token"
+            >
+              <ShoppingCart size={19} color={GOLD} />
             </button>
           )}
           {onBans && (
@@ -960,6 +982,16 @@ const Conversation = ({
               client={client}
               ticker={room.ticker}
               me={me}
+              onChanged={poll}
+            />
+          ) : commissionCardNo(it.message) && me ? (
+            <CommissionCard
+              key={it.key}
+              no={commissionCardNo(it.message)!}
+              ticker={room.ticker}
+              me={me}
+              client={client}
+              ctx={apiContext}
               onChanged={poll}
             />
           ) : bDraftInfo(it.message) ? (
@@ -1180,6 +1212,15 @@ const Conversation = ({
 
       {drafting && (
         <BDraftSheet client={client} ticker={room.ticker} onClose={() => setDrafting(false)} onPosted={poll} />
+      )}
+      {commissionDraft && (
+        <CommissionComposer
+          ticker={room.ticker}
+          client={client}
+          initial={commissionDraft}
+          onClose={() => setCommissionDraft(null)}
+          onPosted={poll}
+        />
       )}
       {bizOpen && <BusinessSheet client={client} ticker={room.ticker} me={me} onClose={() => setBizOpen(false)} />}
       {openRoom?.closed ? (
@@ -3331,6 +3372,7 @@ const RoomsPage = ({ header }: { header: React.ReactNode }) => {
           onInvite={open.entry && open.entry.key.startsWith('bsv21:') ? () => setInviting(true) : null}
           onXInvites={xManage && xManage === open.room.ticker ? () => setXInvites(true) : null}
           onBans={!openTicker && open.entry ? () => setRoomSettings(true) : null}
+          onMarket={MARKET_ENABLED && open.entry?.key.startsWith('bsv21:') ? () => buy(open.entry!.key) : null}
           onBounties={openTicker ? null : () => setShowBounties(true)}
           openRoom={
             openTicker

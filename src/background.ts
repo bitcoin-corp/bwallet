@@ -1,10 +1,37 @@
 /* global chrome */
+import { siteThemeFor } from './mobile/theme/connectTheme';
+import type { AccentId } from './mobile/theme/accents';
 import { revokeOriginatorInAccounts } from './services/accountPermissionStore';
 import { routeBchatUrl } from './services/bchatOrigin';
 import { createMasterBackupGate } from './services/masterBackupGate';
 import { promptsShowInPanel } from './services/panelPrompt';
 import { isSessionExpired } from './utils/lockTimeout';
 import { originatorForOrigin } from './services/originKey';
+import {
+  addGrant,
+  decide as decideStream,
+  isSpendingAuthAction,
+  newGrantId,
+  outputSats,
+  streamProtocolOption,
+  withoutStreamOption,
+  parseSpendingAuthRequest,
+  parseStreamState,
+  passCovers,
+  publicGrant,
+  recordSpend,
+  revokeGrant,
+  SPENDING_AUTH_REQUEST,
+  SPENDING_AUTH_REVOKE,
+  SPENDING_AUTH_STATUS,
+  SPENDING_AUTH_VERSION,
+  spentLastHour,
+  STREAM_GRANTS_KEY,
+  tidy,
+  type StreamPass,
+  type StreamState,
+} from './services/streamGrants';
+import type { StreamGrantPrompt } from './promptProtocol';
 import {
   ADDRESS_RESYNC_ALARM,
   ADDRESS_RESYNC_PERIOD_MINUTES,
@@ -332,6 +359,8 @@ chrome.runtime.onConnect.addListener((port) => {
       // Give the panel's listener a moment to attach before posting.
       setTimeout(() => postToPanels({ action: 'SHOW_PROMPT_PANEL', kind, requestID }), 300);
     }
+    // A panel opening while a themed site is active wears its theme straight away.
+    setTimeout(() => void pushSiteTheme(true), 300);
     port.onDisconnect.addListener(() => {
       activePopupPorts.delete(port);
       if (promptInPanel && activePopupPorts.size === 0) {
@@ -959,6 +988,36 @@ const failPendingUsbChecks = (message: string) => {
 const USB_CHECK_TIMEOUT_MS = 3 * 60_000;
 
 /**
+ * Streaming spending grants (services/streamGrants.ts, bMovies watch-to-pay). State lives in chrome.storage.local;
+ * every write goes through one queue so a tick's spend and a revoke never overwrite each other.
+ */
+let streamWrites: Promise<unknown> = Promise.resolve();
+const readStreamState = async (): Promise<StreamState> => {
+  const got = await chrome.storage.local.get(STREAM_GRANTS_KEY).catch(() => ({}) as Record<string, unknown>);
+  return parseStreamState((got as Record<string, unknown>)[STREAM_GRANTS_KEY]);
+};
+const updateStreamState = <T>(fn: (s: StreamState) => { state?: StreamState; result: T }): Promise<T> => {
+  const run = streamWrites.then(async () => {
+    const out = fn(await readStreamState());
+    if (out.state) await chrome.storage.local.set({ [STREAM_GRANTS_KEY]: tidy(out.state, Date.now()) });
+    return out.result;
+  });
+  streamWrites = run.catch(() => undefined);
+  return run;
+};
+/** One in-flight stream-approved createAction per originator (see StreamPass). */
+const streamPasses = new Map<string, StreamPass & { done: Promise<void>; finish: () => void }>();
+/** Sites waiting on the "Allow <site> to stream up to $X/hour" sheet. */
+const pendingStreamGrantRequests = new Map<
+  string,
+  { request: StreamGrantPrompt; resolve: (capSatsPerHour: number | null) => void }
+>();
+const failPendingStreamGrants = () => {
+  for (const p of pendingStreamGrantRequests.values()) p.resolve(null);
+  pendingStreamGrantRequests.clear();
+};
+
+/**
  * A master backup closes the live wallet and walks every account's storage
  * in turn. Nothing else may bring a wallet up meanwhile: a dApp call landing
  * then would initialise whichever account the export had selected last.
@@ -1007,6 +1066,34 @@ const hideInPageSheet = () => {
   inPageSheet = undefined;
   chrome.tabs?.sendMessage(tabId, { action: 'BWX_INPAGE_SHEET_HIDE' }).catch(() => undefined);
 };
+// Connected-site themes (mobile/theme/connectTheme.ts): tab → the bundled pack its site declared after connecting.
+// The open panel wears the active tab's pack and goes back to the user's own theme on any other tab.
+const siteThemeTabs = new Map<number, AccentId>();
+let siteThemeShown: AccentId | null = null;
+const activeTabId = async (): Promise<number | undefined> => {
+  try {
+    const [t] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    return t?.id;
+  } catch {
+    return undefined;
+  }
+};
+const pushSiteTheme = async (force = false) => {
+  const tab = await activeTabId();
+  const theme = (tab !== undefined && siteThemeTabs.get(tab)) || null;
+  if (!force && theme === siteThemeShown) return;
+  siteThemeShown = theme;
+  postToPanels({ action: 'SITE_THEME', theme });
+};
+chrome.tabs?.onActivated?.addListener(() => void pushSiteTheme());
+chrome.windows?.onFocusChanged?.addListener(() => void pushSiteTheme());
+chrome.tabs?.onRemoved?.addListener((tabId) => {
+  if (siteThemeTabs.delete(tabId)) void pushSiteTheme();
+});
+chrome.tabs?.onUpdated?.addListener((tabId, info) => {
+  // A reload or navigation: the page declares again once it reconnects.
+  if (info.status === 'loading' && siteThemeTabs.delete(tabId)) void pushSiteTheme();
+});
 const postToPanels = (msg: unknown) =>
   activePopupPorts.forEach((p) => {
     try {
@@ -1033,6 +1120,7 @@ const selfClosedWindowIds = new Set<number>();
 
 const hasQueuedDappUi = (): boolean =>
   pendingUsbChecks.size > 0 ||
+  pendingStreamGrantRequests.size > 0 ||
   pendingPermissionRequests.size > 0 ||
   pendingGroupedPermissionRequests.size > 0 ||
   pendingCounterpartyPermissionRequests.size > 0 ||
@@ -1090,6 +1178,8 @@ const getPendingPromptPayload = (kind: string, requestID?: string): unknown => {
       return getPendingOneSatPrompt(requestID);
     case 'usbCheck':
       return requestID ? pendingUsbChecks.get(requestID)?.request : undefined;
+    case 'streamGrant':
+      return requestID ? pendingStreamGrantRequests.get(requestID)?.request : undefined;
     default:
       return undefined;
   }
@@ -1100,6 +1190,8 @@ const getNextPendingPrompt = (): { kind: PromptKind; requestID: string } | undef
   // A key check is holding up a call that already passed permission: first.
   const usbCheck = pendingUsbChecks.keys().next();
   if (!usbCheck.done) return { kind: 'usbCheck', requestID: usbCheck.value };
+  const streamGrant = pendingStreamGrantRequests.keys().next();
+  if (!streamGrant.done) return { kind: 'streamGrant', requestID: streamGrant.value };
   const bundle = permissionBundler.list()[0];
   if (bundle) {
     permissionBundler.flush(bundle.id); // the sheet is asking now: no need to wait out the merge window
@@ -1268,6 +1360,13 @@ const showPermissionPrompt = (request: PermissionRequest & { requestID: string }
   if (request.type === 'basket' && isReservedBasket(request.basket) && request.originator !== ADMIN_ORIGINATOR) {
     accountContext?.wallet.denyPermission(request.requestID).catch(() => undefined);
     return Promise.reject(new Error(RESERVED_BASKET_REFUSAL));
+  }
+  // A stream-approved createAction is running for this site: its spend (within the budget) and its label are
+  // answered here, without a sheet. Nothing else is (services/streamGrants.ts passCovers).
+  const pass = request.originator ? streamPasses.get(normalizeOriginator(request.originator)) : undefined;
+  if (pass && accountContext?.wallet && passCovers(pass, { ...request, originator: normalizeOriginator(request.originator) })) {
+    if (request.type === 'spending') pass.charged = request.spending?.satoshis;
+    return accountContext.wallet.grantPermission({ requestID: request.requestID, ephemeral: true });
   }
   return siteTrustedFor(request).then(
     (trusted) =>
@@ -1622,6 +1721,16 @@ if (isInServiceWorker) {
     // Live-balance messages are for the wallet page (src/mobile/wallet/live/liveBus.ts), not the wallet: never
     // answer them here, so a page's session report can never reach a wallet method or a connect prompt.
     if (message?.action === 'bwxSessionSpend' || message?.action === 'bwxLiveSpend') return false;
+    // Connected-site theme (mobile/theme/connectTheme.ts): the id comes from the page, the origin from Chrome.
+    if (message?.action === 'bwxSiteTheme') {
+      if (sender.id === chrome.runtime.id && sender.tab?.id !== undefined && sender.frameId === 0) {
+        const id = siteThemeFor(sender.origin, message.theme);
+        if (id) siteThemeTabs.set(sender.tab.id, id);
+        else siteThemeTabs.delete(sender.tab.id);
+        void pushSiteTheme();
+      }
+      return false;
+    }
     // Subscribe requests are answered by the wallet page (src/mobile/pots/siteSubscribe.ts), never by a wallet method.
     // SUBSCRIPTIONS_ENABLED written out (literal env) so the minifier drops it from a store bundle.
 if (!(
@@ -1670,6 +1779,27 @@ if (!(
     // Remember which tab each site talks from, so its sheet can open over that tab (in-page sheet).
     if (!isFromExtension && message.originator && sender.tab?.id !== undefined) {
       dappTabs.set(message.originator, { tabId: sender.tab.id, windowId: sender.tab.windowId });
+    }
+
+    // Streaming spending grants (services/streamGrants.ts). A site's request/revoke/status: the originator is
+    // always Chrome's (or the native WebView's) sender.origin, never anything the page put in the message.
+    if (!isFromExtension && isSpendingAuthAction(message?.action)) {
+      const derived = originatorForOrigin(sender.origin);
+      if (!derived.originator) {
+        sendResponse({ type: message.action, success: false, error: derived.error });
+        return true;
+      }
+      void handleSpendingAuth(String(message.action), derived.originator, message.params, sendResponse);
+      return true;
+    }
+    // The wallet's own Streaming permissions screen and the grant sheet. Extension pages only.
+    if (typeof message?.action === 'string' && message.action.startsWith('STREAM_GRANT')) {
+      if (!isFromExtension) {
+        sendResponse({ type: message.action, success: false, error: 'Unauthorized' });
+        return true;
+      }
+      void handleStreamGrantInternal(message as { action: string } & Record<string, unknown>, sendResponse);
+      return true;
     }
 
     // Actions that don't require authorization
@@ -3078,6 +3208,172 @@ if (!(
     return typeof rate === 'number' && rate > 0 ? rate : undefined;
   };
 
+  /** A sheet nobody answers must not hold the site's request open forever. */
+  const STREAM_GRANT_TIMEOUT_MS = 3 * 60_000;
+
+  /** requestSpendingAuthorization / revokeSpendingAuthorization / status, from a site (originator already derived). */
+  const handleSpendingAuth = async (
+    action: string,
+    originator: string,
+    params: unknown,
+    sendResponse: CallbackResponse,
+  ): Promise<void> => {
+    const reply = (r: { success: boolean; data?: unknown; error?: string }) => sendResponse({ type: action, ...r });
+    const now = Date.now();
+    const key = normalizeOriginator(originator);
+    try {
+      if (action === SPENDING_AUTH_STATUS) {
+        const state = await readStreamState();
+        const grants = state.grants.filter((g) => g.originator === key && !g.revokedAt && g.expiresAt > now);
+        reply({
+          success: true,
+          data: {
+            version: SPENDING_AUTH_VERSION,
+            paused: state.paused,
+            grants: grants.map((g) => publicGrant(g, state, now)),
+          },
+        });
+        return;
+      }
+      if (action === SPENDING_AUTH_REVOKE) {
+        const id = (params as { grantId?: unknown } | undefined)?.grantId;
+        if (typeof id !== 'string') return reply({ success: false, error: 'grantId is required' });
+        const ok = await updateStreamState((s) => {
+          const next = revokeGrant(s, id, now, key);
+          return { state: next, result: !!next };
+        });
+        return ok ? reply({ success: true, data: { revoked: true, grantId: id } }) : reply({ success: false, error: 'Unknown grant' });
+      }
+      if (action !== SPENDING_AUTH_REQUEST) return reply({ success: false, error: 'Unknown call' });
+
+      const parsed = parseSpendingAuthRequest(params, now);
+      if (!parsed.ok) return reply({ success: false, error: parsed.error });
+      const state = await readStreamState();
+      if (state.paused) return reply({ success: false, error: 'Streaming payments are paused in bWalletX' });
+      if (state.ceilingSatsPerHour < 1) return reply({ success: false, error: 'Streaming payments are turned off in bWalletX' });
+      const req = parsed.request;
+      const requestID = `stream-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      const prompt: StreamGrantPrompt = {
+        requestID,
+        originator: key,
+        protocolName: req.protocolID[1],
+        capSatsPerHour: Math.min(req.capSatsPerHour, state.ceilingSatsPerHour),
+        ceilingSatsPerHour: state.ceilingSatsPerHour,
+        expiresAt: req.expiresAt,
+        description: req.description,
+        usdPerBsv: await cachedUsdPerBsv().catch(() => undefined),
+      };
+      const answer = await new Promise<number | null>((resolve) => {
+        const timer = setTimeout(() => {
+          if (pendingStreamGrantRequests.delete(requestID)) resolve(null);
+        }, STREAM_GRANT_TIMEOUT_MS);
+        pendingStreamGrantRequests.set(requestID, {
+          request: prompt,
+          resolve: (v) => {
+            clearTimeout(timer);
+            resolve(v);
+          },
+        });
+        showPromptUi('streamGrant', requestID);
+      });
+      if (answer === null) return reply({ success: false, error: 'Declined' });
+      // The user may only lower the cap, never raise it past what the site asked or the global ceiling.
+      const cap = Math.max(1, Math.floor(Math.min(answer, prompt.capSatsPerHour)));
+      const grant = {
+        id: newGrantId(),
+        originator: key,
+        protocolID: req.protocolID,
+        label: req.protocolID[1],
+        capSatsPerHour: cap,
+        expiresAt: req.expiresAt,
+        createdAt: Date.now(),
+        description: req.description,
+        spends: [],
+        totalSats: 0,
+      };
+      await updateStreamState((s) => ({ state: addGrant(s, grant), result: undefined }));
+      reply({
+        success: true,
+        data: {
+          grantId: grant.id,
+          protocolID: grant.protocolID,
+          capSatsPerHour: cap,
+          expiry: Math.floor(grant.expiresAt / 1000),
+        },
+      });
+    } catch (e) {
+      reply({ success: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  /** The grant sheet's answer and the Streaming permissions screen (extension pages only). */
+  const handleStreamGrantInternal = async (
+    message: { action: string } & Record<string, unknown>,
+    sendResponse: CallbackResponse,
+  ): Promise<void> => {
+    const reply = (r: { success: boolean; data?: unknown; error?: string }) => sendResponse({ type: message.action, ...r });
+    const now = Date.now();
+    try {
+      switch (message.action) {
+        case 'STREAM_GRANT_RESPONSE': {
+          const requestID = String(message.requestID ?? '');
+          const pending = pendingStreamGrantRequests.get(requestID);
+          pendingStreamGrantRequests.delete(requestID);
+          const cap = message.capSatsPerHour;
+          pending?.resolve(typeof cap === 'number' && Number.isFinite(cap) && cap >= 1 ? cap : null);
+          return reply({ success: !!pending });
+        }
+        case 'STREAM_GRANTS_LIST': {
+          const state = await readStreamState();
+          return reply({
+            success: true,
+            data: {
+              paused: state.paused,
+              ceilingSatsPerHour: state.ceilingSatsPerHour,
+              usdPerBsv: await cachedUsdPerBsv().catch(() => undefined),
+              grants: state.grants.map((g) => ({
+                ...publicGrant(g, state, now),
+                originator: g.originator,
+                description: g.description,
+                createdAt: g.createdAt,
+                revoked: !!g.revokedAt,
+                expired: g.expiresAt <= now,
+                totalSats: g.totalSats,
+                spentLastHourSats: spentLastHour(g, now),
+              })),
+            },
+          });
+        }
+        case 'STREAM_GRANTS_REVOKE': {
+          const id = String(message.grantId ?? '');
+          const ok = await updateStreamState((s) => {
+            const next = revokeGrant(s, id, now);
+            return { state: next, result: !!next };
+          });
+          return reply({ success: ok });
+        }
+        case 'STREAM_GRANTS_SETTINGS': {
+          await updateStreamState((s) => ({
+            state: {
+              ...s,
+              paused: typeof message.paused === 'boolean' ? message.paused : s.paused,
+              ceilingSatsPerHour:
+                typeof message.ceilingSatsPerHour === 'number' && message.ceilingSatsPerHour >= 0
+                  ? Math.floor(message.ceilingSatsPerHour)
+                  : s.ceilingSatsPerHour,
+            },
+            result: undefined,
+          }));
+          return reply({ success: true });
+        }
+        default:
+          return reply({ success: false, error: 'Unknown call' });
+      }
+    } catch (e) {
+      reply({ success: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
   /** What the sheet needs for the allowance line: the price, and whether the site already has an allowance. */
   const getBundleAllowance = async (originator: string) => {
     const usdPerBsv = await cachedUsdPerBsv();
@@ -4126,6 +4422,7 @@ if (!(
     sendResponse: CallbackResponse,
   ) => {
     let fundingSnap: FundingSnapshot | undefined;
+    let streamPass: (StreamPass & { done: Promise<void>; finish: () => void }) | undefined;
     let spentHeal: HealReport | null | undefined;
     try {
       const w = await ensureWallet();
@@ -4146,6 +4443,36 @@ if (!(
 
       // Safe only because the onMessage router refuses ADMIN_ORIGINATOR from any non-extension sender (H1).
       const isAdmin = message.originator === ADMIN_ORIGINATOR;
+      // Streaming grant (services/streamGrants.ts): a call from a site holding a live grant, carrying its protocol
+      // label and inside the rolling hour's budget, has its spend answered without a sheet. Anything else prompts.
+      const streamKey = !isAdmin && message.originator ? normalizeOriginator(message.originator) : undefined;
+      if (streamKey) {
+        // One stream-approved call per site at a time, so its pass can never answer a different call's spend.
+        for (let busy = streamPasses.get(streamKey); busy; busy = streamPasses.get(streamKey)) await busy.done;
+        const decision = decideStream(await readStreamState(), {
+          originator: streamKey,
+          // The label, or options.spendingAuthorization.protocolID (the form bmovies-app sends); both name the protocol.
+          labels: [...(message.params.labels ?? []), ...streamProtocolOption(message.params)],
+          sats: outputSats(message.params.outputs),
+          now: Date.now(),
+        });
+        if (decision.approve) {
+          let finish = () => undefined as void;
+          const done = new Promise<void>((r) => (finish = r));
+          streamPass = {
+            grantId: decision.grant.id,
+            originator: streamKey,
+            label: decision.grant.label,
+            maxSats: decision.budget,
+            done,
+            finish,
+          };
+          streamPasses.set(streamKey, streamPass);
+          console.log('[createAction] streaming grant covers this call; budget left', decision.budget);
+        }
+      }
+      // options.spendingAuthorization is ours, not BRC-100: never pass it on to the signer.
+      message.params = withoutStreamOption(message.params);
       const usesSendAllSentinel = message.params.outputs?.some((o) => o.satoshis === 2099999999999999) === true;
       const signer = isAdmin && usesSendAllSentinel && accountContext?.baseWallet ? accountContext.baseWallet : w;
 
@@ -4213,6 +4540,14 @@ if (!(
         throw err;
       }
       console.log('[createAction] Success');
+      if (streamPass) {
+        const pass = streamPass;
+        const sats = pass.charged ?? outputSats(message.params.outputs);
+        await updateStreamState((st) => ({
+          state: recordSpend(st, pass.grantId, { at: Date.now(), sats, txid: result.txid }),
+          result: undefined,
+        })).catch((e: unknown) => console.warn('[createAction] stream spend not recorded:', e));
+      }
       const ref = result.signableTransaction?.reference;
       if (bigRefBytes.size > 200) bigRefBytes.clear();
       if (ref && bytes > 0) bigRefBytes.set(ref, bytes + (result.signableTransaction?.tx?.length ?? 0));
@@ -4289,6 +4624,11 @@ if (!(
         // Heal outcome first: the page cuts long errors, and a long broadcaster reason hid "tap Send again" (19 Oct).
         error: withHealMessage(friendly ?? errorMessage, heal),
       });
+    } finally {
+      if (streamPass) {
+        if (streamPasses.get(streamPass.originator) === streamPass) streamPasses.delete(streamPass.originator);
+        streamPass.finish();
+      }
     }
     return true;
   };
@@ -4666,6 +5006,7 @@ if (!(
       denyAllOneSatPrompts();
 
       failPendingUsbChecks(USB_KEY_ABSENT_MESSAGE);
+      failPendingStreamGrants();
 
       // Reject any CWI handlers waiting for wallet unlock
       for (const waiter of pendingWalletWaiters.splice(0)) {

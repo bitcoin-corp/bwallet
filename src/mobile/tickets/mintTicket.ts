@@ -9,6 +9,8 @@ import { MINT_APP, fileToBase64, withFeeOutput } from '../mint/mint';
 import { withIssuerSignature } from '../issuer/issuerSign';
 import { registerIssuer } from '../issuer/issuerVerify';
 import { rememberOwnToken } from '../tokens/indexFund';
+import { CURVE_MAP_DESCRIPTION, curveMapScript } from '../curves/curveMap';
+import type { Curve } from '../../lib/curves';
 import {
   TICKET_DECIMALS,
   TICKET_MIN,
@@ -82,11 +84,14 @@ export async function deployBsv21(
     icon: string | null;
     feeSats: number;
     map?: { script: LockingScript; description: string };
+    /** The launch curve, committed on the deploy tx as its own MAP output (fixed from then on). */
+    curve?: Curve | null;
   },
 ): Promise<string> {
   const withFee = withIssuerSignature(withFeeOutput(ctx, opts.feeSats), 'bsv21');
+  const withCurve = opts.curve ? withMapOutput(withFee, curveMapScript(opts.curve), CURVE_MAP_DESCRIPTION) : withFee;
   const res = await deployBsv21Mint.execute(
-    opts.map ? withMapOutput(withFee, opts.map.script, opts.map.description) : withFee,
+    opts.map ? withMapOutput(withCurve, opts.map.script, opts.map.description) : withCurve,
     {
       symbol: opts.symbol,
       amount: opts.amount,

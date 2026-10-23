@@ -33,6 +33,8 @@ export const RESERVED_PROTOCOLS: readonly Protocol[] = [
   [2, 'bwallet paymail'],
   [2, 'bwallet agreement'],
   [2, 'bwx partnership'],
+  [2, 'bwx escrow'],
+  [2, 'bwx commission terms'],
   [2, 'bshares director'],
   [2, 'bshares treasury'],
   [2, 'bshares partner'],
