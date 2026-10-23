@@ -14,6 +14,7 @@ import {
   buildSheetModel,
   DEFAULT_ALLOWANCE_USD,
   sheetCanTrust,
+  sheetDecisions,
   type BundleRequest,
 } from '../../services/permissionBundle';
 import { approvalKindForSheet, siteName } from '../../services/approvalKind';
@@ -70,6 +71,8 @@ export const BundleSheet = (props: {
   const canTrust = useMemo(() => sheetCanTrust(request), [request]);
   const [trustSite, setTrustSite] = useState(true);
   const [details_, setDetails] = useState(false);
+  // Once the ticks have been on screen they decide; until then Allow covers the routine lines (sheetDecisions).
+  const [detailsSeen, setDetailsSeen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [usbError, setUsbError] = useState('');
 
@@ -109,9 +112,7 @@ export const BundleSheet = (props: {
         }
       }
       if (approve) markSiteConnected(request.originator); // its sheets may now wear its theme (docs/SITE-THEME.md)
-      const decisions: Record<string, boolean> = {};
-      for (const l of model.lines) decisions[l.requestID] = approve && isChecked(l.requestID, l.checked);
-      if (model.payment) decisions[model.payment.requestID] = approve;
+      const decisions = sheetDecisions(model, approve, checked, detailsSeen);
       await sendMessageAsync({
         action: 'BUNDLE_PERMISSION_RESPONSE',
         bundleID: request.bundleID,
@@ -452,7 +453,10 @@ export const BundleSheet = (props: {
         secondary={careful ? allow : deny}
         details={details}
         detailsOpen={details_}
-        onToggleDetails={() => setDetails(!details_)}
+        onToggleDetails={() => {
+          setDetailsSeen(true);
+          setDetails(!details_);
+        }}
         error={usbError}
       >
         {body}

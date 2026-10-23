@@ -339,6 +339,31 @@ export const buildSheetModel = (bundle: Pick<PermissionBundle, 'originator' | 'i
   return { originator: bundle.originator, lines, payment, mode };
 };
 
+/**
+ * What each line of a sheet answers when the user taps Allow or Not now.
+ *
+ * The per-line ticks live behind "Details". A line the user never saw unticked cannot have been
+ * unticked knowingly, so when Details was never opened, Allow covers every routine line the card
+ * asked for. Before this, a sign-in card for one protocol line (Ask b history, a post signature)
+ * answered "denied" to the very thing it showed: "Permission denied." and the same card again on
+ * every call (chat.bwalletx.com, 23 Oct 2026). Risky lines are shown with their ticks on the
+ * careful card, so they always keep their tick state. Details opened: the ticks decide.
+ */
+export const sheetDecisions = (
+  model: Pick<SheetModel, 'lines' | 'payment'>,
+  approve: boolean,
+  ticks: Record<string, boolean>,
+  detailsSeen: boolean,
+): Record<string, boolean> => {
+  const decisions: Record<string, boolean> = {};
+  for (const l of model.lines) {
+    const ticked = ticks[l.requestID] ?? (l.checked || (!l.risky && !detailsSeen));
+    decisions[l.requestID] = approve && ticked;
+  }
+  if (model.payment) decisions[model.payment.requestID] = approve;
+  return decisions;
+};
+
 /** Convert a dollar allowance to satoshis at a USD-per-BSV rate. 0 or no rate → 0. */
 export const allowanceSats = (usd: number, usdPerBsv: number | undefined): number => {
   if (!usd || !usdPerBsv || usdPerBsv <= 0 || !Number.isFinite(usdPerBsv)) return 0;

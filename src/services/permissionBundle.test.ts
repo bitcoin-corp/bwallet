@@ -6,6 +6,7 @@ import {
   isIdentityKeyRequest,
   isRiskyRequest,
   sheetCanTrust,
+  sheetDecisions,
   TRUST_SITE_BASKET,
   PermissionBundler,
   type BundleRequest,
@@ -311,5 +312,42 @@ describe('allowance in dollars', () => {
     expect(allowanceSats(1, 20)).toBe(5_000_000);
     expect(allowanceSats(5, undefined)).toBe(0);
     expect(allowanceSats(0, 50)).toBe(0);
+  });
+});
+
+describe('sheetDecisions (chat.bwalletx.com, 23 Oct 2026)', () => {
+  const history = proto('h1', 'chat.bwalletx.com', {
+    protocolID: [2, 'bchatx agent history'],
+    counterparty: 'self',
+  });
+  const sigma = proto('s1', 'chat.bwalletx.com', { protocolID: [1, 'sigma'], counterparty: 'self' });
+
+  test('Allow on the card grants the one protocol line it showed (Details never opened)', () => {
+    const m = buildSheetModel({ originator: 'chat.bwalletx.com', items: [history] });
+    expect(m.lines[0].checked).toBe(false); // still not pre-ticked in Details (audit C1)
+    expect(sheetDecisions(m, true, {}, false)).toEqual({ h1: true });
+  });
+
+  test('a Like signature is granted by Allow, not answered "Permission denied."', () => {
+    const m = buildSheetModel({ originator: 'chat.bwalletx.com', items: [sigma] });
+    expect(sheetDecisions(m, true, {}, false)).toEqual({ s1: true });
+  });
+
+  test('once Details was opened, the ticks decide', () => {
+    const m = buildSheetModel({ originator: 'chat.bwalletx.com', items: [history, sigma] });
+    expect(sheetDecisions(m, true, {}, true)).toEqual({ h1: false, s1: false });
+    expect(sheetDecisions(m, true, { s1: true }, true)).toEqual({ h1: false, s1: true });
+  });
+
+  test('an untick before Details closed is honoured', () => {
+    const m = buildSheetModel({ originator: 'chat.bwalletx.com', items: [history, sigma] });
+    expect(sheetDecisions(m, true, { h1: false }, false)).toEqual({ h1: false, s1: true });
+  });
+
+  test('risky lines keep their tick state; Not now denies everything', () => {
+    const risky = proto('p1', 'chat.bwalletx.com', { privileged: true });
+    const m = buildSheetModel({ originator: 'chat.bwalletx.com', items: [risky, history, spend('pay', 100)] });
+    expect(sheetDecisions(m, true, {}, false)).toEqual({ p1: false, h1: true, pay: true });
+    expect(sheetDecisions(m, false, { p1: true }, false)).toEqual({ p1: false, h1: false, pay: false });
   });
 });
