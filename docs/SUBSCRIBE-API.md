@@ -14,7 +14,11 @@ a balance or a pot.
   through the pot's Stop switch, the global Stop all and its daily cap. If the pot is empty or the cap is hit, the
   charge fails and the status shows `lastError`.
 - **Signed by the merchant.** Every `subscribe` request carries the merchant's signature (see Signing). Unsigned,
-  altered, expired or replayed requests are refused before the sheet opens. The sheet shows the verified merchant key.
+  altered, expired or replayed requests are refused before the sheet opens. The sheet names the site by its real
+  origin and shows your merchant name as named by that site. The key is remembered per origin when the user approves:
+  later requests show "Same merchant key as before", and a different key from the same origin gets a warning.
+- **Limits.** One request per site may wait for the user at a time, and a site may ask a few times a minute. A
+  request's nonce is used up only when the user approves it.
 - **The user is in charge.** Every subscription is listed in Pots & Locks › Subscriptions with Pause and Cancel.
 
 Available in bWalletX (web, extension, direct APK). The App Store / Play edition (bWallet) doesn't answer these calls.
@@ -91,8 +95,9 @@ JSON.stringify([
 ```
 
 The wallet rebuilds the array from what it shows on the sheet and the **real** sender origin, so a signature made for
-one site fails on another, and changing any field breaks it. Each `merchantKey` + `nonce` is accepted once (until
-it expires). Keep `merchantKey` stable: users see it on the sheet and on the subscription.
+one site fails on another, and changing any field breaks it. Each `merchantKey` + `nonce` is accepted once per origin
+(until it expires), counted when the user approves. Keep `merchantKey` stable: the wallet pins it to your origin, and
+a changed key is shown to users as a warning.
 
 ```js
 // Node, on your server

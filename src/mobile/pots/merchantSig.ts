@@ -7,9 +7,17 @@
  *
  * `origin` is the origin the wallet saw the request come from (frame MessageEvent, native WebView, or Chrome's
  * sender), never a value the page supplies, so a request signed for one site can't be replayed from another.
- * Requests expire (at most MAX_LIFETIME_MS ahead) and each nonce is accepted once per merchant key.
+ * Requests expire (at most MAX_LIFETIME_MS ahead) and each nonce is accepted once per origin + merchant key.
  *
- * Pure apart from the used-nonce store (localStorage).
+ * A valid signature only proves the request came from whoever holds `merchantKey`, and the page supplies that key
+ * itself, so it is NOT proof of who the merchant is. The wallet's identity for a request is the real origin; the key
+ * is pinned per origin on first approval (trust on first use) so a later request can be shown as the same merchant
+ * key as before, or warned about when it changes.
+ *
+ * Nonces are checked before the sheet and recorded only after the user approves, in a store per origin with its own
+ * cap, so no page can use up another page's room.
+ *
+ * Pure apart from the used-nonce and pinned-key stores (localStorage).
  */
 import { BSM, PrivateKey, PublicKey, Signature, Utils } from '@bsv/sdk';
 
@@ -20,8 +28,13 @@ export const MAX_LIFETIME_MS = 15 * 60_000;
 const SKEW_MS = 60_000;
 const NONCE_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const KEY_RE = /^0[23][0-9a-f]{64}$/i;
-const NONCES = 'bwx.subNonces.v1';
-const MAX_NONCES = 2000;
+/** Per-origin used-nonce store: NONCES_PREFIX + origin. */
+const NONCES_PREFIX = 'bwx.subNonces.v2:';
+/** Live nonces kept per origin. One origin filling its own store never affects another. */
+export const MAX_NONCES_PER_ORIGIN = 200;
+/** origin → merchant keys the user has approved a subscription for. */
+const PINS = 'bwx.subMerchantKeys.v1';
+const MAX_PINS_PER_ORIGIN = 8;
 
 export type SignedFields = {
   origin: string;
@@ -74,26 +87,26 @@ export const parseProof = (args: Record<string, unknown>): MerchantProof => {
 };
 
 type NonceMap = Record<string, number>;
-const readNonces = (): NonceMap => {
+const readJson = <T extends object>(k: string): T => {
   try {
-    const v = localStorage.getItem(NONCES);
+    const v = localStorage.getItem(k);
     const m = v ? (JSON.parse(v) as unknown) : {};
-    return m && typeof m === 'object' && !Array.isArray(m) ? (m as NonceMap) : {};
+    return (m && typeof m === 'object' && !Array.isArray(m) ? m : {}) as T;
   } catch {
-    return {};
+    return {} as T;
   }
 };
-const writeNonces = (m: NonceMap) => {
-  try {
-    localStorage.setItem(NONCES, JSON.stringify(m));
-  } catch {
-    fail('Can’t record this request, so it can’t be accepted');
-  }
+const liveNonces = (origin: string, now: number): NonceMap => {
+  const live: NonceMap = {};
+  for (const [k, exp] of Object.entries(readJson<NonceMap>(NONCES_PREFIX + origin)))
+    if (typeof exp === 'number' && exp > now) live[k] = exp;
+  return live;
 };
 
 /**
- * Verifies a merchant's signed request for `fields` (origin = the real sender origin) and burns its nonce. Throws on
- * an unsigned, malformed, badly signed, expired, too-long-lived or replayed request. Returns the merchant key.
+ * Verifies a merchant's signed request for `fields` (origin = the real sender origin) and checks its nonce has not
+ * been used from this origin. Records nothing: call recordNonce once the user approves. Throws on an unsigned,
+ * malformed, badly signed, expired, too-long-lived or replayed request. Returns the merchant key.
  */
 export const verifyMerchant = (fields: Omit<SignedFields, 'nonce' | 'expiresAt'>, p: MerchantProof, now: number) => {
   if (p.expiresAt <= now) fail('This request has expired');
@@ -106,17 +119,51 @@ export const verifyMerchant = (fields: Omit<SignedFields, 'nonce' | 'expiresAt'>
     ok = false;
   }
   if (!ok) fail('The merchant signature doesn’t match this request');
-  // Replay: one use per merchant key + nonce, kept until it expires.
-  const all = readNonces();
-  const live: NonceMap = {};
-  for (const [k, exp] of Object.entries(all)) if (typeof exp === 'number' && exp > now) live[k] = exp;
+  if (liveNonces(fields.origin, now)[`${p.merchantKey}:${p.nonce}`]) fail('This request was already used');
+  return p.merchantKey;
+};
+
+/**
+ * Burns an approved request's nonce in `origin`'s own store, kept until it expires. Throws if it was used meanwhile,
+ * or if this origin's store is full (never forgets a live nonce to make room: that would reopen replays).
+ */
+export const recordNonce = (origin: string, p: MerchantProof, now: number) => {
+  const live = liveNonces(origin, now);
   const key = `${p.merchantKey}:${p.nonce}`;
   if (live[key]) fail('This request was already used');
-  // Never forget a live nonce to make room (that would reopen replays): refuse until some expire.
-  if (Object.keys(live).length >= MAX_NONCES) fail('Too many subscription requests, try again in a few minutes');
+  if (Object.keys(live).length >= MAX_NONCES_PER_ORIGIN)
+    fail('Too many subscription requests from this site, try again in a few minutes');
   live[key] = p.expiresAt + SKEW_MS;
-  writeNonces(live);
-  return p.merchantKey;
+  try {
+    localStorage.setItem(NONCES_PREFIX + origin, JSON.stringify(live));
+  } catch {
+    fail('Can’t record this request, so it can’t be accepted');
+  }
+};
+
+/**
+ * How `merchantKey` compares with the keys previously approved for this exact origin: 'same' (approved before),
+ * 'new' (nothing approved for this origin yet) or 'changed' (this origin was approved with a different key).
+ */
+export type KeyTrust = 'same' | 'new' | 'changed';
+export const merchantKeyTrust = (origin: string, merchantKey: string): KeyTrust => {
+  const pinned = readJson<Record<string, unknown>>(PINS)[origin];
+  const keys = Array.isArray(pinned) ? pinned.filter((k): k is string => typeof k === 'string') : [];
+  if (!keys.length) return 'new';
+  return keys.includes(merchantKey.toLowerCase()) ? 'same' : 'changed';
+};
+
+/** Pins `merchantKey` for `origin` after the user approved a subscription signed by it. */
+export const pinMerchantKey = (origin: string, merchantKey: string) => {
+  const all = readJson<Record<string, unknown>>(PINS);
+  const prev = Array.isArray(all[origin]) ? (all[origin] as unknown[]).filter((k) => typeof k === 'string') : [];
+  const k = merchantKey.toLowerCase();
+  all[origin] = [...prev.filter((x) => x !== k), k].slice(-MAX_PINS_PER_ORIGIN);
+  try {
+    localStorage.setItem(PINS, JSON.stringify(all));
+  } catch {
+    // Not pinned: the next request from this origin is shown as a new merchant key, which is the safe side.
+  }
 };
 
 /** Short, readable form of a merchant key for the sheet: 02ab12…9f0e. */
