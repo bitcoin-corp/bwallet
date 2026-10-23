@@ -9,6 +9,8 @@
  * top-left, then bottom-up a white scrubber, a green Buy $TICKER button, the title and $TICKER in
  * Bebas Neue (ticker in bMovies yellow), the blurb in grey, and the blue mono @handle with ↗ to the
  * original post. Buy/Sell open the clip on bmovies.app (where real trades happen); Share shares its page.
+ * With BMOVIES_ONE_MODEL on, title/Buy/Sell/Register open the bApps tile's webview at /film/<TICKER>?t=&action=
+ * (or /claim/<offerId>) instead: one surface, one session, one claim path (bmovies-ONE-MODEL.md).
  *
  * Swipe to trade: on a clip, swipe RIGHT = buy 1p of its token, LEFT = sell 1p (long-press Buy/Sell does
  * the same). Vertical swipes still change clip; in this reel the Feed's own left/right feed-swipe is off
@@ -20,8 +22,11 @@ import { haptic } from '../../swipe/haptics';
 import bebasUrl from '../../bmint/assets/fonts/bebas-neue-400.woff2?url';
 import { shareLink } from '../../chat/shareLink';
 import { openDappBrowser } from '../../dappBrowser';
+import { openBapp } from '../../bappFrame/bappFrame';
 import {
+  BMOVIES_ONE_MODEL,
   BMOVIES_ORIGIN,
+  filmUrl,
   FEED_URL,
   appendPage,
   avatarUrl,
@@ -247,7 +252,14 @@ const Slide = ({
   }, [playing]);
 
   const shownPoster = poster && !posterBroken ? phonePoster(poster) : null;
-  const openOnBmovies = () => void openDappBrowser(clipPageUrl(c));
+  // Where the viewer is in this clip, so the film page carries on from there (ONE MODEL ?t=).
+  const at = useRef(0);
+  const openOnBmovies = (action?: Side) => {
+    if (!BMOVIES_ONE_MODEL) return void openDappBrowser(clipPageUrl(c));
+    // The same in-wallet webview as the bApps tile (one session, one sign-in), at the one film page.
+    const url = filmUrl(c, at.current, action);
+    void openBapp('bMovies', url).catch(() => openDappBrowser(url));
+  };
   const share = () =>
     void shareLink({
       title: c.title,
@@ -288,7 +300,7 @@ const Slide = ({
     onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault(),
     onClick: () => {
       if (press.current?.fired) return;
-      openOnBmovies();
+      openOnBmovies(side);
     },
   });
 
@@ -335,6 +347,7 @@ const Slide = ({
           onClick={onToggleSound}
           onTimeUpdate={(e) => {
             const v = e.currentTarget;
+            at.current = v.currentTime;
             if (playing && v.duration > 0) setProgress(v.currentTime / v.duration);
           }}
         />
@@ -368,7 +381,7 @@ const Slide = ({
             {c.blurb}
           </p>
         )}
-        <button onClick={openOnBmovies} className="mt-2 block w-full text-left" style={{ fontFamily: BEBAS }}>
+        <button onClick={() => openOnBmovies()} className="mt-2 block w-full text-left" style={{ fontFamily: BEBAS }}>
           <span className="block text-[30px] uppercase leading-none tracking-[0.03em] text-white line-clamp-2">
             {c.title}
           </span>
@@ -509,6 +522,11 @@ const BmoviesReel = ({ brand = 'bmovies' }: { brand?: keyof typeof THEMES }) => 
 
   /** REGISTER: ask bit-sign what this viewer may do with this clip (see claim.ts). */
   const onRegister = async (c: Clip) => {
+    // ONE MODEL: one claim path, bmovies.app /claim/<offerId> (or /tweet/<id>), in the bApps webview.
+    if (BMOVIES_ONE_MODEL) {
+      const url = registerUrl(c);
+      return void openBapp('bMovies', url).catch(() => openDappBrowser(url));
+    }
     const tweetId = clipTweetId(c);
     // No X post behind it (a bMovies original): its own claim page on bmovies.app, as before.
     if (!tweetId) return void openDappBrowser(registerUrl(c));

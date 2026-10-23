@@ -1,3 +1,4 @@
+import { curveHash, type Curve } from '../../../lib/curves';
 import type { OneSatContext } from '@1sat/actions';
 import { isNative } from '../../native';
 import { BchatClient, defaultHttp, loadSession } from '../../chat/api';
@@ -31,7 +32,14 @@ export async function deployLaunch(
   ctx: OneSatContext,
   form: TokenForm,
   opts: LaunchOptions,
-  extra: { icon: string | null; launchFeeSats: number; depositSats: number; vest?: VestPlan },
+  extra: {
+    icon: string | null;
+    launchFeeSats: number;
+    depositSats: number;
+    vest?: VestPlan;
+    /** Committed on the deploy tx; fixed from then on. */
+    curve?: Curve | null;
+  },
 ): Promise<{
   launch: Launch;
   supply: string;
@@ -49,6 +57,7 @@ export async function deployLaunch(
     decimals: c.decimals,
     icon: extra.icon,
     feeSats: 0,
+    curve: extra.curve ?? null,
     ...(hasMapExtras(o) ? { map: { script: launchMapScript(f, o), description: 'bWallet coin card (MAP)' } } : {}),
   });
   const launch: Launch = {
@@ -59,6 +68,7 @@ export async function deployLaunch(
     category: o.category || null,
     roomTicker: null,
     createdAt: Date.now(),
+    curveHash: extra.curve ? curveHash(extra.curve) : null,
   };
   saveLocalLaunch(launch);
 

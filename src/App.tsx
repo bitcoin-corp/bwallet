@@ -28,6 +28,8 @@ import { SnackbarProvider } from './contexts/providers/SnackbarProvider';
 import { SentHost } from './components/sent/SentScreen';
 import { SweepMigration } from './pages/SweepMigration';
 import { PANEL_PROMPT_EVENT, PanelPrompt } from './mobile/PanelPrompt';
+import { wearConnectedSiteTheme } from './mobile/theme/accent';
+import { accentById } from './mobile/theme/accents';
 import { IS_EXTENSION } from './mobile/extension';
 import { isWebApp } from './mobile/webApp';
 import { HANDOFF_ENABLED, parseHandoffSearch } from './mobile/passkey/extHandoff';
@@ -86,6 +88,12 @@ export const App = () => {
     port.onMessage?.addListener((msg: unknown) => {
       // A site is waiting on waitForAuthentication: show the unlock screen even if this panel thought it was unlocked.
       if ((msg as { action?: string })?.action === 'SHOW_UNLOCK_PANEL') setIsLocked(true);
+      // A connected site that declared a theme is the active tab (mobile/theme/connectTheme.ts); null = put ours back.
+      if ((msg as { action?: string })?.action === 'SITE_THEME') {
+        const t = (msg as { theme?: unknown }).theme;
+        wearConnectedSiteTheme(typeof t === 'string' && accentById(t).id === t ? t : null);
+        return;
+      }
       window.dispatchEvent(new CustomEvent(PANEL_PROMPT_EVENT, { detail: msg }));
     });
     return () => port.disconnect();

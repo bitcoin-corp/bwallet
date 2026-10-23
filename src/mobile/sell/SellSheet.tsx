@@ -20,6 +20,9 @@ import {
   validateSell,
 } from './sell';
 import { fmtSats, hasRate, money, satsNote } from '../money/money';
+import { checkListable, type CustodyVerdict } from './custodyGuard';
+import { curvePriceUsd, tokenCurve, type TokenCurve } from '../market/tokenPage';
+import { usd as usdLabel } from '../../lib/curves';
 
 const GOLD = 'var(--bw-accent-hi)';
 const BG = '#17191E';
@@ -27,7 +30,15 @@ const LINE = '#2b2f36';
 // Any valid addresses: only used to size the listing script for the fee estimate.
 const SIZE_ADDR = '1BitcoinEaterAddressDontSendf59kuE';
 
-export type SellTarget = { tokenId: string; symbol: string; dec: number; heldRaw: bigint; isTicket?: boolean };
+export type SellTarget = {
+  tokenId: string;
+  symbol: string;
+  dec: number;
+  heldRaw: bigint;
+  isTicket?: boolean;
+  /** The launch curve when the caller already has it (Mint); otherwise read from the deploy tx. */
+  curve?: TokenCurve;
+};
 
 const ERR: Record<string, string> = {
   quantity: 'Enter how many to sell',
@@ -54,12 +65,18 @@ export const SellSheet = ({
   const [rate, setRate] = useState(0);
   const [fpo, setFpo] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [curve, setCurve] = useState<TokenCurve | undefined>(target.curve);
+  const [custody, setCustody] = useState<CustodyVerdict | null>(null);
   useBackClose(!busy, onClose);
 
   useEffect(() => {
     void fetchExchangeRate(apiContext.chain, apiContext.wocApiKey).then(setRate);
     void overlayFeePerOutput(apiContext, target.tokenId).then(setFpo);
-  }, [apiContext, target.tokenId]);
+    if (target.curve === undefined) void tokenCurve(target.tokenId).then(setCurve);
+    // Never list tokens this wallet holds for someone else (custodyGuard.ts).
+    void checkListable(apiContext.wallet, target.tokenId).then(setCustody);
+  }, [apiContext, target.tokenId, target.curve]);
+  const curveNow = curve ? curvePriceUsd(curve.curve, null) : null;
 
   const unit = target.isTicket ? 'ticket' : `$${target.symbol}`;
   const qtyRaw = toRaw(qty, target.dec);
@@ -76,7 +93,7 @@ export const SellSheet = ({
     const len = buildListingScript(target.tokenId, qtyRaw, SIZE_ADDR, SIZE_ADDR, total).toBinary().length;
     return networkFeeSats(listingTxBytes(2, len, qtyRaw < target.heldRaw), chromeStorageService.getCustomFeeRate());
   }, [qtyRaw, total, target.tokenId, target.heldRaw, chromeStorageService]);
-  const ready = !!qtyRaw && total >= 1 && !validateSell(qtyRaw, target.heldRaw, total);
+  const ready = !!qtyRaw && total >= 1 && !validateSell(qtyRaw, target.heldRaw, total) && custody?.ok === true;
 
   const confirm = async () => {
     if (!ready || !qtyRaw) return;
@@ -173,6 +190,24 @@ export const SellSheet = ({
           {usdMode && perToken > 0 && (
             <span className="text-[11px] text-[#667085]">{satsNote(Math.round(perToken), rate)} each</span>
           )}
+          {curveNow !== null && (
+            <span className="flex items-center justify-between text-[11px] text-[#98A2B3]">
+              <span>
+                Launch curve price: <span className="text-white">{usdLabel(curveNow)}</span> (floor{' '}
+                {usdLabel(curve!.curve.floorUsd)})
+              </span>
+              {usdMode && (
+                <button
+                  type="button"
+                  className="font-bold"
+                  style={{ color: GOLD }}
+                  onClick={() => setPrice(curveNow >= 0.01 ? curveNow.toFixed(2) : '0.01')}
+                >
+                  Use it
+                </button>
+              )}
+            </span>
+          )}
         </label>
 
         <div className="flex flex-col gap-1.5 rounded-xl p-3" style={{ background: '#0F1013' }}>
@@ -193,6 +228,7 @@ export const SellSheet = ({
         </p>
 
         {error && <p className="text-xs text-[#F97066] m-0">{ERR[error]}</p>}
+        {custody && !custody.ok && <p className="text-xs text-[#F97066] m-0">{custody.reason}</p>}
 
         <button
           type="button"

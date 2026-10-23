@@ -70,6 +70,9 @@ import bgVideo from './brand/bg/liquid-gold.mp4';
 import bgPoster from './brand/bg/liquid-gold.jpg';
 import { VideoBackground } from './ui/VideoBackground';
 import { IS_EXTENSION } from './extension';
+import { openInExtensionTab } from './bappFrame/extensionTab';
+import { BappsStore, type StoreItem } from './BappsStore';
+import { builtinStandard } from './bappStandard';
 
 /** Home's "Live now" Spaces row: bWalletX only, a lazy chunk behind the inlined flag. */
 const LiveSpacesBarLazy = BSPACES_ENABLED
@@ -763,8 +766,10 @@ const BrowserPage = ({
     const name = bapp?.name ?? tile?.name;
     // bRacer in a light theme: ask the game for its white palette (gameplay unchanged; ignored until it ships).
     if (lightScheme && url.includes(BRACER)) url += `${url.includes('?') ? '&' : '?'}theme=white`;
-    // Chrome extension: Chrome is the browser, so apps open in a normal tab and connect to the extension.
-    if (IS_EXTENSION) return void chrome.tabs.create({ url });
+    // Chrome extension (owner, 23 Oct 2026; docs/BAPP-STANDARD.md): the side panel is the launcher only. A bApp opens
+    // in a normal browser tab (or focuses the tab already on its origin), where the injected BRC-100 provider connects
+    // it and the site-theme rule applies. Never an in-panel iframe. Phones: full-screen in-wallet webview below.
+    if (IS_EXTENSION) return void openInExtensionTab(url).catch((e: unknown) => setError(String(e)));
     (name ? openBapp(name, url) : openDappBrowser(url)).catch((e: unknown) =>
       setError(e instanceof Error ? e.message : String(e)),
     );
@@ -1023,11 +1028,41 @@ const BrowserPage = ({
           >
             {screenTitle(x, i)}
           </button>
-          {screenBody(i, true)}
+          {/* The bApps section is the tiered bApps screen (search, badges, tiers); other sections keep their tiles. */}
+          {/^bapps$/i.test(screenTitle(x, i).trim()) ? bappsStore() : screenBody(i, true)}
         </div>
       ))}
       {homeExtras()}
     </>
+  );
+
+  /** Tiered bApps screen (owner, 23 Oct 2026): b*X, commercial, built-ins, standard-meeting community apps. */
+  const bappsStore = () => (
+    <BappsStore
+      open={(url, name) => go(url, { name, url } as BApp)}
+      builtins={BAPPS_GROUPED.map(
+        (t): StoreItem => ({
+          key: t.key,
+          name: t.name,
+          verb: t.bapp?.verb,
+          icon: t.icon,
+          demo: t.demo,
+          standard: t.bapp ? builtinStandard(t.bapp) : undefined,
+          onOpen: () => (isSys(t) ? navigate(t.url) : go(t.url, t.bapp)),
+        }),
+      )}
+      community={[...OTHER_TILES, ...OTHER_SECTIONS.flatMap((g) => g.tiles)].map(
+        (t): StoreItem => ({
+          key: t.key,
+          name: t.name,
+          verb: t.desc,
+          icon: t.icon,
+          // Third-party apps: no token, room or theme pack registered with us, no in-wallet BRC-100 check yet.
+          standard: { token: null, room: null, theme: familySite(t.url)?.id ?? null, inWallet: false },
+          onOpen: () => go(t.url),
+        }),
+      )}
+    />
   );
 
   const note = (text: string) => <p className="text-[10px] leading-relaxed text-[#98A2B3] text-center px-2">{text}</p>;
@@ -1104,13 +1139,8 @@ const BrowserPage = ({
     if (i === 1) {
       return (
         <>
-          {grid(
-            1,
-            BAPPS_GROUPED.filter((t) => SYS_TILES.includes(t) || !favourites.includes(t.url)),
-          )}
-          {note(
-            `Touch and hold an app for details${phone ? ' or to add it to the Dock' : ''}. Grey dot = demo. ${UNOFFICIAL_NOTICE}`,
-          )}
+          {bappsStore()}
+          {note(`Open a bApp to use it inside your wallet. ${UNOFFICIAL_NOTICE}`)}
         </>
       );
     }

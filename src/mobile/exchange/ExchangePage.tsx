@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { AtSign, Search, Star } from 'lucide-react';
+import { AtSign, MessageCircle, Search, Star } from 'lucide-react';
 import { cachedExchangeRate, fetchExchangeRate } from '../../utils/wallet';
 import { sendMessageAsync } from '../../utils/chromeHelpers';
 import { YoursEventName } from '../../inject';
@@ -159,6 +159,8 @@ const Markets = ({
   const [extra, setExtra] = useState<Record<string, RowStats>>({});
   const [q, setQ] = useState('');
   const [onlyFavs, setOnlyFavs] = useState(false);
+  // "My rooms": tokens this wallet holds, i.e. the token rooms it can enter (gate = hold ≥ 1).
+  const [onlyMine, setOnlyMine] = useState(false);
   // Names replaces the old Friends filter (owner, 15 Oct 2026): names are the market, people aren't.
   const openNames = () => navigate(`${EXCHANGE_ROUTE}/names`);
   const shares = !!SharesMarket && new URLSearchParams(search).get('shares') === '1';
@@ -171,7 +173,7 @@ const Markets = ({
   };
   const [shown, setShown] = useState(40);
   const rowActions = useTokenRowActions();
-  const { prefs } = rowActions;
+  const { prefs, held: heldIds } = rowActions;
   const [showHidden, setShowHidden] = useState(false);
 
   const all = useMemo(() => board ?? [], [board]);
@@ -186,6 +188,7 @@ const Markets = ({
       if (l && !matches(l, { ...filter, tag: tagQ || filter.tag })) return false;
       return (
         (!onlyFavs || favs.includes(r.ref.id)) &&
+        (!onlyMine || !!heldIds?.has(r.ref.id.replace('.', '_').toLowerCase())) &&
         (!needle ||
           r.title.toLowerCase().replace(/^\$/, '').includes(needle) ||
           r.ref.id.startsWith(needle) ||
@@ -195,7 +198,7 @@ const Markets = ({
     // Pinned first (right swipe), then favourites, then the board's own order (trending, then most used).
     const byFav = [...hits.filter((r) => favs.includes(r.ref.id)), ...hits.filter((r) => !favs.includes(r.ref.id))];
     return arrangeRows(byFav, (r) => r.ref.id, prefs, showHidden);
-  }, [all, labels, filter, q, onlyFavs, favs, prefs, showHidden]);
+  }, [all, labels, filter, q, onlyFavs, onlyMine, heldIds, favs, prefs, showHidden]);
   const nHidden = useMemo(() => hiddenCount(all, (r) => r.ref.id, prefs), [all, prefs]);
   const visible = list.slice(0, shown);
   // Tickers more than one token uses: those rows show their short token id so copies can be told apart.
@@ -261,6 +264,19 @@ const Markets = ({
         </button>
         <button
           type="button"
+          onClick={() => setOnlyMine((v) => !v)}
+          aria-pressed={onlyMine}
+          className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold border cursor-pointer"
+          style={{
+            background: onlyMine ? '#2a2100' : '#17191E',
+            borderColor: onlyMine ? GOLD : '#2b2f36',
+            color: GOLD,
+          }}
+        >
+          <MessageCircle size={14} color={GOLD} /> My rooms
+        </button>
+        <button
+          type="button"
           onClick={openNames}
           className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold border cursor-pointer"
           style={{ background: '#17191E', borderColor: '#2b2f36', color: GOLD }}
@@ -291,7 +307,13 @@ const Markets = ({
             <Loading text="Loading markets…" />
           ) : !list.length ? (
             <p className="text-sm text-center py-8" style={{ color: MUTED }}>
-              {showHidden ? 'Nothing hidden.' : onlyFavs ? 'Star a token to keep it here.' : 'No tokens match.'}
+              {showHidden
+                ? 'Nothing hidden.'
+                : onlyMine
+                  ? 'Buy a token to join its room; it shows here.'
+                  : onlyFavs
+                    ? 'Star a token to keep it here.'
+                    : 'No tokens match.'}
             </p>
           ) : (
             <div className="rounded-2xl bg-[var(--bw-surface)] border border-[#2b2f36] overflow-hidden">

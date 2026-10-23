@@ -181,6 +181,38 @@ export const appendPage = (have: Clip[], page: Clip[]): Clip[] => {
 };
 
 /** The clip's page on bmovies.app (its own Share link). */
+/**
+ * ONE MODEL (bmovies-ONE-MODEL.md, owner 23 Oct 2026): the reel deep-links into the same in-wallet webview as the
+ * bApps tile, at the one film page, and Register uses bmovies.app's one claim path. Off = today's behaviour
+ * (/feed?focus= in the dApp browser, bit-sign claim). Turn on only after bmovies.app ships ONE_MODEL_REDIRECTS=1,
+ * which makes /claim public again.
+ */
+export const BMOVIES_ONE_MODEL = false;
+
+/**
+ * The one film page for a clip: /film/<TICKER>?t=<sec>[&action=buy|sell] once it is minted, else its feed card
+ * /feed?focus=<offerId>&t=<sec>. `t` is where the viewer was in the reel (whole seconds), so the clip continues.
+ */
+export const filmUrl = (
+  c: Pick<Clip, 'offerId' | 'ticker' | 'registered' | 'skin'>,
+  seconds?: number | null,
+  action?: 'buy' | 'sell',
+): string => {
+  const q = new URLSearchParams();
+  const t = typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0 ? Math.floor(seconds) : null;
+  const ticker = (c.ticker ?? '').replace(/^\$+/, '').trim();
+  if (c.registered && /^[A-Za-z0-9_-]{1,32}$/.test(ticker)) {
+    if (t !== null) q.set('t', String(t));
+    if (action) q.set('action', action);
+    const qs = q.toString();
+    return `${BMOVIES_ORIGIN}/film/${encodeURIComponent(ticker.toUpperCase())}${qs ? `?${qs}` : ''}`;
+  }
+  q.set('focus', c.offerId);
+  if (t !== null) q.set('t', String(t));
+  if (c.skin) q.set('skin', c.skin);
+  return `${BMOVIES_ORIGIN}/feed?${q}`;
+};
+
 export const clipPageUrl = (c: Pick<Clip, 'offerId' | 'skin'>) =>
   `${BMOVIES_ORIGIN}/feed?focus=${encodeURIComponent(c.offerId)}${c.skin ? `&skin=${encodeURIComponent(c.skin)}` : ''}`;
 

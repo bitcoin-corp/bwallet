@@ -337,7 +337,8 @@ export const GetYourName = ({
       <div className="flex flex-col gap-2">
         <p className="text-[11px]" style={{ color: gray }}>
           A personal token, ticker <b style={{ color: fg }}>${t}</b>, all to your wallet, plus a room only holders can
-          enter. Invite = send 1 ${t}. It's for access, not trading. The room can be set up later.
+          enter. Invite = send 1 ${t}. Your room's token: holders get in; it trades on your curve. The room can be set
+          up later.
         </p>
         <label className="text-[11px] flex items-center gap-2" style={{ color: gray }}>
           Supply

@@ -30,6 +30,8 @@ const packKeyFor = (account: string) => `bwx.pack.${account}`;
 export const ACCENT_EVENT = 'bwx-accent';
 
 let applied: AccentId = DEFAULT_ACCENT;
+// What a connected-site theme painted over (wearConnectedSiteTheme); null when none is worn.
+let beforeSite: AccentId | null = null;
 /** The accent currently painted on <html> (for art drawn in JS, e.g. bAvatar tint). */
 export const currentAccentId = (): AccentId => applied;
 
@@ -197,6 +199,7 @@ export const loadAccent = (account: string): AccentId => accentById(read(keyFor(
 
 /** Applies an account's accent and remembers it for the next startup. */
 export function switchToAccountAccent(account: string): AccentId {
+  beforeSite = null; // the account's own theme replaces any connected-site theme
   const before = applied;
   const pending = read(URL_PENDING_KEY);
   if (account && pending) {
@@ -259,8 +262,31 @@ export function previewMix(mix: MixSpec): void {
 
 /** Saves and applies an account's accent. */
 export function saveAccent(account: string, id: AccentId): void {
+  beforeSite = null; // the user's choice wins over a connected-site theme
   if (account) write(keyFor(account), id === DEFAULT_ACCENT ? null : id);
   write(BOOT_KEY, id === DEFAULT_ACCENT ? null : id);
   applyAccent(id);
   announce();
 }
+
+/**
+ * Connected-site theme (connectTheme.ts): paints a bundled pack while a connected site that declared it is the
+ * active tab, without saving it anywhere; null puts back what was showing before. The background has already
+ * checked the id against the site's origin.
+ */
+export function wearConnectedSiteTheme(id: AccentId | null): void {
+  if (id) {
+    if (beforeSite === null) beforeSite = applied;
+    applyAccent(id);
+    announce();
+    return;
+  }
+  if (beforeSite === null) return;
+  const back = beforeSite;
+  beforeSite = null;
+  applyAccent(back);
+  announce();
+}
+
+/** True while a connected site's theme is painted over the user's own (Theme settings should not save it). */
+export const wearingConnectedSiteTheme = (): boolean => beforeSite !== null;

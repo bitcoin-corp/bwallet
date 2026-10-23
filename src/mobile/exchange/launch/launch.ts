@@ -1,4 +1,5 @@
 import { mintFeeAddress, txFeeSats } from '../../mint/mint';
+import { DEFAULT_PRESET, PRESETS, maxPrice, usd, type Curve, type PresetId } from '../../../lib/curves';
 import { LockingScript, OP, Utils } from '@bsv/sdk';
 import { MAP_PREFIX } from '../../names/personalToken';
 import { INDEX_FUND_NETWORK_SATS, depositValue, launchDepositSats } from '../../tokens/indexFund';
@@ -115,7 +116,9 @@ export const LAUNCH_DISCLAIMER =
   'No returns, dividends or price rises are promised. There is no promise the money will be spent on the project, that it will succeed, or that it will become a company.';
 
 /** Launchpad prefill from a query string (?name=&description=&website=&category=), e.g. a bApp's Tokenise. */
-export const launchPrefill = (search: string): { form: Partial<TokenForm>; options: Partial<LaunchOptions> } => {
+export const launchPrefill = (
+  search: string,
+): { form: Partial<TokenForm>; options: Partial<LaunchOptions>; curve: PresetId } => {
   const sp = new URLSearchParams(search);
   const get = (k: string, max: number) => (sp.get(k) ?? '').trim().slice(0, max);
   const form: Partial<TokenForm> = {};
@@ -128,7 +131,10 @@ export const launchPrefill = (search: string): { form: Partial<TokenForm>; optio
   if (/^https:\/\/[^\s]+$/i.test(website)) options.website = website;
   const category = get('category', 32);
   if (/^[a-z0-9-]+$/.test(category)) options.category = category;
-  return { form, options };
+  // ?curve=standard|big|huge preselects the climb; anything else (e.g. bMovies' ?curve=film) = Standard.
+  const c = get('curve', 16);
+  const curve: PresetId = c in PRESETS ? (c as PresetId) : DEFAULT_PRESET;
+  return { form, options, curve };
 };
 
 /** Shown on the approval sheet (replaces tokenblaster's "I understand" checkbox: nothing to tick). */
@@ -143,6 +149,7 @@ export function approvalLines(
   hasIcon: boolean,
   o: LaunchOptions = defaultLaunchOptions(),
   vest?: VestPlan,
+  curve?: Curve | null,
 ): { label: string; value: string }[] {
   const c = cleanOptions(o);
   const ticker = f.ticker.trim().replace(/^\$/, '');
@@ -156,6 +163,14 @@ export function approvalLines(
     ...(hasIcon ? [{ label: 'Inscribe icon', value: 'On-chain image' }] : []),
     ...(hasMapExtras(o)
       ? [{ label: 'Coin card on-chain', value: 'Links, category and the no-promises disclaimer' }]
+      : []),
+    ...(curve
+      ? [
+          {
+            label: 'Launch curve (permanent)',
+            value: `${curve.preset ? PRESETS[curve.preset].label + ' · ' : ''}${usd(curve.floorUsd)} → ${usd(maxPrice(curve))}`,
+          },
+        ]
       : []),
     { label: "Open holders' room", value: `Hold ${BigInt(c.roomMin).toLocaleString('en-US')} to enter` },
     { label: 'List on the Launchpad', value: 'Public launch registry' },
@@ -265,6 +280,8 @@ export const hasMapExtras = (_o: LaunchOptions): boolean => true;
 // ── Launched in bWalletX: this device's launches + the shared registry (bit-sign /api/bitsign/launches) ──
 
 export interface Launch {
+  /** sha256 of the canonical launch curve committed on the deploy tx (lib/curves), when it had one. */
+  curveHash?: string | null;
   tokenId: string;
   ticker: string;
   name: string;
@@ -301,6 +318,10 @@ export const parseLaunch = (r: unknown): Launch | null => {
     roomTicker: str(o.room_ticker ?? o.roomTicker, 64),
     createdAt: Number.isFinite(at) ? at : 0,
     video: httpsUrl(o.video ?? o.advert_video),
+    curveHash: (() => {
+      const h = str(o.curve_hash ?? o.curveHash, 64);
+      return h && /^[0-9a-f]{64}$/i.test(h) ? h.toLowerCase() : null;
+    })(),
   };
 };
 
@@ -324,6 +345,7 @@ export const launchRegistration = (l: Launch) => ({
   icon: l.icon,
   category: l.category,
   room_ticker: l.roomTicker,
+  ...(l.curveHash ? { curve_hash: l.curveHash } : {}),
 });
 
 const KEY = 'bwallet.launches';

@@ -24,7 +24,8 @@ import { UsbCheckRequestPage } from './pages/requests/UsbCheckRequest';
 import { BundleSheet, type BundlePayload } from './pages/requests/BundleSheet';
 import type { OneSatPromptStorageEntry } from './services/oneSatPrompt';
 import { sendMessageAsync } from './utils/chromeHelpers';
-import type { PromptKind, UsbCheckRequest } from './promptProtocol';
+import type { PromptKind, StreamGrantPrompt, UsbCheckRequest } from './promptProtocol';
+import { StreamGrantRequestPage } from './pages/requests/StreamGrantRequest';
 import { SiteThemeFrame } from './mobile/theme/SiteThemeFrame';
 import './index.css';
 
@@ -42,7 +43,8 @@ type PromptScreen =
   | { kind: 'groupedPermission'; requestID: string; payload: GroupedPermissionRequest }
   | { kind: 'counterpartyPermission'; requestID: string; payload: CounterpartyPermissionRequest }
   | { kind: 'oneSatPermission'; requestID: string; payload: OneSatPromptStorageEntry }
-  | { kind: 'usbCheck'; requestID: string; payload: UsbCheckRequest };
+  | { kind: 'usbCheck'; requestID: string; payload: UsbCheckRequest }
+  | { kind: 'streamGrant'; requestID: string; payload: StreamGrantPrompt };
 
 /** The site a request screen is for (from the request the background checked), for the frame's origin strip. */
 const screenOriginator = (s: PromptScreen): string | undefined =>
@@ -359,6 +361,9 @@ const PromptApp = () => {
               request={screen.payload}
               onResponse={() => void advance()}
             />
+          )}
+          {screen.kind === 'streamGrant' && (
+            <StreamGrantRequestPage key={screen.requestID} request={screen.payload} onResponse={() => void advance()} />
           )}
           {screen.kind === 'usbCheck' && (
             <UsbCheckRequestPage key={screen.requestID} request={screen.payload} onResponse={() => void advance()} />

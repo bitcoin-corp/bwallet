@@ -1,7 +1,9 @@
 import { bsv21FieldsFromOutput, deployBsv21Mint, syncAddresses, type OneSatContext } from '@1sat/actions';
 import { BSV21_BASKET } from '@1sat/types';
 import { isNative } from '../native';
-import { inscribeIcon } from '../tickets/mintTicket';
+import { inscribeIcon, withMapOutput } from '../tickets/mintTicket';
+import { CURVE_MAP_DESCRIPTION, curveMapScript } from '../curves/curveMap';
+import type { Curve } from '../../lib/curves';
 import { iconFile } from '../mint/mint';
 import { getLocalAvatar, isDefaultAvatar } from './avatar';
 import { withIssuerSignature } from '../issuer/issuerSign';
@@ -87,6 +89,8 @@ export async function deployPersonalToken(
     acceptDuplicate?: boolean;
     /** Tests / callers that already decided: skips the lookup. */
     choice?: ExistingChoice;
+    /** Launch curve, committed on the deploy tx as its own MAP output; fixed from then on. */
+    curve?: Curve | null;
   },
 ): Promise<PersonalLink> {
   const ticker = personalTicker(input.name);
@@ -104,8 +108,10 @@ export async function deployPersonalToken(
   const supply = cleanSupply(input.supply);
   // Never mint with our logo when the person has a picture: inscribe it as the token's icon.
   const icon = input.icon || (await personalIcon(ctx, ticker, input).catch(() => undefined));
+  // Fresh wrapper per attempt: the MAP proxies add their output to one createAction only.
+  const withCurve = () => (input.curve ? withMapOutput(ctx, curveMapScript(input.curve), CURVE_MAP_DESCRIPTION) : ctx);
   const deploy = () =>
-    deployBsv21Mint.execute(withIssuerSignature(withPersonalMap(ctx, input.name, ticker), 'bsv21'), {
+    deployBsv21Mint.execute(withIssuerSignature(withPersonalMap(withCurve(), input.name, ticker), 'bsv21'), {
       symbol: ticker,
       amount: supply,
       decimals: PERSONAL_DECIMALS,

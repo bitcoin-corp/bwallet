@@ -38,6 +38,7 @@ import {
   Search,
   ScrollText,
   X as XIcon,
+  Play,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { requestIgnoreBattery } from '../mobile/spaces/battery';
@@ -76,6 +77,7 @@ import { ShowSeedWords } from '../components/ShowSeedWords';
 import { saveBackupFile, saveRoute } from '../mobile/backup/backupFile';
 import { requestSettingsScreen, searchSettings, type SettingsEntry } from '../utils/settingsSearch';
 import { PermissionsManager } from './PermissionsManager';
+import { StreamingPermissions } from './StreamingPermissions';
 import { StorageStatus } from './StorageStatus';
 import { REPAIR_PHASE_LABELS, useStorageRepair } from '../hooks/useStorageRepair';
 import { RECONCILE_RECORD_KEY, type ReconcileOutcome, type ReconcileRecord } from '../services/storageReconcile';
@@ -117,6 +119,7 @@ export type SettingsPage =
   | 'show-words'
   | 'storage'
   | 'permissions'
+  | 'streaming'
   | 'usb-security'
   | 'troubleshooting';
 
@@ -1008,6 +1011,13 @@ export const Settings = () => {
           label="Permissions"
           description="Review and revoke connected apps and permissions"
           onClick={() => setPage('permissions')}
+        />
+        <Divider />
+        <SettingRow
+          icon={<Play size={16} />}
+          label="Streaming permissions"
+          description="Sites that stream payments while you watch: spend, Revoke, Pause all"
+          onClick={() => setPage('streaming')}
           isLast
         />
       </Section>
@@ -2382,6 +2392,20 @@ export const Settings = () => {
               >
                 <SubPageHeader title="Permissions" onBack={() => setPage('main')} />
                 <PermissionsManager onBack={() => setPage('main')} />
+              </motion.div>
+            )}
+
+            {page === 'streaming' && (
+              <motion.div
+                key="streaming"
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                className="w-full px-4 pb-4"
+              >
+                <SubPageHeader title="Streaming permissions" onBack={() => setPage('main')} />
+                <StreamingPermissions />
               </motion.div>
             )}
 
