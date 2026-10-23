@@ -58,7 +58,9 @@ type Revoke = (originator: string) => Promise<boolean>;
 const defaultRevoke: Revoke = async (originator) => {
   const c = (globalThis as { chrome?: { runtime?: { sendMessage?: (m: unknown) => Promise<unknown> } } }).chrome;
   if (!c?.runtime?.sendMessage) return false;
-  const r = (await c.runtime.sendMessage({ action: 'PERMISSIONS_REVOKE_ALL', originator }).catch(() => null)) as {
+  const r = (await c.runtime
+    .sendMessage({ action: 'PERMISSIONS_REVOKE_ALL', originator, allAccounts: true })
+    .catch(() => null)) as {
     success?: boolean;
   } | null;
   return !!r?.success;

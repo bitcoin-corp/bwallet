@@ -1,4 +1,5 @@
 /* global chrome */
+import { revokeOriginatorInAccounts } from './services/accountPermissionStore';
 import { createMasterBackupGate } from './services/masterBackupGate';
 import { promptsShowInPanel } from './services/panelPrompt';
 import { isSessionExpired } from './utils/lockTimeout';
@@ -2925,10 +2926,21 @@ if (!(
     }
   };
 
-  const processPermissionsRevokeAll = async (message: { originator: string }, sendResponse: CallbackResponse) => {
+  const processPermissionsRevokeAll = async (
+    message: { originator: string; allAccounts?: boolean },
+    sendResponse: CallbackResponse,
+  ) => {
     try {
       const wpm = (await ensureWallet(true)) as LocalWalletPermissionsManager;
       const revoked = await wpm.revokeAllForOriginator(message.originator);
+      // Grants are per account; a device-wide pairing is withdrawn from the other accounts' stores too.
+      if (message.allAccounts) {
+        const ids = chromeStorageService
+          .getAllAccounts()
+          .map((a) => a.addresses?.identityAddress)
+          .filter((x): x is string => !!x);
+        await revokeOriginatorInAccounts(ids, normalizeOriginator(message.originator));
+      }
       sendResponse({ type: 'PERMISSIONS_REVOKE_ALL', success: true, data: { revokedCount: revoked.length } });
     } catch (error) {
       console.error('[PERMISSIONS_REVOKE_ALL] Error:', error);

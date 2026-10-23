@@ -1,3 +1,4 @@
+import { openAccountPermissionStore } from './services/accountPermissionStore';
 import { rememberRefusals } from './services/broadcastRefusals';
 import { knownOnChain, recoverMinedFailedActions, type RecoverReport } from './services/recoverFailed';
 import { singleFlight } from './services/addressResync';
@@ -347,7 +348,11 @@ export const initWallet = async (
 
   // 3. Build the IndexedDB-backed permission store used by
   //    LocalWalletPermissionsManager for basket/cert/spending grants.
-  const permissionStore = new IndexedDbPermissionStore({ scope: 'yours-wallet' });
+  //    One store per account (b-Aware report, 23-24 Oct 2026): grants and allowances never cross accounts.
+  const accountId =
+    chromeStorageService.getCurrentAccountObject().selectedAccount || account?.addresses?.identityAddress;
+  if (!accountId) throw new Error('No current account for the permission store');
+  const permissionStore = await openAccountPermissionStore(accountId, chromeStorageService.getAllAccounts().length);
 
   // 4. Build per-asset permission modules (1sat / opns / bsv21 / lock).
   //    Shared toolkit; separate BRC-99 scheme ids. Base wallet is used for
