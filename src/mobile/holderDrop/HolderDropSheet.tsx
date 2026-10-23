@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { P2PKH } from '@bsv/sdk';
-import { sendBsv, type Bsv21Balance } from '@1sat/actions';
+import { type Bsv21Balance } from '@1sat/actions';
+import { sendBsv } from '../../utils/guardedSendBsv';
 import { ArrowLeft, Download, Gift, RotateCcw } from 'lucide-react';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { normalize } from '../../utils/format';

@@ -54,7 +54,15 @@ export const SubscriptionCard = ({
     <div className="rounded-2xl p-3 flex flex-col gap-2" style={{ background: CARD }}>
       <div className="flex items-center gap-2">
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-white truncate">{sub.payee.name}</div>
+          <div className="text-sm font-bold text-white truncate">
+            {sub.payee.name}
+            {sub.payee.origin && (
+              <span className="font-normal" style={{ color: MUTED }} data-testid="sub-card-origin">
+                {' '}
+                · {sub.payee.origin.replace(/^https:\/\//, '')}
+              </span>
+            )}
+          </div>
           <div className="text-[11px] truncate" style={{ color: MUTED }}>
             {formatAmount(sub.amount)} {formatPeriod(sub.period)}
             {sub.maxCount !== null ? ` · ${sub.paidCount} of ${sub.maxCount} paid` : ` · ${sub.paidCount} paid`}
@@ -97,10 +105,9 @@ export const SubscriptionCard = ({
           Paid from {potLabel}
         </div>
       )}
-      {sub.payee.origin && (
+      {sub.payee.origin && sub.description && (
         <div className="text-xs truncate" style={{ color: MUTED }}>
-          Asked by {sub.payee.origin.replace(/^https:\/\//, '')}
-          {sub.description ? ` · ${sub.description}` : ''}
+          {sub.description}
         </div>
       )}
       {sub.lastReceipt && (

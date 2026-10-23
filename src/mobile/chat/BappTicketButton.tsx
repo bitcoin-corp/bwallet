@@ -10,7 +10,8 @@
  * Words: "ticket" and "member", never investment wording.
  */
 import { useEffect, useState } from 'react';
-import { buyBsv21, sendBsv } from '@1sat/actions';
+import { buyBsv21 } from '@1sat/actions';
+import { sendBsv } from '../../utils/guardedSendBsv';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { useSnackbar } from '../../hooks/useSnackbar';
 import { getErrorMessage } from '../../utils/tools';

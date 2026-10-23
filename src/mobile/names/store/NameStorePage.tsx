@@ -2,7 +2,8 @@ import { useContext, useEffect, useMemo, useRef, useState, type FormEvent, type 
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowRight, Check, Gift, Search } from 'lucide-react';
-import { listOpns, sendBsv } from '@1sat/actions';
+import { listOpns } from '@1sat/actions';
+import { sendBsv } from '../../../utils/guardedSendBsv';
 import { useServiceContext } from '../../../hooks/useServiceContext';
 import { ApprovalCard, Chip } from '../../../components/approval/ApprovalCard';
 import { CARD } from '../../../components/approval/cardTheme';

@@ -12,6 +12,8 @@
  * Pure (no chrome APIs, timers injected) so it can be unit tested.
  */
 
+import { isReservedBasket } from './reservedBaskets';
+
 /** The fields of a toolbox PermissionRequest this module reads. */
 export interface BundleRequest {
   requestID: string;
@@ -362,7 +364,9 @@ export const isAutoGrantable = (r: BundleRequest): boolean => {
   if (isRiskyRequest(r)) return false;
   // Signatures anyone can check are pre-ticked but still always shown, even on a trusted site.
   if (r.type === 'protocol' && r.counterparty === 'anyone') return false;
-  if (r.type === 'basket') return !!r.basket && r.basket !== TRUST_SITE_BASKET;
+  // The wallet's own baskets (coins, ordinals, tokens, locks, names) are never granted without a sheet, and
+  // never to an outside site at all (services/reservedBaskets.ts).
+  if (r.type === 'basket') return !!r.basket && !isReservedBasket(r.basket);
   // Protocol permissions are never auto-granted (audit C1): "Don't ask again" must not silently hand a site
   // signing keys, at any level. Key derivation ignores the app, so a new protocol may be one the wallet uses.
   return false;
@@ -371,3 +375,24 @@ export const isAutoGrantable = (r: BundleRequest): boolean => {
 /** The sheet offers "Don't ask again" when at least one ticked line is the routine kind. */
 export const sheetCanTrust = (bundle: Pick<PermissionBundle, 'items'>): boolean =>
   bundle.items.some((r) => isAutoGrantable(r));
+
+/** The baskets a "Don't ask again" covers: only the routine ones that were on the sheet the user approved. */
+export const trustedBasketsFrom = (granted: BundleRequest[]): string[] => [
+  ...new Set(granted.filter((r) => r.type === 'basket' && isAutoGrantable(r)).map((r) => r.basket as string)),
+];
+
+/**
+ * Whether a stored site-trust record covers a later request without a sheet. A basket request is covered only
+ * when its basket was one of those shown on the approved sheet; a record without that list (written before
+ * 23 Oct 2026) covers no basket. Nothing that isAutoGrantable refuses is ever covered.
+ */
+export const trustCovers = (
+  grant: { expiry: number; baskets?: unknown } | null | undefined,
+  r: BundleRequest,
+  nowMs: number = Date.now(),
+): boolean => {
+  if (!grant || !isAutoGrantable(r)) return false;
+  if (!(grant.expiry === 0 || grant.expiry * 1000 > nowMs)) return false;
+  if (r.type === 'basket') return Array.isArray(grant.baskets) && grant.baskets.includes(r.basket);
+  return true;
+};

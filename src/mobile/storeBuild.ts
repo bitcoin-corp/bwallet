@@ -584,3 +584,26 @@ export const BTRUST_ENABLED: boolean = !(
   import.meta.env.VITE_CHANNEL === 'ios-store' ||
   import.meta.env.VITE_CHANNEL === 'android-play'
 );
+
+/**
+ * Greeting cards (23 Oct 2026, `cards/`, bwalletx.com/happy-b): Mint › Greeting card makes an AI card paid in BSV
+ * to bCorp (the push server's quote), then mints, sends and wears it. Paying bCorp for a digital good is Apple
+ * 3.1.1 / Play Payments, so it is bWalletX only: `cards/CardMaker.tsx` is a lazy chunk behind this literal env
+ * check, and the Mint tile is behind it too. Same env as STORE_BUILD.
+ */
+export const GREETING_CARDS_ENABLED: boolean = !(
+  import.meta.env.VITE_STORE_BUILD === '1' ||
+  import.meta.env.VITE_CHANNEL === 'ios-store' ||
+  import.meta.env.VITE_CHANNEL === 'android-play'
+);
+
+/**
+ * Spicy (18+) image generation in the card / image maker: never in a store build, not even as text (Apple 1.1.4,
+ * Play sexual content). Literal env check so Rollup drops `cards/spicy` UI strings. On web it also needs the
+ * user's own 18+ switch (cards/spicy.ts). Same env as STORE_BUILD.
+ */
+export const SPICY_ENABLED: boolean = !(
+  import.meta.env.VITE_STORE_BUILD === '1' ||
+  import.meta.env.VITE_CHANNEL === 'ios-store' ||
+  import.meta.env.VITE_CHANNEL === 'android-play'
+);

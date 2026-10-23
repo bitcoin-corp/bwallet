@@ -76,6 +76,23 @@ export const splitAvatar = (q: Pick<MeltQuote, 'elements'>) => ({
   avatar: q.elements.find((e) => e.slot === 'avatar'),
 });
 
+/**
+ * The melt fee is 0 (owner, 17 Oct 2026); the holder pays the mint and network costs at cost: a few element cards
+ * of 1 sat each plus the network fees of minting them. The largest quote seen so far was 51,381 sats, so the cap is
+ * 100,000 sats (about 2x). The quote names the amount and the recipient, so both are bounded here, never taken on
+ * trust: a fee above this cap, or to an address that is not NPG's, is refused before anything is built or signed.
+ */
+export const MELT_FEE_MAX_SATS = 100_000;
+
+/**
+ * NPG's addresses that may receive the melt's mint fees (owner-supplied 23 Oct 2026). A quote paying any other
+ * address is refused.
+ */
+export const NPG_MELT_FEE_ADDRESSES: readonly string[] = ['1AfPwENoykyHMPxDPbkq8n3MDCQ4yveomp'];
+
+export const isMeltFeeAddress = (a: string | null | undefined, allowed: readonly string[] = NPG_MELT_FEE_ADDRESSES) =>
+  typeof a === 'string' && allowed.includes(a);
+
 export const meltChallenge = (quoteId: string, jigLocation: string) => `npg-melt|v1|${quoteId}|${jigLocation}`;
 
 /** OP_FALSE OP_RETURN "npg-melt" <origin ascii> <quote_id ascii>, 0 sats. */
@@ -90,19 +107,20 @@ export function burnScript(origin: string, quoteId: string): Script {
 }
 
 /** Refuse a quote whose challenge or burn output isn't exactly what this jig and quote id should give. */
-export function checkQuote(q: MeltQuote, jigLocation: string, jigOrigin: string): string | null {
+export function checkQuote(
+  q: MeltQuote,
+  jigLocation: string,
+  jigOrigin: string,
+  feeAddresses: readonly string[] = NPG_MELT_FEE_ADDRESSES,
+): string | null {
   if (!q?.quote_id || !/^[\w-]{4,80}$/.test(q.quote_id)) return 'The quote has no valid id.';
   if (q.challenge !== meltChallenge(q.quote_id, jigLocation)) return "The quote's challenge doesn't match this NFT.";
   if (q.burn_script_hex.toLowerCase() !== burnScript(jigOrigin, q.quote_id).toHex())
     return "The quote's burn output isn't the agreed one.";
-  if (!Number.isInteger(q.fee_sats) || q.fee_sats < 0) return 'The quote has an invalid fee.';
-  if (q.fee_sats > 0 && q.fee_to) {
-    try {
-      new P2PKH().lock(q.fee_to);
-    } catch {
-      return 'The quote has no valid fee address.';
-    }
-  }
+  if (!Number.isSafeInteger(q.fee_sats) || q.fee_sats < 0) return 'The quote has an invalid fee.';
+  if (q.fee_sats > MELT_FEE_MAX_SATS) return 'The quote asks for a larger fee than a melt costs.';
+  if (q.fee_sats > 0 && q.fee_to !== null && !isMeltFeeAddress(q.fee_to, feeAddresses))
+    return "The quote's fee address isn't NPG's.";
   if (!Array.isArray(q.elements) || !q.elements.length) return 'The quote lists no element cards.';
   return null;
 }
@@ -111,8 +129,15 @@ export function checkQuote(q: MeltQuote, jigLocation: string, jigOrigin: string)
  * Whether to offer Allow. Only an explicit commit_ready: true; and a fee needs somewhere to go (fee_sats > 0 with
  * fee_to null can't be paid, so it isn't ready either). Anything else shows "Melting opens soon" and signs nothing.
  */
-export const quoteReady = (q: Pick<MeltQuote, 'commit_ready' | 'fee_sats' | 'fee_to'>): boolean =>
-  q.commit_ready === true && !(q.fee_sats > 0 && !q.fee_to);
+export const quoteReady = (
+  q: Pick<MeltQuote, 'commit_ready' | 'fee_sats' | 'fee_to'>,
+  feeAddresses: readonly string[] = NPG_MELT_FEE_ADDRESSES,
+): boolean =>
+  q.commit_ready === true &&
+  Number.isSafeInteger(q.fee_sats) &&
+  q.fee_sats >= 0 &&
+  q.fee_sats <= MELT_FEE_MAX_SATS &&
+  !(q.fee_sats > 0 && !isMeltFeeAddress(q.fee_to, feeAddresses));
 
 /** BSM signature (base64) over the challenge with the key of the jig's output. The key stays on this device. */
 export const signChallenge = (challenge: string, wif: string): string =>
@@ -230,7 +255,11 @@ export async function buildMeltTx(
   services: BeefServices,
   q: MeltQuote,
   jig: { location: string; wif: string },
+  feeAddresses: readonly string[] = NPG_MELT_FEE_ADDRESSES,
 ): Promise<{ ef: string; txid: string; reference: string }> {
+  // Checked again here: buildMeltTx must never pay a fee checkQuote would refuse.
+  if (q.fee_sats > MELT_FEE_MAX_SATS || (q.fee_sats > 0 && !isMeltFeeAddress(q.fee_to, feeAddresses)))
+    throw new Error('The quote asks for a fee the wallet will not pay.');
   const { txid, vout } = splitOutpoint(jig.location);
   const beef = await services.getBeefForTxid(txid);
   const outputs = [

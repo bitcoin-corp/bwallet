@@ -9,11 +9,19 @@ const mem = new Map<string, string>();
 };
 
 const { amountSats, dueAt, getSub, makePot, saveSub } = await import('./pots');
-const { canonicalSubscribe, MAX_LIFETIME_MS, signSubscribeRequest } = await import('./merchantSig');
+const { canonicalSubscribe, MAX_LIFETIME_MS, MAX_NONCES_PER_ORIGIN, signSubscribeRequest } =
+  await import('./merchantSig');
 const { payDue } = await import('./payDue');
 const { getAgentLog, setAgentDailyCap } = await import('../agents/agentAccounts');
-const { answerSubscribe, createAppSub, handleSubscribeCall, parseSubscribeArgs, parseSubscribeMessage } =
-  await import('./appSubscribe');
+const {
+  answerSubscribe,
+  createAppSub,
+  handleSubscribeCall,
+  MAX_ASKS_PER_MINUTE,
+  parseSubscribeArgs,
+  parseSubscribeMessage,
+  resetSubscribeLimits,
+} = await import('./appSubscribe');
 
 const T = (iso: string) => Date.parse(iso);
 const ORIGIN = 'https://app.example.com';
@@ -27,8 +35,16 @@ let nonceSeq = 0;
  */
 const req = (
   p: Record<string, unknown> = {},
-  o: { at?: number; signFor?: string; ttl?: number; nonce?: string; tamper?: Record<string, unknown> } = {},
+  o: {
+    at?: number;
+    signFor?: string;
+    ttl?: number;
+    nonce?: string;
+    tamper?: Record<string, unknown>;
+    key?: PrivateKey;
+  } = {},
 ) => {
+  const signer = o.key ?? MERCHANT;
   const base = {
     merchantName: 'Example Pro',
     payTo: 'pay@example.com',
@@ -48,8 +64,8 @@ const req = (
     nonce,
     expiresAt,
   });
-  const signature = BSM.sign(Utils.toArray(msg, 'utf8'), MERCHANT, 'base64') as string;
-  return { ...base, merchantKey: MKEY, nonce, expiresAt, signature, ...o.tamper };
+  const signature = BSM.sign(Utils.toArray(msg, 'utf8'), signer, 'base64') as string;
+  return { ...base, merchantKey: signer.toPublicKey().toString(), nonce, expiresAt, signature, ...o.tamper };
 };
 type Outs = { address: string; sats: number }[];
 const deps = (paid: Outs[], bsvUsd = 50) => ({
@@ -62,7 +78,10 @@ const deps = (paid: Outs[], bsvUsd = 50) => ({
   broadcast: async () => undefined,
 });
 
-beforeEach(() => mem.clear());
+beforeEach(() => {
+  mem.clear();
+  resetSubscribeLimits();
+});
 
 describe('request parsing', () => {
   test('a valid request', () => {
@@ -73,6 +92,7 @@ describe('request parsing', () => {
       description: 'Pro plan',
       appOrigin: ORIGIN,
       merchantKey: MKEY,
+      keyTrust: 'new',
     });
     expect(parseSubscribeArgs(req({ payTo: ADDR }), ORIGIN).payTo).toBe(ADDR);
   });
@@ -139,10 +159,15 @@ describe('merchant signatures', () => {
       'too far ahead',
     );
   });
-  test('replayed: the same signed request works once', () => {
+  test('replayed: the same signed request is approved once', async () => {
+    makePot('1Pot', 'Apps', undefined, NOW);
     const r = req({}, { at: NOW });
-    parseSubscribeArgs(r, ORIGIN, NOW);
+    const d = { approve: async () => '1Pot', bsvUsd: () => 50, now: () => NOW };
+    await handleSubscribeCall('subscribe', r, ORIGIN, d);
     expect(() => parseSubscribeArgs(r, ORIGIN, NOW + 1000)).toThrow('already used');
+    await expect(handleSubscribeCall('subscribe', r, ORIGIN, { ...d, now: () => NOW + 1000 })).rejects.toThrow(
+      'already used',
+    );
   });
   test('wrong origin: a request signed for one site fails from another, even if appOrigin is set to match', () => {
     const evil = 'https://evil.example';
@@ -260,5 +285,127 @@ describe('pot only, never the main balance', () => {
     const r = await payDue(deps(paid), NOW + 1000);
     expect(r[0]).toMatchObject({ id: s.id, ok: false, reason: expect.stringContaining('Only a pot') });
     expect(paid.length).toBe(0);
+  });
+});
+
+describe('merchant identity and request limits', () => {
+  const NOW = T('2026-10-24T12:00:00Z');
+  const OTHER = 'https://other.example';
+  const approveWith = (potId: string | null, seen: { r?: unknown }[] = []) => ({
+    approve: async (r: unknown) => {
+      seen.push({ r });
+      return potId;
+    },
+    bsvUsd: () => 50,
+    now: () => NOW,
+  });
+
+  test('a self-signed key is never "verified": first request from an origin is new', () => {
+    const selfKey = PrivateKey.fromRandom();
+    const r = parseSubscribeArgs(req({}, { at: NOW, key: selfKey }), ORIGIN, NOW);
+    expect(r.keyTrust).toBe('new');
+    expect(r.appOrigin).toBe(ORIGIN);
+  });
+
+  test('pinning: the approved key matches next time, a different key is flagged', async () => {
+    makePot('1Pot', 'Apps', undefined, NOW);
+    await handleSubscribeCall('subscribe', req({}, { at: NOW }), ORIGIN, approveWith('1Pot'));
+    expect(parseSubscribeArgs(req({}, { at: NOW }), ORIGIN, NOW).keyTrust).toBe('same');
+    const other = PrivateKey.fromRandom();
+    expect(parseSubscribeArgs(req({}, { at: NOW, key: other }), ORIGIN, NOW).keyTrust).toBe('changed');
+    // Pins are per origin: the same key from another origin is new there.
+    const elsewhere = req({ appOrigin: OTHER }, { at: NOW, signFor: OTHER });
+    expect(parseSubscribeArgs(elsewhere, OTHER, NOW).keyTrust).toBe('new');
+  });
+
+  test('a declined request pins nothing', async () => {
+    await expect(handleSubscribeCall('subscribe', req({}, { at: NOW }), ORIGIN, approveWith(null))).rejects.toThrow(
+      'Declined',
+    );
+    expect(parseSubscribeArgs(req({}, { at: NOW }), ORIGIN, NOW).keyTrust).toBe('new');
+  });
+
+  test('origin is stored on the subscription and shown on its card', async () => {
+    makePot('1Pot', 'Apps', undefined, NOW);
+    const st = (await handleSubscribeCall('subscribe', req({}, { at: NOW }), ORIGIN, approveWith('1Pot'))) as {
+      id: string;
+    };
+    const sub = getSub(st.id)!;
+    expect(sub.payee.origin).toBe(ORIGIN);
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const { createElement } = await import('react');
+    const { SubscriptionCard } = await import('./SubscriptionCard');
+    const html = renderToStaticMarkup(createElement(SubscriptionCard, { sub }));
+    expect(html).toContain('Example Pro');
+    expect(html).toContain('app.example.com');
+  });
+
+  test('nonce is not used up when the user declines or never sees the sheet', async () => {
+    makePot('1Pot', 'Apps', undefined, NOW);
+    const r = req({}, { at: NOW });
+    await expect(handleSubscribeCall('subscribe', r, ORIGIN, approveWith(null))).rejects.toThrow('Declined');
+    // Parsing (what happens before the sheet) records nothing either.
+    parseSubscribeArgs(r, ORIGIN, NOW);
+    parseSubscribeArgs(r, ORIGIN, NOW);
+    const ok = (await handleSubscribeCall('subscribe', r, ORIGIN, approveWith('1Pot'))) as { status: string };
+    expect(ok.status).toBe('active');
+  });
+
+  test('nonces are kept per origin: one full origin never blocks another', async () => {
+    makePot('1Pot', 'Apps', undefined, NOW);
+    // Fill OTHER's own store directly to its cap.
+    const full: Record<string, number> = {};
+    for (let i = 0; i < MAX_NONCES_PER_ORIGIN; i++) full[`${MKEY}:fill-${String(i).padStart(12, '0')}`] = NOW + 60_000;
+    mem.set(`bwx.subNonces.v2:${OTHER}`, JSON.stringify(full));
+    const fromOther = req({ appOrigin: OTHER }, { at: NOW, signFor: OTHER });
+    await expect(handleSubscribeCall('subscribe', fromOther, OTHER, approveWith('1Pot'))).rejects.toThrow('Too many');
+    const ok = (await handleSubscribeCall('subscribe', req({}, { at: NOW }), ORIGIN, approveWith('1Pot'))) as {
+      status: string;
+    };
+    expect(ok.status).toBe('active');
+  });
+
+  test('a flood from one origin is limited and does not affect another', async () => {
+    makePot('1Pot', 'Apps', undefined, NOW);
+    // One pending request at a time per origin.
+    let release: (v: string | null) => void = () => undefined;
+    const slow = {
+      approve: () => new Promise<string | null>((res) => (release = res)),
+      bsvUsd: () => 50,
+      now: () => NOW,
+    };
+    const first = handleSubscribeCall('subscribe', req({ appOrigin: OTHER }, { at: NOW, signFor: OTHER }), OTHER, slow);
+    await expect(
+      handleSubscribeCall('subscribe', req({ appOrigin: OTHER }, { at: NOW, signFor: OTHER }), OTHER, slow),
+    ).rejects.toThrow('already waiting');
+    // Another origin is unaffected while OTHER waits.
+    const ok = (await handleSubscribeCall('subscribe', req({}, { at: NOW }), ORIGIN, approveWith('1Pot'))) as {
+      status: string;
+    };
+    expect(ok.status).toBe('active');
+    release(null);
+    await expect(first).rejects.toThrow('Declined');
+    // A per-minute cap per origin (the first call above counted).
+    for (let i = 1; i < MAX_ASKS_PER_MINUTE; i++)
+      await expect(
+        handleSubscribeCall(
+          'subscribe',
+          req({ appOrigin: OTHER }, { at: NOW, signFor: OTHER }),
+          OTHER,
+          approveWith(null),
+        ),
+      ).rejects.toThrow('Declined');
+    await expect(
+      handleSubscribeCall(
+        'subscribe',
+        req({ appOrigin: OTHER }, { at: NOW, signFor: OTHER }),
+        OTHER,
+        approveWith(null),
+      ),
+    ).rejects.toThrow('Too many');
+    const ok2 = (await handleSubscribeCall('subscribe', req({}, { at: NOW }), ORIGIN, approveWith('1Pot'))) as {
+      status: string;
+    };
+    expect(ok2.status).toBe('active');
   });
 });

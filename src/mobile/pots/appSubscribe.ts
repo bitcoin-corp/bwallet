@@ -20,7 +20,15 @@
  * ⚠ bWalletX only: the host wires this behind SUBSCRIPTIONS_ENABLED, so a store build never answers it.
  */
 import { isMainnetAddress } from '../names/address';
-import { parseProof, verifyMerchant } from './merchantSig';
+import {
+  type KeyTrust,
+  type MerchantProof,
+  merchantKeyTrust,
+  parseProof,
+  pinMerchantKey,
+  recordNonce,
+  verifyMerchant,
+} from './merchantSig';
 import { addSubscription, cancelSub, getSub, isPayingPot, listSubs, nextDue, type Subscription } from './pots';
 
 export const SUBSCRIBE_MSG = 'BWX_SUBSCRIBE';
@@ -28,14 +36,20 @@ export type SubscribeCall = 'subscribe' | 'status' | 'cancel' | 'list';
 const CALLS: readonly string[] = ['subscribe', 'status', 'cancel', 'list'];
 
 export type AppSubscribeRequest = {
+  /** Free text chosen by the page: always shown as named by appOrigin, never as a verified identity. */
   merchantName: string;
   /** A paymail (name@host) or a mainnet P2PKH address. */
   payTo: string;
   usdPerMonth: number;
   description: string;
   appOrigin: string;
-  /** The merchant identity key whose signature over this request the wallet verified. */
+  /**
+   * The key whose signature over this request the wallet verified. The page supplied it, so it proves nothing about
+   * who the merchant is; see keyTrust.
+   */
   merchantKey: string;
+  /** merchantKey against the keys the user approved before for this exact origin (merchantSig.ts). */
+  keyTrust: KeyTrust;
 };
 
 /** Most a single app subscription may charge a month. Bigger needs a standing order the user types in. */
@@ -89,11 +103,11 @@ const text = (v: unknown, max: number, what: string, required: boolean): string 
  * Checks a subscribe request against the origin that really sent it. `appOrigin` must be that exact origin: an app
  * can't ask on another site's behalf.
  */
-export const parseSubscribeArgs = (
+const parseSigned = (
   args: Record<string, unknown>,
   senderOrigin: string,
-  now = Date.now(),
-): AppSubscribeRequest => {
+  now: number,
+): { req: AppSubscribeRequest; proof: MerchantProof } => {
   if (args.appOrigin !== senderOrigin) fail('appOrigin must be the origin of the page asking');
   const merchantName = text(args.merchantName, MAX_NAME, 'merchantName', true);
   const description = text(args.description, MAX_DESC, 'description', false);
@@ -104,14 +118,43 @@ export const parseSubscribeArgs = (
   const usdPerMonth = cents(usd as number);
   if (usdPerMonth < MIN_USD_PER_MONTH || usdPerMonth > MAX_USD_PER_MONTH)
     fail(`usdPerMonth must be between $${MIN_USD_PER_MONTH} and $${MAX_USD_PER_MONTH}`);
-  // Signed by the merchant over exactly what the sheet shows, bound to the REAL sender origin; nonce burnt here.
+  // Signed over exactly what the sheet shows, bound to the REAL sender origin. The nonce is checked here and only
+  // recorded after the user approves (handleSubscribeCall).
   const proof = parseProof(args);
   const merchantKey = verifyMerchant(
     { origin: senderOrigin, payTo, usdPerMonth, merchantName, description },
     proof,
     now,
   );
-  return { merchantName, payTo, usdPerMonth, description, appOrigin: senderOrigin, merchantKey };
+  const keyTrust = merchantKeyTrust(senderOrigin, merchantKey);
+  return {
+    req: { merchantName, payTo, usdPerMonth, description, appOrigin: senderOrigin, merchantKey, keyTrust },
+    proof,
+  };
+};
+
+export const parseSubscribeArgs = (
+  args: Record<string, unknown>,
+  senderOrigin: string,
+  now = Date.now(),
+): AppSubscribeRequest => parseSigned(args, senderOrigin, now).req;
+
+/** Subscribe requests one origin may make a minute. Each origin has its own count; one never blocks another. */
+export const MAX_ASKS_PER_MINUTE = 5;
+const pending = new Set<string>();
+const recent = new Map<string, number[]>();
+/** Tests only. */
+export const resetSubscribeLimits = () => {
+  pending.clear();
+  recent.clear();
+};
+const takeSlot = (origin: string, now: number) => {
+  if (pending.has(origin)) fail('A subscription request from this site is already waiting');
+  const times = (recent.get(origin) ?? []).filter((t) => t > now - 60_000);
+  if (times.length >= MAX_ASKS_PER_MINUTE) fail('Too many subscription requests from this site, try again soon');
+  times.push(now);
+  recent.set(origin, times);
+  pending.add(origin);
 };
 
 /** The pots Subscription an approved request becomes: $X a month, first payment now, no end, no stacking. */
@@ -191,12 +234,21 @@ export const handleSubscribeCall = async (
   const now = deps.now?.() ?? Date.now();
   switch (call) {
     case 'subscribe': {
-      const r = parseSubscribeArgs(args, origin, now);
-      const potId = await deps.approve(r);
-      if (!potId) return fail('Declined');
-      const s = createAppSub(r, potId, deps.bsvUsd(), now);
-      deps.chargeSoon?.();
-      return toStatus(s);
+      takeSlot(origin, now);
+      try {
+        const { req: r, proof } = parseSigned(args, origin, now);
+        const potId = await deps.approve(r);
+        if (!potId) return fail('Declined');
+        // Approved: burn the nonce (re-checked for a replay while the sheet was open), then pin the key.
+        const at = deps.now?.() ?? Date.now();
+        recordNonce(origin, proof, at);
+        pinMerchantKey(origin, r.merchantKey);
+        const s = createAppSub(r, potId, deps.bsvUsd(), at);
+        deps.chargeSoon?.();
+        return toStatus(s);
+      } finally {
+        pending.delete(origin);
+      }
     }
     case 'status':
       return toStatus(own(origin, args.id));

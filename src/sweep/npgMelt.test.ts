@@ -8,6 +8,7 @@ import {
   getQuote,
   meltChallenge,
   MeltRefusedError,
+  MELT_FEE_MAX_SATS,
   pollMelt,
   quoteReady,
   signChallenge,
@@ -178,13 +179,53 @@ describe('npg melt', () => {
   });
 
   test('only an explicit commit_ready with a payable fee is ready', () => {
-    expect(quoteReady({ commit_ready: true, fee_sats: 51_381, fee_to: JIG_KEY.toAddress() })).toBe(true);
+    const npg = [JIG_KEY.toAddress()];
+    expect(quoteReady({ commit_ready: true, fee_sats: 51_381, fee_to: JIG_KEY.toAddress() }, npg)).toBe(true);
+    // Not NPG's address: never ready.
+    expect(quoteReady({ commit_ready: true, fee_sats: 51_381, fee_to: JIG_KEY.toAddress() }, [])).toBe(false);
     expect(quoteReady({ commit_ready: true, fee_sats: 0, fee_to: null })).toBe(true);
     expect(quoteReady({ commit_ready: false, fee_sats: 0, fee_to: null })).toBe(false);
     expect(quoteReady({ fee_sats: 0, fee_to: null })).toBe(false); // missing = not open
     expect(quoteReady({ commit_ready: true, fee_sats: 51_381, fee_to: null })).toBe(false); // fee with nowhere to go
     // A fee with no address is a readiness question, not a malformed quote.
     expect(checkQuote(quote({ fee_sats: 51_381, fee_to: null }), LOCATION, ORIGIN)).toBeNull();
+  });
+
+  test('melt fee is capped and only goes to NPG (report: 5,000,000 sats to another address)', async () => {
+    const npg = JIG_KEY.toAddress();
+    const attacker = PrivateKey.fromRandom().toAddress();
+    const big = quote({ fee_sats: 5_000_000, fee_to: npg, commit_ready: true });
+    expect(checkQuote(big, LOCATION, ORIGIN, [npg])).toMatch(/larger fee/);
+    expect(quoteReady(big, [npg])).toBe(false);
+    const elsewhere = quote({ fee_sats: 1_000, fee_to: attacker, commit_ready: true });
+    expect(checkQuote(elsewhere, LOCATION, ORIGIN, [npg])).toMatch(/fee address/);
+    expect(quoteReady(elsewhere, [npg])).toBe(false);
+    expect(checkQuote(quote({ fee_sats: 5_000_000, fee_to: attacker }), LOCATION, ORIGIN, [npg])).not.toBeNull();
+    expect(checkQuote(quote({ fee_sats: MELT_FEE_MAX_SATS + 1, fee_to: npg }), LOCATION, ORIGIN, [npg])).toMatch(
+      /larger fee/,
+    );
+    // Normal quotes still pass: free, or a fee within the cap to NPG.
+    expect(checkQuote(quote(), LOCATION, ORIGIN, [npg])).toBeNull();
+    const normal = quote({ fee_sats: 51_381, fee_to: npg, commit_ready: true });
+    expect(checkQuote(normal, LOCATION, ORIGIN, [npg])).toBeNull();
+    expect(quoteReady(normal, [npg])).toBe(true);
+    // The shipped list is NPG's only: with no address published yet, any fee address is refused.
+    expect(checkQuote(quote({ fee_sats: 1_000, fee_to: attacker }), LOCATION, ORIGIN)).toMatch(/fee address/);
+    // buildMeltTx refuses on its own too, before createAction.
+    let created = false;
+    const wallet = {
+      createAction: async () => {
+        created = true;
+        return {};
+      },
+    };
+    await expect(
+      buildMeltTx(wallet as never, { getBeefForTxid: async () => new Beef() }, big, {
+        location: LOCATION,
+        wif: JIG_KEY.toWif(),
+      }),
+    ).rejects.toThrow(/will not pay/);
+    expect(created).toBe(false);
   });
 
   test('realistic quote: 16 elements, avatar last, split for the sheet', () => {
