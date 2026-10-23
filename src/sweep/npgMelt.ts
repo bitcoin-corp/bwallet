@@ -85,10 +85,10 @@ export const splitAvatar = (q: Pick<MeltQuote, 'elements'>) => ({
 export const MELT_FEE_MAX_SATS = 100_000;
 
 /**
- * NPG's addresses that may receive the melt's mint fees. Empty until NPG publishes its minting address: while empty,
- * only quotes with fee_sats 0 can be signed.
+ * NPG's addresses that may receive the melt's mint fees (owner-supplied 23 Oct 2026). A quote paying any other
+ * address is refused.
  */
-export const NPG_MELT_FEE_ADDRESSES: readonly string[] = [];
+export const NPG_MELT_FEE_ADDRESSES: readonly string[] = ['1AfPwENoykyHMPxDPbkq8n3MDCQ4yveomp'];
 
 export const isMeltFeeAddress = (a: string | null | undefined, allowed: readonly string[] = NPG_MELT_FEE_ADDRESSES) =>
   typeof a === 'string' && allowed.includes(a);
