@@ -15,6 +15,7 @@ import {
   IndexedDbPermissionStore,
 } from '@1sat/wallet-browser';
 import { preserveOriginalErrors } from './services/permissionAbortGuard';
+import { guardReservedBaskets, revokeReservedBasketGrants } from './services/reservedBaskets';
 import { guardReservedProtocols, revokeReservedProtocolGrants } from './services/reservedProtocols';
 import { guardSpending } from './mobile/config/killSwitch';
 import {
@@ -374,14 +375,18 @@ export const initWallet = async (
   // Grants persist in IndexedDB (off-chain) via LocalWalletPermissionsManager.
   // Wallet-internal protocols (bTrust, Locks, funds, presign…) are refused to every outside originator before any
   // prompt (services/reservedProtocols.ts, security audit 19 Oct 2026 C1).
-  const wallet = guardReservedProtocols(
-    preserveOriginalErrors(
-      new LocalWalletPermissionsManager(
-        baseWallet,
-        ADMIN_ORIGINATOR,
-        { permissionModules: assetModules },
-        { store: permissionStore },
+  // The wallet's own baskets (coins, ordinals, tokens, locks, names) likewise (services/reservedBaskets.ts).
+  const wallet = guardReservedBaskets(
+    guardReservedProtocols(
+      preserveOriginalErrors(
+        new LocalWalletPermissionsManager(
+          baseWallet,
+          ADMIN_ORIGINATOR,
+          { permissionModules: assetModules },
+          { store: permissionStore },
+        ),
       ),
+      ADMIN_ORIGINATOR,
     ),
     ADMIN_ORIGINATOR,
   );
@@ -389,6 +394,9 @@ export const initWallet = async (
   await revokeReservedProtocolGrants(permissionStore, ADMIN_ORIGINATOR)
     .then((n) => n && console.warn(`[initWallet] revoked ${n} app grant(s) for wallet-internal protocols`))
     .catch((e: unknown) => console.warn('[initWallet] reserved-protocol grant cleanup failed:', e));
+  await revokeReservedBasketGrants(permissionStore, ADMIN_ORIGINATOR)
+    .then((n) => n && console.warn(`[initWallet] revoked ${n} app grant(s) for wallet-internal baskets`))
+    .catch((e: unknown) => console.warn('[initWallet] reserved-basket grant cleanup failed:', e));
 
   // 5. Initialize sync context (derives addresses, creates services, queue, addressManager).
   // Background sync calls go through the manager-wrapped wallet (admin

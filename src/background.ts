@@ -93,13 +93,15 @@ import {
   allowanceSats,
   DEFAULT_ALLOWANCE_USD,
   PermissionBundler,
-  isAutoGrantable,
   TRUST_SITE_BASKET,
+  trustCovers,
+  trustedBasketsFrom,
   type BundleRequest,
 } from './services/permissionBundle';
 import { normalizeOriginator } from '@1sat/wallet';
 import { ADMIN_ORIGINATOR, initWallet, openAccountStorageForBackup, type AccountContext } from './initWallet';
 import { isExtensionSender, reservedOriginatorRefusal } from './services/adminOriginator';
+import { isReservedBasket, RESERVED_BASKET_REFUSAL, revokeBasketGrantsForOriginator } from './services/reservedBaskets';
 import { isReservedProtocol, reservedProtocolRefusal, RESERVED_REFUSAL, withoutReservedProtocols } from './services/reservedProtocols';
 import { healIndexFundActions } from './mobile/tokens/indexFundHeal';
 import { continuesChain, endChain, isAlreadyProcessedAbort, markChainStep, startsChain } from './services/dappChain';
@@ -1245,6 +1247,11 @@ const showPermissionPrompt = (request: PermissionRequest & { requestID: string }
     accountContext?.wallet.denyPermission(request.requestID).catch(() => undefined);
     return Promise.reject(new Error(RESERVED_REFUSAL));
   }
+  // The wallet's own baskets (coins, ordinals, tokens, locks, names) are never offered to a site.
+  if (request.type === 'basket' && isReservedBasket(request.basket) && request.originator !== ADMIN_ORIGINATOR) {
+    accountContext?.wallet.denyPermission(request.requestID).catch(() => undefined);
+    return Promise.reject(new Error(RESERVED_BASKET_REFUSAL));
+  }
   return siteTrustedFor(request).then(
     (trusted) =>
       new Promise<void>((resolve, reject) => {
@@ -1262,9 +1269,11 @@ const showPermissionPrompt = (request: PermissionRequest & { requestID: string }
   );
 };
 
-/** True when the user ticked "Don't ask again" for this site and this request is a routine kind. */
+/**
+ * True when the user ticked "Don't ask again" for this site and this request is a routine kind that the approved
+ * sheet covered (a basket only if it was one shown on that sheet).
+ */
 const siteTrustedFor = async (request: PermissionRequest & { requestID: string }): Promise<boolean> => {
-  if (!isAutoGrantable(request as BundledRequest & BundleRequest)) return false;
   const store = accountContext?.permissionStore;
   if (!store || !request.originator) return false;
   try {
@@ -1273,10 +1282,19 @@ const siteTrustedFor = async (request: PermissionRequest & { requestID: string }
       originator: normalizeOriginator(request.originator),
       basket: TRUST_SITE_BASKET,
     });
-    return !!grant && (grant.expiry === 0 || grant.expiry * 1000 > Date.now());
+    return trustCovers(grant as { expiry: number; baskets?: unknown } | null, request as BundledRequest & BundleRequest);
   } catch {
     return false;
   }
+};
+
+/** Forget site, basket part: see revokeBasketGrantsForOriginator. Also clears the manager's recent-grant cover. */
+const revokeBasketGrantsFor = async (originator: string): Promise<void> => {
+  const store = accountContext?.permissionStore;
+  if (!store || !originator) return;
+  await revokeBasketGrantsForOriginator(store, originator, normalizeOriginator);
+  const recent = (accountContext?.wallet as unknown as { recentGrants?: unknown } | undefined)?.recentGrants;
+  if (recent instanceof Map) recent.clear();
 };
 
 const showGroupedPermissionPrompt = (request: GroupedPermissionRequest): Promise<void> => {
@@ -2933,6 +2951,9 @@ if (!(
     try {
       const wpm = (await ensureWallet(true)) as LocalWalletPermissionsManager;
       const revoked = await wpm.revokeAllForOriginator(message.originator);
+      // Forget site removes its basket grants and site-trust record too, whatever form the originator was
+      // stored under, and drops the manager's short-lived memory of recent grants.
+      await revokeBasketGrantsFor(message.originator);
       // Grants are per account; a device-wide pairing is withdrawn from the other accounts' stores too.
       if (message.allAccounts) {
         const ids = chromeStorageService
@@ -3064,7 +3085,9 @@ if (!(
           expiry: 0,
           grantedAt: Date.now(),
           reason: 'Sign-in and signing without asking',
-        });
+          // Only the baskets on this sheet; any other basket asks again.
+          baskets: trustedBasketsFrom(result.granted as (BundledRequest & BundleRequest)[]),
+        } as Parameters<typeof accountContext.permissionStore.putGrant>[0]);
       }
       await Promise.all([
         ...result.granted.map(async (r) => {
