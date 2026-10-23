@@ -18,8 +18,10 @@ import { REPORTED_STORAGE_PREFIX, refusedMark, refusedRecently, reportedKey } fr
 import type { ChatMessage, ChatRoom } from './messages';
 
 import type { BchatContact } from './contacts';
+import { BCHAT_PRIMARY_ORIGIN, routeBchatUrl } from '../../services/bchatOrigin';
 
-export const BCHAT_ORIGIN = 'https://www.bchatx.com';
+/** Primary bChatX origin; requests are moved to the live one (chat.bwalletx.com fallback) by services/bchatOrigin. */
+export const BCHAT_ORIGIN = BCHAT_PRIMARY_ORIGIN;
 /** Room attachments: bit-sign MAX_UPLOAD_BYTES (25 MB a file); one request up to 4 MB, else 3 MB parts. */
 export const ROOM_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
 const ROOM_SINGLE_REQUEST_BYTES = 4 * 1024 * 1024;
@@ -36,7 +38,7 @@ export type Http = (req: {
 const nativeHttp: Http = async ({ method, url, headers, body }) => {
   const res = await CapacitorHttp.request({
     method,
-    url,
+    url: await routeBchatUrl(url),
     headers: body !== undefined ? { ...headers, 'Content-Type': 'application/json' } : headers,
     data: body,
     responseType: 'json',
@@ -45,7 +47,7 @@ const nativeHttp: Http = async ({ method, url, headers, body }) => {
 };
 
 const fetchHttp: Http = async ({ method, url, headers, body }) => {
-  const res = await fetch(url, {
+  const res = await fetch(await routeBchatUrl(url), {
     method,
     headers: body !== undefined ? { ...headers, 'Content-Type': 'application/json' } : headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,

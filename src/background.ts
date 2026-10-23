@@ -1,5 +1,6 @@
 /* global chrome */
 import { revokeOriginatorInAccounts } from './services/accountPermissionStore';
+import { routeBchatUrl } from './services/bchatOrigin';
 import { createMasterBackupGate } from './services/masterBackupGate';
 import { promptsShowInPanel } from './services/panelPrompt';
 import { isSessionExpired } from './utils/lockTimeout';
@@ -1152,7 +1153,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name !== CALL_RING_ALARM || !accountContext) return;
   const base = accountContext.baseWallet;
   try {
-    const incoming = await fetchIncoming((u, i) => fetch(u, i), {
+    const incoming = await fetchIncoming(async (u, i) => fetch(await routeBchatUrl(u), i), {
       identityKey: async () => (await base.getPublicKey({ identityKey: true })).publicKey,
       sign: async (message) => {
         const { signature } = await base.createSignature({

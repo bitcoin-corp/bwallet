@@ -13,9 +13,10 @@
 
 const CODE = /^[a-hjkmnp-z2-9]{10}$/;
 const TICKER = /^[A-Za-z0-9_-]{1,32}$/;
-const WEB_HOSTS = new Set(
-  ['bchatx.com', 'bwalletx.com', 'bit-sign.online', 'bitcoinchat.online'].flatMap((h) => [h, `www.${h}`]),
-);
+const WEB_HOSTS = new Set([
+  ...['bchatx.com', 'bwalletx.com', 'bit-sign.online', 'bitcoinchat.online'].flatMap((h) => [h, `www.${h}`]),
+  'chat.bwalletx.com',
+]);
 
 export const isSpaceInviteCode = (s: string) => CODE.test(s);
 export const isSpaceSlug = isSpaceInviteCode;

@@ -10,6 +10,7 @@
  * to bit-sign's GET /api/bitsign/news; web and desktop use that route (same sources, same rules).
  */
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { routeBchatUrl } from '../../services/bchatOrigin';
 
 export type NewsSourceId = 'coingeek' | 'hn' | 'ars' | 'bbc-tech' | 'wired' | 'other';
 
@@ -309,7 +310,12 @@ export type FetchText = (url: string) => Promise<string | null>;
 export type FetchJson = (url: string) => Promise<unknown>;
 
 const nativeText: FetchText = async (url) => {
-  const r = await CapacitorHttp.request({ method: 'GET', url, headers: {}, responseType: 'text' });
+  const r = await CapacitorHttp.request({
+    method: 'GET',
+    url: await routeBchatUrl(url),
+    headers: {},
+    responseType: 'text',
+  });
   return r.status === 200 && typeof r.data === 'string' ? r.data : null;
 };
 
@@ -319,7 +325,12 @@ const webJson: FetchJson = async (url) => {
 };
 
 const nativeJson: FetchJson = async (url) => {
-  const r = await CapacitorHttp.request({ method: 'GET', url, headers: {}, responseType: 'json' });
+  const r = await CapacitorHttp.request({
+    method: 'GET',
+    url: await routeBchatUrl(url),
+    headers: {},
+    responseType: 'json',
+  });
   return r.status === 200 ? r.data : null;
 };
 

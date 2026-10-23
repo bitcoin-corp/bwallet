@@ -59,7 +59,12 @@ function brandManifest() {
   ];
   // 1Sat overlay submit sends an x-topics header api.1sat.app's CORS rejects; host access skips CORS.
   manifest.host_permissions = [
-    ...new Set([...(manifest.host_permissions ?? []), 'https://api.1sat.app/*', ...BAPP_HOSTS]),
+    ...new Set([
+      ...(manifest.host_permissions ?? []),
+      'https://api.1sat.app/*',
+      ...BAPP_HOSTS,
+      'https://chat.bwalletx.com/*',
+    ]),
   ];
   manifest.icons = iconSet;
   // Fixed extension ID (owner, 4 Oct 2026): each build is loaded from its own versioned folder

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import BappsDock, { BAPPS, BappIcon } from './BappsDock';
 import './bapps.css';
+import { liveBchatUrl } from '../../services/bchatOrigin';
 
 /** PROTOTYPE (demo/desktop-shell): bApps page — selected bApp in an iframe above a dock. */
 export default function BappsPage() {
@@ -33,7 +34,7 @@ export default function BappsPage() {
           <span className="bx-name">{app.name}</span>
           <span className="bx-url">{app.url ?? 'coming soon'}</span>
           {app.url && (
-            <a className="bx-btn" href={app.url} target="_blank" rel="noreferrer" title="Open in new tab">
+            <a className="bx-btn" href={liveBchatUrl(app.url)} target="_blank" rel="noreferrer" title="Open in new tab">
               ↗
             </a>
           )}
@@ -60,7 +61,7 @@ export default function BappsPage() {
                 {app.name} doesn't allow wallet framing yet, so it opens in its own tab. Payments still come from this
                 wallet.
               </p>
-              <a className="ww-btn gold" href={app.url} target="_blank" rel="noreferrer">
+              <a className="ww-btn gold" href={liveBchatUrl(app.url)} target="_blank" rel="noreferrer">
                 Open in new tab ↗
               </a>
             </div>

@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, CalendarPlus, Radio } from 'lucide-react';
 import { BCHAT_ORIGIN, defaultHttp } from '../chat/api';
+import { bchatOrigin } from '../../services/bchatOrigin';
 import { isNative } from '../native';
 import { defaultPictures } from '../chat/roomArt';
 import {
@@ -71,7 +72,7 @@ const parseFeatured = (data: unknown): FeaturedCard[] => {
 const coverUrl = (c: FeaturedCard): string | null => {
   if (!c.cover) return null;
   if (/^https:\/\//.test(c.cover)) return c.cover;
-  return c.cover.startsWith('/') ? `${BCHAT_ORIGIN}${c.cover}` : null;
+  return c.cover.startsWith('/') ? `${bchatOrigin()}${c.cover}` : null;
 };
 
 /** Gold art: the room cover, else the gold bAvatar for the room (never grey). */

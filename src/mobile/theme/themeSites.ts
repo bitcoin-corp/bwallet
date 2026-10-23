@@ -37,6 +37,9 @@ export const THEME_SITES: readonly ThemeSite[] = [
   { id: 'bchatx', host: 'bchatx.com' },
 ];
 
+/** Other hosts that serve the same deployment as a family site (same theme file): chat.bwalletx.com is bChatX. */
+const SITE_ALIASES: Record<string, string> = { 'chat.bwalletx.com': 'bchatx.com' };
+
 /**
  * The family site for a URL or bare host (connect requests carry a host, the browser a URL): the exact host or its
  * www. subdomain. A URL must be https. Ports, other subdomains and look-alikes don't match.
@@ -58,6 +61,7 @@ export function familySite(urlOrHost: string | null | undefined): ThemeSite | nu
     host = raw;
   }
   host = host.toLowerCase().replace(/\.$/, '');
+  host = SITE_ALIASES[host] ?? host;
   const bare = host.startsWith('www.') ? host.slice(4) : host;
   return THEME_SITES.find((s) => s.host === bare) ?? null;
 }

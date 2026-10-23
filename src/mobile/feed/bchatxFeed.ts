@@ -6,6 +6,7 @@
  * the native HTTP layer (no CORS), like bnews.ts. Only the fields a card needs are kept, re-checked here.
  */
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { routeBchatUrl } from '../../services/bchatOrigin';
 
 export const BCHATX_ORIGIN = 'https://www.bchatx.com';
 
@@ -97,7 +98,12 @@ const webJson: FetchJson = async (url) => {
 };
 
 const nativeJson: FetchJson = async (url) => {
-  const r = await CapacitorHttp.request({ method: 'GET', url, headers: {}, responseType: 'json' });
+  const r = await CapacitorHttp.request({
+    method: 'GET',
+    url: await routeBchatUrl(url),
+    headers: {},
+    responseType: 'json',
+  });
   return r.status === 200 ? r.data : null;
 };
 

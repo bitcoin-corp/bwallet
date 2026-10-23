@@ -1,4 +1,5 @@
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { routeBchatUrl } from '../../services/bchatOrigin';
 import type { OneSatContext } from '@1sat/actions';
 import { defaultHttp, saveSession } from '../chat/api';
 import { kycClient, signedInClient } from '../kyc/kycWallet';
@@ -8,7 +9,12 @@ import { BureauClient, type BytesFetch } from './api';
 /** Document bytes with the bearer: native HTTP on the phone apps (no CORS), fetch in a browser. */
 const bytesFetch: BytesFetch = async (url, headers) => {
   if (Capacitor.isNativePlatform()) {
-    const res = await CapacitorHttp.request({ method: 'GET', url, headers, responseType: 'blob' });
+    const res = await CapacitorHttp.request({
+      method: 'GET',
+      url: await routeBchatUrl(url),
+      headers,
+      responseType: 'blob',
+    });
     const b64 = typeof res.data === 'string' ? res.data : '';
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);

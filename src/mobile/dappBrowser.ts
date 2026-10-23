@@ -5,6 +5,7 @@ import { YoursNative, isNative } from './native';
 import { MOBILE_EXTENSION_ID } from './protocol';
 import { isReservedHost } from '../services/adminOriginator';
 import { isPairedHost, originatorForOrigin } from '../services/originKey';
+import { liveBchatUrl } from '../services/bchatOrigin';
 
 /**
  * In-app dApp browser. Each site is a hub endpoint whose sender origin is the
@@ -27,7 +28,9 @@ export const lastUrlFor = (origin: string) => lastUrls.get(origin);
 
 export const isDappBrowserOpen = () => open;
 
-export const openDappBrowser = async (url: string) => {
+export const openDappBrowser = async (rawUrl: string) => {
+  // bChatX links follow the live origin (chat.bwalletx.com while www.bchatx.com is unreachable). Sync: pop-up blockers.
+  const url = liveBchatUrl(rawUrl);
   // Web wallet and extension: no in-app browser, and dapp-provider.js isn't in those builds. Open a tab
   // straight away, inside the tap, or Safari's pop-up blocker eats it (owner, 6 Oct 2026: ChangeNOW and
   // Alchemy Pay "don't open anything" on the web).

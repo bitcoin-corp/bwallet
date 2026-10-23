@@ -1,5 +1,5 @@
 import { bavatarSvg, cleanName } from '../bavatar/bavatar';
-import { BCHAT_ORIGIN } from '../chat/api';
+import { bchatOrigin } from '../../services/bchatOrigin';
 
 /**
  * A Space participant's default picture: their gold bAvatar, never a letter on a coloured disc (owner,
@@ -8,14 +8,14 @@ import { BCHAT_ORIGIN } from '../chat/api';
  * load (offline), faceArtLocal() draws a name-seeded bAvatar on the device.
  */
 export const faceArtUrl = (handle: string): string =>
-  `${BCHAT_ORIGIN}/api/bavatar/${encodeURIComponent(cleanName(handle))}.svg`;
+  `${bchatOrigin()}/api/bavatar/${encodeURIComponent(cleanName(handle))}.svg`;
 
 /**
  * A speaker's own uploaded bChatX banner (public endpoint; 404 when they have none). Camera-off tiles try this
  * first so an artist's own banner shows (owner, 11 Oct 2026), and fall back to the gold bAvatar on error.
  */
 export const bannerUrl = (handle: string): string =>
-  `${BCHAT_ORIGIN}/api/public/banner/${encodeURIComponent(cleanName(handle))}`;
+  `${bchatOrigin()}/api/public/banner/${encodeURIComponent(cleanName(handle))}`;
 
 const local = new Map<string, string>();
 export function faceArtLocal(handle: string): string {

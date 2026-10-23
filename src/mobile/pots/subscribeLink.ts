@@ -38,7 +38,14 @@ const PERIODS = new Set(['day', 'week', 'month', 'year']);
 export const MEMO_RE = /^[a-z][a-z0-9-]{1,23}:[0-9a-f]{8,64}$/;
 /** A single subscription payment from a link is never more than this (the user can still type more). */
 export const MAX_LINK_USD = 5;
-const RETURN_HOSTS = new Set(['bchatx.com', 'www.bchatx.com', 'bit-sign.online', 'www.bit-sign.online', 'localhost']);
+const RETURN_HOSTS = new Set([
+  'bchatx.com',
+  'www.bchatx.com',
+  'chat.bwalletx.com',
+  'bit-sign.online',
+  'www.bit-sign.online',
+  'localhost',
+]);
 const KEY = 'bwallet.pots.subscribeRequest';
 const EVENT = 'bwallet:subscribe-request';
 /** A request not acted on within an hour is dropped. */

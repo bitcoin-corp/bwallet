@@ -18,6 +18,7 @@ const OWN_HOSTS = new Set([
   'desktop.bwalletx.com',
   'bchatx.com',
   'www.bchatx.com',
+  'chat.bwalletx.com',
   'bmovies.app',
   'www.bmovies.app',
   'bitcoinchat.online',

@@ -8,6 +8,7 @@ import { ThemeProvider } from './contexts/providers/ThemeProvider';
 import './index.css';
 import { applyBootAccent } from './mobile/theme/accent';
 import { nameFailedFetch } from './utils/nameFailedFetch';
+import { installBchatFetch } from './services/bchatOrigin';
 import { lazy, Suspense } from 'react';
 import { SEEDLESS_ENABLED } from './mobile/passkey/prf';
 import { takeHandCashWebReturn } from './mobile/passkey/handcashWeb';
@@ -16,6 +17,8 @@ global.process = process;
 window.Buffer = Buffer;
 // "Couldn't reach <host>" instead of a bare "Load failed" (utils/nameFailedFetch.ts).
 nameFailedFetch();
+// bChatX requests follow the live origin (www.bchatx.com, else chat.bwalletx.com).
+installBchatFetch();
 // App accent (Theme → App colours) before the first paint: the extension popup/side panel and the web edition.
 applyBootAccent();
 

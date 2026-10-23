@@ -6,6 +6,7 @@ import { isNative } from '../native';
 import { IS_EXTENSION } from '../extension';
 import { frameAllowlist, frameOriginFor, framingAllowed } from './frameBridge';
 import { frameModeFor } from './webFrame';
+import { BCHAT_FALLBACK_ORIGIN, ensureBchatOrigin, liveBchatUrl } from '../../services/bchatOrigin';
 
 /**
  * In-frame bApps: our own apps (Apps › bApps) run inside bWallet's main frame, between TopNav
@@ -15,9 +16,11 @@ import { frameModeFor } from './webFrame';
 export type BappSession = { name: string; url: string; origin: string; key: number };
 
 /** Exact origins of every bApp tile: the only pages we will frame or answer. */
-export const BAPP_FRAME_ALLOWLIST = frameAllowlist(
-  BAPPS.filter((a) => !a.noFrame && !(STORE_BUILD && a.privateOnly) && !a.url.startsWith('/')).map((a) => a.url),
-);
+export const BAPP_FRAME_ALLOWLIST = frameAllowlist([
+  ...BAPPS.filter((a) => !a.noFrame && !(STORE_BUILD && a.privateOnly) && !a.url.startsWith('/')).map((a) => a.url),
+  // bChatX's fallback origin (same bit-sign deployment) while www.bchatx.com is unreachable.
+  BCHAT_FALLBACK_ORIGIN,
+]);
 
 /** Every curated app tile may run in-frame too (headers permitting); typed URLs stay full screen. */
 export const allowFrameUrls = (urls: readonly string[]) => {
@@ -84,8 +87,10 @@ let seq = 0;
  * Opens a bApp tile: in-frame when it is on the allowlist and its headers allow framing,
  * otherwise in the full-screen browser (today's behaviour).
  */
-export const openBapp = async (name: string, url: string): Promise<void> => {
-  const origin = frameOriginFor(url, BAPP_FRAME_ALLOWLIST);
+export const openBapp = async (name: string, rawUrl: string): Promise<void> => {
+  // bChatX URLs move to the live origin; whether a tile may frame is decided on the URL it was given.
+  const url = liveBchatUrl(rawUrl, await ensureBchatOrigin());
+  const origin = frameOriginFor(rawUrl, BAPP_FRAME_ALLOWLIST) && frameOriginFor(url, BAPP_FRAME_ALLOWLIST);
   // Phone apps and the Chrome extension run bApps in-frame (headers probed); the web/Desktop wallet frames only the
   // bApps that allow it (WEB_FRAME_ORIGINS) and opens the rest in a tab.
   const mode = frameModeFor(origin, { native: isNative, extension: IS_EXTENSION });

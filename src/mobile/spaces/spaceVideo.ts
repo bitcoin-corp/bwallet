@@ -38,7 +38,7 @@ export const MESH_POLL_MS = 10_000;
 export const DRIFT_RESEEK_MS = 1_500;
 
 const VIDEO_EXT = /\.(mp4|m4v|webm|mov|ogv|ogg|m3u8)$/i;
-const VIDEO_HOSTS = ['ordfs.network', '1sat.app', 'gorillapool.io', 'bitsign.it', 'bchatx.com'];
+const VIDEO_HOSTS = ['ordfs.network', '1sat.app', 'gorillapool.io', 'bitsign.it', 'bchatx.com', 'chat.bwalletx.com'];
 
 /** https only, and a video file or one of our known content hosts (and their subdomains). */
 export const isAllowedVideoSrc = (src: unknown): src is string => {

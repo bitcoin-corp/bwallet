@@ -81,7 +81,13 @@ export interface XInviteLink {
 
 const CODE = /^[A-Za-z0-9_-]{4,64}$/;
 const TXID = /^[0-9a-f]{64}$/i;
-const LINK_HOSTS = new Set(['bchatx.com', 'www.bchatx.com', 'bit-sign.online', 'www.bit-sign.online']);
+const LINK_HOSTS = new Set([
+  'bchatx.com',
+  'www.bchatx.com',
+  'chat.bwalletx.com',
+  'bit-sign.online',
+  'www.bit-sign.online',
+]);
 
 /** `https://www.bchatx.com/i/x/<code>#k=<WIF>&t=<txid>` or `bwalletx://xinvite/<code>#k=…`; null if not one. */
 export function parseXInviteLink(url: string | null | undefined): XInviteLink | null {
