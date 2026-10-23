@@ -54,7 +54,8 @@ const parseItem = (v: unknown, now: number): QueuedReport | null => {
   return {
     id: r.id,
     account: r.account,
-    text: r.text.slice(0, MAX_TEXT),
+    // Scrubbed again on read: items queued by older builds (weaker redaction) are cleaned before display or send.
+    text: redactSecrets(r.text).slice(0, MAX_TEXT),
     at: r.at,
     tries: typeof r.tries === 'number' ? r.tries : 0,
     nextAt: typeof r.nextAt === 'number' ? r.nextAt : 0,

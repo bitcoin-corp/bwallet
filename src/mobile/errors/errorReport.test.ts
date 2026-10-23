@@ -14,6 +14,14 @@ describe('redactSecrets', () => {
     expect(out).not.toContain('accident');
     expect(out).toContain('[recovery words hidden]');
     expect(redactSecrets(PHRASE12.toUpperCase())).not.toContain('ABANDON');
+    const numbered = PHRASE12.split(' ')
+      .map((w, i) => `${i + 1}. ${w[0].toUpperCase()}${w.slice(1)}`)
+      .join(' ');
+    const out2 = redactSecrets(`Invalid Mnemonic! input: ${numbered}`);
+    expect(out2.toLowerCase()).not.toContain('abandon');
+    expect(out2.toLowerCase()).not.toContain('accident');
+    expect(out2).not.toMatch(/\b12\./);
+    expect(out2).toContain('[recovery words hidden]');
   });
   test('hides a 24-word phrase', () => {
     const out = redactSecrets(`restore failed for ${PHRASE24}`);
