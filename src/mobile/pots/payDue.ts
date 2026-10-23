@@ -30,12 +30,16 @@ import {
   type PendingPayment,
   type Subscription,
 } from './pots';
+import { PayeeReviewError, type PayeeDestination } from './payeeBinding';
 
 export type PayDeps = {
   /** Dollars per BSV now (0 = unknown: USD orders wait). */
   bsvUsd: number;
-  /** Where to pay this payee (address, or a resolved paymail). */
-  resolve: (p: Payee) => Promise<string>;
+  /**
+   * Where to pay this payee (address, or a resolved and verified paymail). Throws PayeeReviewError when the
+   * destination doesn't verify (changed / bad binding): the order is flagged needsReview and not paid.
+   */
+  resolve: (p: Payee) => Promise<string | PayeeDestination>;
   /** Sign (don't broadcast) one tx from the pot. */
   sign: (
     potId: string,
@@ -111,6 +115,11 @@ async function run(deps: PayDeps, now: number): Promise<PayOutcome[]> {
     // Re-read: an earlier order in this run may have taken a while, and the user may have paused or cancelled.
     s = live(id);
     if (!s) continue;
+    if (s.needsReview) {
+      // Waiting for the user to confirm a new destination: never pay automatically, don't re-alert every open.
+      if (dueItems(s, now, cap).missed) out.push({ id: s.id, ok: false, reason: s.needsReview.reason });
+      continue;
+    }
     let plan = dueItems(s, now, cap);
     if (!plan.missed) continue;
     if (s.catchUp === 'latest' && plan.missed > 1) {
@@ -171,8 +180,22 @@ async function run(deps: PayDeps, now: number): Promise<PayOutcome[]> {
     }
     let address: string;
     try {
-      address = await deps.resolve(s.payee);
+      const d = await deps.resolve(s.payee);
+      const dest = typeof d === 'string' ? { address: d } : d;
+      address = dest.address;
+      // An order saved before pinning: pin the first key that verified (payeeBinding.ts).
+      if (s.payee.paymail && !s.payee.pinnedKey && dest.pubkey) {
+        const key = dest.pubkey;
+        s = patch(s.id, (cur) => ({ payee: { ...cur.payee, pinnedKey: cur.payee.pinnedKey ?? key } })) ?? s;
+      }
     } catch (e) {
+      if (e instanceof PayeeReviewError) {
+        const reason = e.message;
+        patch(s.id, () => ({ lastError: reason, needsReview: { reason, at: now, servedKey: e.servedKey } }));
+        deps.notify?.(`Check who ${s.payee.name} is paid to`, reason);
+        out.push({ id: s.id, ok: false, reason });
+        continue;
+      }
       out.push(fail(s, e instanceof Error ? e.message : String(e), deps));
       continue;
     }

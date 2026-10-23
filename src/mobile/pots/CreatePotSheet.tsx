@@ -7,6 +7,8 @@ import { ownServicePayees, addSubscription, subProblem, usdToPnee, type NewSub, 
 import { reschedulePotReminders } from './notifyPots';
 import { clearSubscribeRequest, requestLabel, type SubscribeRequest } from './subscribeLink';
 import { ErrorActions } from '../errors/ErrorActions';
+import { resolvePayee } from './potSend';
+import { keyFingerprint, type PayeeDestination } from './payeeBinding';
 
 const GOLD = 'var(--bw-accent)';
 const MUTED = '#98A2B3';
@@ -100,6 +102,9 @@ export const AddOrderSheet = ({
   const [start, setStart] = useState(today());
   const [max, setMax] = useState('');
   const [error, setError] = useState('');
+  /** The paymail as resolved and verified for the confirm card: what gets pinned on the order. */
+  const [checked, setChecked] = useState<(PayeeDestination & { forTo: string }) | null>(null);
+  const [checking, setChecking] = useState(false);
 
   const servicePayees = ownServicePayees();
   const svc = servicePayees.find((p) => p.service === service);
@@ -108,8 +113,14 @@ export const AddOrderSheet = ({
     ? { name: svc.name, service: svc.service }
     : {
         name: label.trim() || recipient,
-        ...(recipient.includes('@') || recipient.startsWith('$') ? { paymail: recipient } : { address: recipient }),
+        ...(recipient.includes('@') || recipient.startsWith('$')
+          ? {
+              paymail: recipient,
+              ...(checked?.forTo === recipient && checked.pubkey ? { pinnedKey: checked.pubkey } : {}),
+            }
+          : { address: recipient }),
       };
+  const needsCheck = 'paymail' in payee && !!payee.paymail && checked?.forTo !== recipient;
   const amount = parseUsdInput(usd);
   const startAt = Date.parse(`${start}T12:00:00Z`);
   const n: NewSub = {
@@ -123,9 +134,22 @@ export const AddOrderSheet = ({
     ...(req && svc && req.service === svc.service ? { memo: req.memo } : {}),
   };
 
-  const save = () => {
+  const save = async () => {
     const p = subProblem(n);
     if (p) return setError(p);
+    if (needsCheck) {
+      // Resolve and verify the paymail now, show who it is, and pin that key on Set up.
+      setChecking(true);
+      setError('');
+      try {
+        setChecked({ ...(await resolvePayee(n.payee, { ignorePin: true })), forTo: recipient });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setChecking(false);
+      }
+      return;
+    }
     try {
       addSubscription(n, bsvUsd);
       void reschedulePotReminders();
@@ -223,6 +247,21 @@ export const AddOrderSheet = ({
         {balanceUsd !== null ? `$${balanceUsd.toFixed(2)}` : 'the pot balance'} can ever be taken: the pot balance.
         Pause or cancel any time.
       </p>
+      {!svc && checked?.forTo === recipient && (
+        <div
+          className="rounded-lg p-2 text-xs flex flex-col gap-0.5"
+          style={{ background: LINE }}
+          data-testid="payee-check"
+        >
+          <div className="text-white">Pays {recipient}</div>
+          <div style={{ color: MUTED }}>To address {checked.address}</div>
+          <div style={{ color: MUTED }}>
+            {checked.pubkey
+              ? `Wallet key ${keyFingerprint(checked.pubkey)}. If this paymail ever points elsewhere, payments stop until you confirm.`
+              : 'This paymail shows no wallet key, so a change of wallet can’t be detected.'}
+          </div>
+        </div>
+      )}
       {error && (
         <div className="flex flex-col gap-1.5">
           <div className="text-xs" style={{ color: '#FDA29B' }}>
@@ -233,11 +272,12 @@ export const AddOrderSheet = ({
       )}
       <button
         type="button"
-        onClick={save}
+        onClick={() => void save()}
+        disabled={checking}
         className="rounded-xl py-3 font-bold border-0"
         style={{ background: GOLD, color: '#000' }}
       >
-        Set up
+        {checking ? 'Checking…' : needsCheck ? 'Check payee' : 'Set up'}
       </button>
     </Sheet>
   );
