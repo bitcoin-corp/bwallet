@@ -1,7 +1,11 @@
 import { PNEE_POTS_ENABLED } from '../storeBuild';
+import { useState } from 'react';
+import { resolvePayee } from './potSend';
+import { keyFingerprint } from './payeeBinding';
 import {
   amountSats,
   cancelSub,
+  confirmPayeeReview,
   formatAmount,
   formatPeriod,
   moveSub,
@@ -119,7 +123,8 @@ export const SubscriptionCard = ({
           · {sub.lastReceipt.txid.slice(0, 10)}…
         </div>
       )}
-      {sub.lastError && !over && (
+      {sub.needsReview && !over && <ReviewPayee sub={sub} />}
+      {sub.lastError && !over && !sub.needsReview && (
         <div className="text-xs" style={{ color: '#FDA29B' }}>
           Last try: {sub.lastError}
         </div>
@@ -144,6 +149,51 @@ export const SubscriptionCard = ({
           </button>
         </div>
       )}
+    </div>
+  );
+};
+
+/** A payee that failed verification: show why, and let the user check and accept the current destination. */
+const ReviewPayee = ({ sub }: { sub: Subscription }) => {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const check = async () => {
+    setBusy(true);
+    setErr('');
+    try {
+      const d = await resolvePayee(sub.payee, { ignorePin: true });
+      const who = d.pubkey ? `wallet key ${keyFingerprint(d.pubkey)}` : 'no wallet key';
+      if (window.confirm(`Pay ${sub.payee.paymail ?? sub.payee.name} at ${d.address} (${who}) from now on?`))
+        confirmPayeeReview(sub.id, d.pubkey);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div
+      className="rounded-lg p-2 flex flex-col gap-1.5"
+      style={{ background: '#F0443822' }}
+      data-testid="sub-needs-review"
+    >
+      <div className="text-xs" style={{ color: '#FDA29B' }}>
+        Not paying: {sub.needsReview?.reason}
+      </div>
+      {err && (
+        <div className="text-xs" style={{ color: '#FDA29B' }}>
+          {err}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => void check()}
+        disabled={busy}
+        className="rounded-lg px-3 py-2 text-sm font-bold border-0"
+        style={{ background: LINE, color: '#fff' }}
+      >
+        {busy ? 'Checking…' : 'Check new destination'}
+      </button>
     </div>
   );
 };

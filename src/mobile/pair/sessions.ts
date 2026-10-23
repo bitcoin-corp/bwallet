@@ -27,6 +27,7 @@ import type { OneSatContext } from '@1sat/actions';
 import { fetchExchangeRate } from '../../utils/wallet';
 import { AgentCallError, CLI_ORIGIN, handleAgentCall, type AgentGrant } from './agentPairing';
 import { ReplyBook } from './replies';
+import { USER_DENIED_CODE, USER_DENIED_MESSAGE, isUserDenied } from '../../services/userDenied';
 
 /** What paired-CLI calls need from the app; TopNav keeps it current (wallet context + open account). */
 let agentDeps: {
@@ -320,8 +321,12 @@ async function onRequest(l: Live, id: string, action: string, params: unknown) {
       success?: boolean;
       data?: unknown;
       error?: string;
+      code?: string;
     };
     if (r?.success) await reply(l, { t: 'res', id, result: r.data });
+    // The user declined on the phone: the standard code (services/userDenied.ts), not the generic REJECTED.
+    else if (r?.code === USER_DENIED_CODE || isUserDenied(r?.error))
+      await reply(l, { t: 'res', id, error: { code: USER_DENIED_CODE, message: USER_DENIED_MESSAGE } });
     else await reply(l, { t: 'res', id, error: { code: 'REJECTED', message: r?.error || 'Request refused' } });
   } catch (e) {
     await reply(l, { t: 'res', id, error: { code: 'ERROR', message: e instanceof Error ? e.message : String(e) } });
