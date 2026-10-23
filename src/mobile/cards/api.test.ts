@@ -114,7 +114,8 @@ describe('pay: amount and address exactly from the quote', () => {
     };
     const p = await payCardQuote({ wallet } as never, quote(), { maxSats: 10_000, payTo: ADDR });
     expect((seen[0] as { outputs: unknown }).outputs).toEqual(cardPaymentOutputs(quote()));
-    expect(p).toEqual({ quoteId: 'q1', txid: 'ab'.repeat(32), rawTx: '010203' });
+    expect(p).toEqual({ quoteId: 'q1', txid: 'ab'.repeat(32) });
+    expect(p).not.toHaveProperty('rawTx');
   });
   test('refuses a quote above twice the shown price, a changed address, or an expired quote', async () => {
     const wallet = { createAction: async () => ({ txid: 'x' }) };
@@ -135,7 +136,7 @@ describe('pay: amount and address exactly from the quote', () => {
 });
 
 describe('generate', () => {
-  const pay = { quoteId: 'q1', txid: 't1', rawTx: '00' };
+  const pay = { quoteId: 'q1', txid: 't1' };
   test('relative imageUrl gets the push base; foreign urls are refused', async () => {
     const { f, calls } = fake([200, { cardId: 'c1', imageUrl: '/v1/cards/c1/image', sha256: '', mime: 'image/png' }]);
     const r = await generateOnce(f, pay, 1, noWait);
@@ -173,9 +174,20 @@ describe('generate', () => {
     const r = await generateOnce(f, pay, 1, async (ms) => void waits.push(ms));
     expect(r.ok).toBe(true);
     expect(calls).toHaveLength(3);
-    expect(waits.reduce((a, b) => a + b, 0)).toBeLessThan(31_000);
+    expect(waits.reduce((a, b) => a + b, 0)).toBeLessThan(61_000);
   });
-  test('402 not found for ~30 s gives up with the reference, no retry', async () => {
+  test('the backoff waits about 60 s in all', async () => {
+    const { PENDING_BACKOFF_MS } = await import('./api');
+    const total = PENDING_BACKOFF_MS.reduce((a, b) => a + b, 0);
+    expect(total).toBeGreaterThanOrEqual(55_000);
+    expect(total).toBeLessThanOrEqual(65_000);
+  });
+  test('generate body is {quoteId, txid} only', async () => {
+    const { f, calls } = fake([200, { cardId: 'c', imageUrl: '/v1/cards/c/image', sha256: '', mime: 'image/png' }]);
+    await generateOnce(f, pay, 1, noWait);
+    expect(Object.keys(JSON.parse(String(calls[0].init?.body))).sort()).toEqual(['quoteId', 'txid']);
+  });
+  test('402 not found for ~60 s gives up with the reference, no retry', async () => {
     const { f } = fake([402, { error: 'payment not found yet' }]);
     const r = await generateOnce(f, pay, 1, noWait);
     expect(!r.ok && r.canRetry).toBe(false);
@@ -275,5 +287,32 @@ describe('models, kinds and spicy', () => {
         .replace(/\s+/g, ' ')
         .trim();
     expect(cond('SPICY_ENABLED')).toBe(cond('STORE_BUILD'));
+  });
+});
+
+describe('in-flight paid quote', () => {
+  const mem = () => {
+    const m = new Map<string, string>();
+    return {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k),
+    };
+  };
+  test('saved after paying, loaded on reopen, cleared when done', async () => {
+    const { saveInFlight, loadInFlight, clearInFlight, inFlightDone, INFLIGHT_MAX_AGE_MS } = await import('./api');
+    const s = mem();
+    const txid = 'ab'.repeat(32);
+    saveInFlight({ quoteId: 'q1', txid }, 1000, s);
+    expect(loadInFlight(2000, s)).toEqual({ quoteId: 'q1', txid, createdAt: 1000 });
+    expect(loadInFlight(1000 + INFLIGHT_MAX_AGE_MS + 1, s)).toBeNull();
+    clearInFlight(s);
+    expect(loadInFlight(2000, s)).toBeNull();
+    s.setItem('bwx.cards.inflight', '{"quoteId":"q","txid":"nothex","createdAt":1}');
+    expect(loadInFlight(2, s)).toBeNull();
+    expect(inFlightDone({ ok: true })).toBe(true);
+    expect(inFlightDone({ ok: false, error: new CardError('x', 'expired') })).toBe(true);
+    expect(inFlightDone({ ok: false, error: new CardError('x', 'payment_pending') })).toBe(false);
+    expect(inFlightDone({ ok: false, error: new CardError('x', 'generation_failed', 502, true, true) })).toBe(false);
   });
 });

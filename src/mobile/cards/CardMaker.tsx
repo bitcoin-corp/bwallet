@@ -22,6 +22,10 @@ import {
   type CardPrice,
   type CardQuote,
   type CardResult,
+  clearInFlight,
+  inFlightDone,
+  loadInFlight,
+  saveInFlight,
   type MakeKind,
   type Occasion,
   priceFor,
@@ -79,6 +83,7 @@ export default function CardMaker({
   const [optIn, setOptIn] = useState(() => SPICY_ENABLED && adultOptIn());
   const [revealed, setRevealed] = useState(false);
   const web = isWebApp();
+  const [inFlight, setInFlight] = useState(() => loadInFlight());
   const [occasion, setOccasion] = useState<Occasion | ''>('Birthday');
   const [to, setTo] = useState('');
   const [prompt, setPrompt] = useState('');
@@ -133,6 +138,10 @@ export default function CardMaker({
   const make = async (pay: CardPayment, left: number) => {
     setSt({ k: 'making', pay });
     const r = await generateOnce(f, pay, left);
+    if (inFlightDone(r)) {
+      clearInFlight();
+      setInFlight(null);
+    }
     if (r.ok) return setSt({ k: 'made', pay, card: r.card });
     const msg =
       r.error instanceof CardError && r.error.code === 'refund_needed'
@@ -151,6 +160,7 @@ export default function CardMaker({
     } catch (e) {
       return setSt({ k: 'error', msg: e instanceof Error ? e.message : 'Payment failed', quote });
     }
+    saveInFlight(pay);
     setRetries(1);
     setRevealed(false);
     await make(pay, 1);
@@ -274,7 +284,7 @@ export default function CardMaker({
                 <img
                   src={st.card.imageUrl}
                   alt={make_ === 'card' ? cardTitle(occasion, to) : 'Your picture'}
-                  className="w-full rounded-xl border bg-black object-contain"
+                  className="w-full rounded-xl border bg-[#0B0B0D] object-contain"
                   style={{
                     borderColor: BORDER,
                     maxHeight: 360,
@@ -335,6 +345,22 @@ export default function CardMaker({
         </div>
       ) : (
         <>
+          {inFlight && (
+            <div className="rounded-xl border p-3 flex flex-col gap-2" style={{ borderColor: GOLD }}>
+              <span>You paid for a card that hasn&apos;t come out yet.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setRetries(1);
+                  void make({ quoteId: inFlight.quoteId, txid: inFlight.txid }, 1);
+                }}
+                className="self-start rounded-lg px-3 py-2 text-xs font-bold border-0 cursor-pointer"
+                style={{ background: GOLD, color: '#1a1400' }}
+              >
+                Finish your card
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-1 rounded-xl p-1 border" style={{ borderColor: BORDER }} role="tablist">
             {(
               [

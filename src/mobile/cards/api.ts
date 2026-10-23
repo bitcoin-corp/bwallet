@@ -182,7 +182,8 @@ export const cardPaymentOutputs = (q: CardQuote) => [
   { lockingScript: new P2PKH().lock(q.payTo).toHex(), satoshis: q.sats, outputDescription: 'Greeting card' },
 ];
 
-export type CardPayment = { quoteId: string; txid: string; rawTx?: string };
+/** What /generate gets: the quote and the txid only. The wallet has broadcast the payment itself. */
+export type CardPayment = { quoteId: string; txid: string };
 
 /** Call only after the user pressed Pay on the approval sheet. Pays the quote; returns what /generate needs. */
 export const payCardQuote = async (
@@ -196,7 +197,7 @@ export const payCardQuote = async (
     outputs: cardPaymentOutputs(q),
   });
   if (!r.txid) throw new Error('The wallet did not return the payment');
-  return { quoteId: q.quoteId, txid: r.txid, ...(r.tx ? { rawTx: Utils.toHex(r.tx) } : {}) };
+  return { quoteId: q.quoteId, txid: r.txid };
 };
 
 /** imageUrl is relative (/v1/cards/:id/image): prefix the card service. Only that service's own paths. */
@@ -212,8 +213,9 @@ export const generateCard = async (f: Fetch, p: CardPayment): Promise<CardResult
 };
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(() => r(), ms));
-/** "Payment not found yet": the server hasn't seen the tx. Backoff for about 30 s before giving up. */
-export const PENDING_BACKOFF_MS = [1000, 2000, 3000, 5000, 8000, 11000];
+/** "Payment not found yet": the server hasn't seen the tx. Back off for about 60 s before giving up. */
+/** About 60 s in all: WhatsOnChain can be slow to see a fresh tx. */
+export const PENDING_BACKOFF_MS = [2000, 3000, 5000, 8000, 10000, 12000, 20000];
 
 /**
  * Generate with the paid quote. Network errors and "payment not found yet" retry on their own (generate is safe to
@@ -287,3 +289,41 @@ export async function cardFile(f: Fetch, card: CardResult, title: string): Promi
   const ext = mime.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
   return new File([buf], `${title.replace(/[^\w ,'-]/g, '').trim() || 'card'}.${ext}`, { type: mime });
 }
+
+/**
+ * A paid card that hasn't come out yet ({quoteId, txid, createdAt}), kept in this browser so that if the app closes
+ * after paying, the maker offers "Finish your card" (generate is idempotent for a paid quote). Cleared once the
+ * card is made or the server says the quote is over (expired / refund needed).
+ */
+export const INFLIGHT_KEY = 'bwx.cards.inflight';
+export const INFLIGHT_MAX_AGE_MS = 7 * 24 * 3600_000;
+export type InFlight = CardPayment & { createdAt: number };
+
+export const saveInFlight = (p: CardPayment, now = Date.now(), store: Pick<Storage, 'setItem'> = localStorage) => {
+  try {
+    store.setItem(INFLIGHT_KEY, JSON.stringify({ quoteId: p.quoteId, txid: p.txid, createdAt: now }));
+  } catch {
+    /* private mode: the quote id is still shown on errors */
+  }
+};
+export const loadInFlight = (now = Date.now(), store: Pick<Storage, 'getItem'> = localStorage): InFlight | null => {
+  try {
+    const j = JSON.parse(store.getItem(INFLIGHT_KEY) || 'null') as Partial<InFlight> | null;
+    if (!j || typeof j.quoteId !== 'string' || typeof j.txid !== 'string' || typeof j.createdAt !== 'number')
+      return null;
+    if (!j.quoteId || !/^[0-9a-f]{64}$/i.test(j.txid) || now - j.createdAt > INFLIGHT_MAX_AGE_MS) return null;
+    return { quoteId: j.quoteId, txid: j.txid, createdAt: j.createdAt };
+  } catch {
+    return null;
+  }
+};
+export const clearInFlight = (store: Pick<Storage, 'removeItem'> = localStorage) => {
+  try {
+    store.removeItem(INFLIGHT_KEY);
+  } catch {
+    /* nothing kept */
+  }
+};
+/** Stop offering "Finish your card": the card came out, or the quote can never make one now. */
+export const inFlightDone = (r: { ok: boolean; error?: Error }) =>
+  r.ok || (r.error instanceof CardError && (r.error.code === 'expired' || r.error.code === 'refund_needed'));
