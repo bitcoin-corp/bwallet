@@ -29,12 +29,21 @@ import { AgentCallError, CLI_ORIGIN, handleAgentCall, type AgentGrant } from './
 import { ReplyBook } from './replies';
 
 /** What paired-CLI calls need from the app; TopNav keeps it current (wallet context + open account). */
-let agentDeps: { ctx: OneSatContext | undefined; currentId: string | undefined; feeRate?: () => number } = {
+let agentDeps: {
+  ctx: OneSatContext | undefined;
+  currentId: string | undefined;
+  feeRate?: () => number;
+  /** How many accounts the wallet holds; decides whether pre-binding sessions are adopted (see bindToAccount). */
+  accountCount?: number;
+} = {
   ctx: undefined,
   currentId: undefined,
 };
 export const setAgentPairDeps = (d: typeof agentDeps) => {
+  const changed = d.currentId !== agentDeps.currentId;
   agentDeps = d;
+  // Sessions are revived only for the account that made them, so the reconnect waits for the open account.
+  if (changed && started && d.currentId) reconnectAll();
 };
 let rateCache = { at: 0, rate: 0 };
 const bsvUsd = async () => {
@@ -132,6 +141,8 @@ export type StoredSession = {
   lastUsed: number;
   /** Set for a bWalletX CLI / MCP pairing (origin CLI_ORIGIN): the agent account, scopes and expiry. */
   agent?: AgentGrant;
+  /** Identity address of the account that paired. Missing on sessions stored before 23 Oct 2026. */
+  account?: string;
 };
 
 /** What the UI shows while a scan is being confirmed. A CLI pairing passes its grant to confirm. */
@@ -183,17 +194,39 @@ const dropLapsed = (dropped: StoredSession[], kept: StoredSession[]) => {
   if (origins.length) void flushRevocations();
 };
 
+/**
+ * A pairing belongs to the account that made it (b-Aware report, 23 Oct 2026): a different wallet restored on the
+ * same device must not inherit live site channels. Once the open account is known, sessions of any other account are
+ * dropped like a lapse. Sessions stored before the binding have no account: they are adopted only when the wallet
+ * holds exactly one account (it must be the one that paired them); otherwise dropped, and the user pairs again.
+ */
+export const bindToAccount = (
+  all: StoredSession[],
+  current: string | undefined,
+  accountCount: number | undefined,
+): StoredSession[] => {
+  if (!current) return all;
+  return all.flatMap((s) => {
+    if (s.account === current) return [s];
+    if (!s.account && accountCount === 1) return [{ ...s, account: current }];
+    return [];
+  });
+};
+
 const load = (): StoredSession[] => {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? '[]') as StoredSession[];
     if (!Array.isArray(raw)) return [];
     const now = Date.now();
     const trusted = new Set(dropUntrustedRelays(raw));
-    const kept = raw.filter((s) => trusted.has(s) && isCurrent(s, now));
-    if (kept.length !== raw.length) {
+    const current = raw.filter((s) => trusted.has(s) && isCurrent(s, now));
+    const kept = bindToAccount(current, agentDeps.currentId, agentDeps.accountCount);
+    const adopted = kept.some((s, i) => s !== current[i]);
+    if (kept.length !== raw.length || adopted) {
       localStorage.setItem(KEY, JSON.stringify(kept));
+      const keptChannels = new Set(kept.map((s) => s.c));
       dropLapsed(
-        raw.filter((s) => !kept.includes(s)),
+        raw.filter((s) => !keptChannels.has(s.c)),
         kept,
       );
     }
@@ -435,6 +468,7 @@ export function beginPairing(scanned: string): Promise<PendingPair> {
             createdAt: Date.now(),
             lastUsed: Date.now(),
             ...(agent && { agent }),
+            ...(agentDeps.currentId && { account: agentDeps.currentId }),
           };
           save([...load().filter((s) => s.c !== link.c), stored]);
           const l: Live = { ws, sealer: new Sealer(key, 'wallet'), stored };
@@ -448,14 +482,38 @@ export function beginPairing(scanned: string): Promise<PendingPair> {
 }
 
 let started = false;
+/** Only the open account's sessions; nothing until the open account is known. */
+const reconnectAll = () => {
+  if (!agentDeps.currentId) return;
+  for (const s of load()) connect(s.c);
+};
 /** Reconnect every paired site; again whenever the app comes back to the foreground. */
 export function initPairing() {
   if (started) return;
   started = true;
   sweepBareHostGrants();
   void flushRevocations();
-  for (const s of load()) connect(s.c);
+  reconnectAll();
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') for (const s of load()) connect(s.c);
+    if (document.visibilityState === 'visible') reconnectAll();
   });
+}
+
+/**
+ * Removing the wallet from the device: close every live pairing socket and forget all sessions, so nothing
+ * reconnects on the next launch (the caller then clears localStorage).
+ */
+export function closeAllPairings() {
+  for (const [c, l] of live) {
+    if (l.retry) clearTimeout(l.retry);
+    live.delete(c);
+    replies.forget(c);
+    l.ws.close();
+  }
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    /* storage unavailable */
+  }
+  emit();
 }

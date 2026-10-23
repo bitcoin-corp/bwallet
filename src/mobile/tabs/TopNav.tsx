@@ -186,7 +186,12 @@ const TopNavBar = () => {
   // Paired bWalletX CLI / MCP calls run on the open account with this wallet context (pair/agentPairing.ts).
   useEffect(() => {
     if (phoneLayoutOn()) return;
-    setAgentPairDeps({ ctx: apiContext, currentId: current, feeRate: () => chromeStorageService.getCustomFeeRate() });
+    setAgentPairDeps({
+      ctx: apiContext,
+      currentId: current,
+      feeRate: () => chromeStorageService.getCustomFeeRate(),
+      accountCount: chromeStorageService.getAllAccounts().length,
+    });
   }, [apiContext, current, chromeStorageService]);
   // Display name = BAP profile name (else account name); payable handle = OpNS name / paymail. Synced from chain.
   const names = useAccountNames(

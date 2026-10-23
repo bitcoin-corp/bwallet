@@ -49,6 +49,26 @@ describe('wipeLocalWallet', () => {
     expect(f.flags.size).toBe(1);
   });
 
+  test('closes pairings and clears DOM localStorage: pairing sessions and every other wallet key (b-Aware report)', async () => {
+    const f = makeFakes();
+    const local = new Map([
+      ['bwallet.pair.sessions', JSON.stringify([{ c: 'x', phoneKey: 'ab'.repeat(32) }])],
+      ['bwallet.pair.revokeQueue', '["a.paired.invalid"]'],
+      ['bwallet.agent.reportOutbox', '[]'],
+      ['bwx.connectTheme.cache', '{}'],
+      ['yours-x', '1'],
+    ]);
+    let closed = 0;
+    await wipeLocalWallet({
+      ...f,
+      local: { clear: () => local.clear() },
+      closePairings: () => void closed++,
+      wait: async () => undefined,
+    });
+    expect(closed).toBe(1);
+    expect(local.size).toBe(0);
+  });
+
   test('initialRoute returns the restore screen once after a wipe', () => {
     const store = new Map<string, string>();
     (globalThis as { sessionStorage?: unknown }).sessionStorage = {

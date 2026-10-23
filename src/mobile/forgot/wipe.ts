@@ -9,6 +9,11 @@ import type { YoursNativePlugin } from '../native';
  * (chrome.storage.local.clear + SIGNED_OUT, whose background handler drops the
  * wallet context, clears the passKey and deletes IndexedDB), plus the mobile
  * extras: the biometric-sealed passKey and its flags. No crypto here.
+ *
+ * DOM localStorage is cleared too (b-Aware report, 23 Oct 2026): it held the phone-pairing sessions (each with its
+ * pairing ECDH key), the revoke queue, the agent report outbox, card and theme caches, and the next wallet restored
+ * on the device reconnected the old pairings. Every origin this code runs on is the wallet's own (the Capacitor app,
+ * the extension, web.bwalletx.com), so clear() is used rather than a prefix list that new keys could slip past.
  */
 
 const RESTORE_FLAG = 'bwallet:open-restore';
@@ -19,6 +24,9 @@ type Deps = {
   native: Pick<YoursNativePlugin, 'biometricRemove' | 'secureKeys' | 'secureRemove'>;
   idb?: Pick<IDBFactory, 'databases' | 'deleteDatabase'>;
   session?: Pick<Storage, 'setItem'>;
+  local?: Pick<Storage, 'clear'>;
+  /** Close live pairing sockets and forget the sessions (pair/sessions.ts closeAllPairings). */
+  closePairings?: () => Promise<void> | void;
   wait?: (ms: number) => Promise<void>;
   /** Open the restore screen after the reload (Forgot password). Account deletion passes false. */
   restore?: boolean;
@@ -39,6 +47,8 @@ export const wipeLocalWallet = async ({
   native,
   idb = indexedDB,
   session = sessionStorage,
+  local = globalThis.localStorage,
+  closePairings = async () => (await import('../pair/sessions')).closeAllPairings(),
   wait = (ms) => new Promise((r) => setTimeout(r, ms)),
   restore = true,
 }: Deps): Promise<void> => {
@@ -47,6 +57,16 @@ export const wipeLocalWallet = async ({
   const { keys } = await native.secureKeys().catch(() => ({ keys: [] as string[] }));
   for (const key of keys.filter((k) => k.startsWith('bio:'))) {
     await native.secureRemove({ key }).catch(() => undefined);
+  }
+
+  // Paired sites: close the sockets now, so nothing keeps relaying until the reload.
+  await Promise.resolve()
+    .then(closePairings)
+    .catch(() => undefined);
+  try {
+    local?.clear();
+  } catch {
+    /* storage unavailable */
   }
 
   // Upstream sign-out (Settings.tsx): clear local storage, tell the background.

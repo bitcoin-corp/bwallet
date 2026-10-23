@@ -28,7 +28,12 @@ export const useAppServices = () => {
   }, []);
   const current = chromeStorageService.getCurrentAccountObject().account?.addresses.identityAddress;
   useEffect(() => {
-    setAgentPairDeps({ ctx: apiContext, currentId: current, feeRate: () => chromeStorageService.getCustomFeeRate() });
+    setAgentPairDeps({
+      ctx: apiContext,
+      currentId: current,
+      feeRate: () => chromeStorageService.getCustomFeeRate(),
+      accountCount: chromeStorageService.getAllAccounts().length,
+    });
   }, [apiContext, current, chromeStorageService]);
   return { pairLink, clearPairLink: () => setPairLink(null) };
 };
