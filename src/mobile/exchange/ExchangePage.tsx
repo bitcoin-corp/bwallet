@@ -109,7 +109,7 @@ const swapAddress = async (): Promise<string> => {
 };
 
 const tokenSafe = (r: HotRoom) =>
-  !safety().check({ ids: [r.ref.id], collectionId: null, texts: [r.title, r.subtitle] }).blocked;
+  !safety().check({ ids: [r.ref.id], collectionId: null, texts: [r.title, r.subtitle], map: r.map }).blocked;
 
 /** The 1Sat token board (trending, then the overlay's active tokens), safe tokens only; null while loading. */
 const useBoard = (registry: Registry | null, wanted: boolean): HotRoom[] | null => {
