@@ -40,6 +40,7 @@ export type CardErrorCode =
   | 'payment_pending'
   | 'bad_quote'
   | 'expired'
+  | 'not_sent'
   | 'http';
 
 export class CardError extends Error {
@@ -59,6 +60,20 @@ export class CardError extends Error {
 
 export const COMING_SOON = 'Cards are coming soon';
 
+/** 422: "This card can't be made: <reason>. Nothing was charged." (no reason: just the first part). */
+export const refusedMessage = (reason: unknown): string => {
+  const why = (typeof reason === 'string' ? reason : '')
+    .trim()
+    .replace(/[.!\s]+$/, '')
+    .slice(0, 200);
+  return why
+    ? `This card can't be made: ${why}. Nothing was charged.`
+    : "This card can't be made. Nothing was charged.";
+};
+
+/** The wallet said the payment was not accepted by the network: nothing left the wallet. */
+export const NOT_SENT = "The payment didn't go out. Nothing was charged.";
+
 const call = async <T>(f: Fetch, path: string, body?: unknown): Promise<T> => {
   let r: Response;
   try {
@@ -72,8 +87,7 @@ const call = async <T>(f: Fetch, path: string, body?: unknown): Promise<T> => {
   const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
   if (r.ok) return j as T;
   if (r.status === 503) throw new CardError(COMING_SOON, 'unavailable', 503);
-  if (r.status === 422)
-    throw new CardError(`${String(j.reason || "This card can't be made")}. Nothing was charged.`, 'refused', 422);
+  if (r.status === 422) throw new CardError(refusedMessage(j.reason ?? j.error), 'refused', 422);
   if (r.status === 410) throw new CardError('That price ran out. Start again for a new one.', 'expired', 410);
   if (r.status === 402) {
     const msg = String(j.error || j.reason || '');
@@ -185,7 +199,13 @@ export const cardPaymentOutputs = (q: CardQuote) => [
 /** What /generate gets: the quote and the txid only. The wallet has broadcast the payment itself. */
 export type CardPayment = { quoteId: string; txid: string };
 
-/** Call only after the user pressed Pay on the approval sheet. Pays the quote; returns what /generate needs. */
+/**
+ * Call only after the user pressed Pay on the approval sheet. Pays the quote; returns what /generate needs.
+ *
+ * Broadcast now (acceptDelayedBroadcast: false): a delayed broadcast waits on a Monitor the web wallet does not run,
+ * so the payment sat unsent in the wallet and the card service never saw it (owner, 23 Oct 2026; same bug as the
+ * Bureau stamps, bmail/client.ts). The wallet's own report for this txid must not be 'failed' before /generate.
+ */
 export const payCardQuote = async (
   ctx: Pick<OneSatContext, 'wallet'>,
   q: CardQuote,
@@ -195,10 +215,41 @@ export const payCardQuote = async (
   const r = await ctx.wallet.createAction({
     description: 'Greeting card',
     outputs: cardPaymentOutputs(q),
+    options: { acceptDelayedBroadcast: false },
   });
   if (!r.txid) throw new Error('The wallet did not return the payment');
+  const mine = r.sendWithResults?.find((x) => x.txid === r.txid);
+  if (mine?.status === 'failed') throw new CardError(NOT_SENT, 'not_sent');
   return { quoteId: q.quoteId, txid: r.txid };
 };
+
+/**
+ * A paid card whose payment is still sitting in the wallet unsent (the old delayed broadcast). Ask the wallet to
+ * send that exact txid now: createAction with only sendWith, which builds, signs and spends nothing new; the
+ * toolbox sends a req in 'unsent'/'nosend'/'sending' and reports one already out as 'unproven'. An unknown txid
+ * throws or reports 'failed'. Returns 'sent' (on its way / already out), 'failed' (the network refused it) or
+ * 'unknown' (this wallet couldn't say: an older wallet, or not this wallet's payment).
+ */
+export const sendStuckPayment = async (
+  wallet: Pick<OneSatContext['wallet'], 'createAction'>,
+  txid: string,
+): Promise<'sent' | 'failed' | 'unknown'> => {
+  try {
+    const r = await wallet.createAction({
+      description: 'Greeting card: send payment',
+      options: { sendWith: [txid], acceptDelayedBroadcast: false },
+    });
+    const mine = r.sendWithResults?.find((x) => x.txid === txid);
+    if (!mine) return 'unknown';
+    return mine.status === 'failed' ? 'failed' : 'sent';
+  } catch (e) {
+    console.warn('[cards] re-sending the payment failed', e);
+    return 'unknown';
+  }
+};
+
+export const stillWaitingMessage = (txid: string) =>
+  `Your payment is still waiting to go out. Open Activity to send or cancel it. Payment ${txid}`;
 
 /** imageUrl is relative (/v1/cards/:id/image): prefix the card service. Only that service's own paths. */
 export const cardImageUrl = (u: unknown): string =>
@@ -254,6 +305,27 @@ export const generateOnce = async (
       return { ok: false, error: err, canRetry };
     }
   }
+};
+
+export type GenerateResult = Awaited<ReturnType<typeof generateOnce>>;
+
+/**
+ * "Finish your card" for a payment made earlier. If the service still hasn't seen the payment, it may be stuck
+ * unsent in this wallet: send that txid now and try once more. If it can't be sent, say so (with the txid) and
+ * point to Activity, where it can be sent or cancelled.
+ */
+export const finishInFlight = async (
+  f: Fetch,
+  wallet: Pick<OneSatContext['wallet'], 'createAction'>,
+  p: CardPayment,
+  retriesLeft: number,
+  wait: (ms: number) => Promise<void> = sleep,
+): Promise<GenerateResult> => {
+  const first = await generateOnce(f, p, retriesLeft, wait);
+  if (first.ok || !(first.error instanceof CardError) || first.error.code !== 'payment_pending') return first;
+  const sent = await sendStuckPayment(wallet, p.txid);
+  if (sent === 'sent') return generateOnce(f, p, retriesLeft, wait);
+  return { ok: false, error: new CardError(stillWaitingMessage(p.txid), 'payment_pending', 402), canRetry: false };
 };
 
 /** "Happy birthday, Sam" / "Thank you, Sam" / "Congratulations" … for the mint title. */

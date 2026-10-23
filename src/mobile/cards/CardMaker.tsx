@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, RotateCcw, Sparkles } from 'lucide-react';
+import { ArrowLeft, RotateCcw } from 'lucide-react';
+import CardGenerating from './CardGenerating';
 import { ApprovalCard, Chip } from '../../components/approval/ApprovalCard';
 import { CARD } from '../../components/approval/cardTheme';
 import { PayHero } from '../../components/approval/ApprovalHeroes';
@@ -10,6 +11,7 @@ import {
   cardTitle,
   CardError,
   COMING_SOON,
+  finishInFlight,
   generateOnce,
   getPrice,
   getQuote,
@@ -57,8 +59,8 @@ type State =
   | { k: 'quoting' }
   | { k: 'ready'; quote: CardQuote }
   | { k: 'paying'; quote: CardQuote }
-  | { k: 'making'; pay: CardPayment }
-  | { k: 'made'; pay: CardPayment; card: CardResult }
+  | { k: 'making'; pay: CardPayment; at: number }
+  | { k: 'made'; pay: CardPayment; card: CardResult; at: number }
   | { k: 'failed'; pay: CardPayment; msg: string; canRetry: boolean }
   | { k: 'error'; msg: string; quote?: CardQuote };
 
@@ -135,14 +137,16 @@ export default function CardMaker({
     }
   };
 
-  const make = async (pay: CardPayment, left: number) => {
-    setSt({ k: 'making', pay });
-    const r = await generateOnce(f, pay, left);
+  /** `resume`: "Finish your card" for an earlier payment, which may still be unsent in this wallet. */
+  const make = async (pay: CardPayment, left: number, resume = false) => {
+    const at = Date.now();
+    setSt({ k: 'making', pay, at });
+    const r = resume ? await finishInFlight(f, apiContext.wallet, pay, left) : await generateOnce(f, pay, left);
     if (inFlightDone(r)) {
       clearInFlight();
       setInFlight(null);
     }
-    if (r.ok) return setSt({ k: 'made', pay, card: r.card });
+    if (r.ok) return setSt({ k: 'made', pay, card: r.card, at });
     const msg =
       r.error instanceof CardError && r.error.code === 'refund_needed'
         ? `${r.error.message} Reference: ${pay.quoteId}`
@@ -272,46 +276,38 @@ export default function CardMaker({
         </div>
       ) : st.k === 'made' || st.k === 'making' || st.k === 'failed' ? (
         <div className="flex flex-col gap-3">
-          {st.k === 'making' && (
-            <div className="rounded-xl border p-6 text-center" style={{ borderColor: BORDER, color: '#ccc' }}>
-              <Sparkles size={20} color={GOLD} className="mx-auto mb-2" />
-              Paid. Making your card… this takes up to a minute.
-            </div>
+          {(st.k === 'making' || st.k === 'made') && (
+            <CardGenerating
+              key={st.at}
+              startedAt={st.at}
+              imageUrl={st.k === 'made' ? st.card.imageUrl : undefined}
+              alt={make_ === 'card' ? cardTitle(occasion, to) : 'Your picture'}
+              blurred={st.k === 'made' && SPICY_ENABLED && !!st.card.spicy && !revealed}
+            >
+              {st.k === 'made' && SPICY_ENABLED && st.card.spicy && (
+                <>
+                  <span
+                    className="absolute top-2 left-2 rounded-full px-2 py-0.5 text-[11px] font-bold"
+                    style={{ background: '#b91c1c', color: '#fff' }}
+                  >
+                    18+
+                  </span>
+                  {!revealed && (
+                    <button
+                      type="button"
+                      onClick={() => setRevealed(true)}
+                      className="absolute inset-0 bg-transparent border-0 cursor-pointer text-sm font-bold"
+                      style={{ color: '#fff' }}
+                    >
+                      18+ · Tap to reveal
+                    </button>
+                  )}
+                </>
+              )}
+            </CardGenerating>
           )}
           {st.k === 'made' && (
             <>
-              <div className="relative">
-                <img
-                  src={st.card.imageUrl}
-                  alt={make_ === 'card' ? cardTitle(occasion, to) : 'Your picture'}
-                  className="w-full rounded-xl border bg-[#0B0B0D] object-contain"
-                  style={{
-                    borderColor: BORDER,
-                    maxHeight: 360,
-                    filter: SPICY_ENABLED && st.card.spicy && !revealed ? 'blur(28px)' : undefined,
-                  }}
-                />
-                {SPICY_ENABLED && st.card.spicy && (
-                  <>
-                    <span
-                      className="absolute top-2 left-2 rounded-full px-2 py-0.5 text-[11px] font-bold"
-                      style={{ background: '#b91c1c', color: '#fff' }}
-                    >
-                      18+
-                    </span>
-                    {!revealed && (
-                      <button
-                        type="button"
-                        onClick={() => setRevealed(true)}
-                        className="absolute inset-0 bg-transparent border-0 cursor-pointer text-sm font-bold"
-                        style={{ color: '#fff' }}
-                      >
-                        18+ · Tap to reveal
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
               <button
                 type="button"
                 disabled={handing}
@@ -352,7 +348,7 @@ export default function CardMaker({
                 type="button"
                 onClick={() => {
                   setRetries(1);
-                  void make({ quoteId: inFlight.quoteId, txid: inFlight.txid }, 1);
+                  void make({ quoteId: inFlight.quoteId, txid: inFlight.txid }, 1, true);
                 }}
                 className="self-start rounded-lg px-3 py-2 text-xs font-bold border-0 cursor-pointer"
                 style={{ background: GOLD, color: '#1a1400' }}

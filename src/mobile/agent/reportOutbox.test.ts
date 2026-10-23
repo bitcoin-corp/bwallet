@@ -17,7 +17,37 @@ const memStore = () => {
 };
 const call = async () => ({});
 
+const NUMBERED = 'abandon ability able about above absent absorb abstract absurd abuse access accident'
+  .split(' ')
+  .map((w, i) => `${i + 1}. ${w}`)
+  .join('\n');
+
 describe('report outbox', () => {
+  test('a numbered recovery phrase is never stored', () => {
+    const store = memStore();
+    enqueueReport('A', `help, my words are\n${NUMBERED}`, 'signin', store, 0);
+    const raw = store.getItem('bwallet.agent.reportOutbox') ?? '';
+    expect(raw).not.toContain('abandon');
+    expect(raw).not.toContain('accident');
+  });
+  test('items queued by an older build are scrubbed before they are sent', async () => {
+    const store = memStore();
+    store.setItem(
+      'bwallet.agent.reportOutbox',
+      JSON.stringify([{ id: 'x', account: 'A', text: NUMBERED, at: 0, tries: 1, nextAt: 0, reason: 'signin' }]),
+    );
+    const seen: string[] = [];
+    await flushOutbox('A', call, {
+      store,
+      now: () => 1000,
+      send: async (_c, text) => {
+        seen.push(text);
+        throw Object.assign(new Error('no'), { status: 401 });
+      },
+    });
+    expect(seen).toEqual(['[recovery words hidden]']);
+    expect(store.getItem('bwallet.agent.reportOutbox')).not.toContain('abandon');
+  });
   test('a failed report is kept, per account', () => {
     const store = memStore();
     enqueueReport('A', 'broke', 'offline', store, 1000);

@@ -5,6 +5,8 @@
  *   - 'paid' — pay per message in BSV from the wallet, answered by bit-sign (paid.ts).
  * The system prompt is guide.ts. Replies are whole turns (no streaming). Pure helpers here.
  */
+import { containsPhrase } from '../errors/phraseGuard';
+
 export type AgentRole = 'user' | 'assistant';
 export type AgentMessage = { role: AgentRole; text: string };
 
@@ -26,6 +28,8 @@ export const looksLikeSecret = (text: string): boolean => {
   if (/\b[5KL][1-9A-HJ-NP-Za-km-z]{50,51}\b/.test(t)) return true;
   if (/\b[0-9a-fA-F]{64}\b/.test(t)) return true;
   if (/\bxprv[1-9A-HJ-NP-Za-km-z]{100,}/.test(t)) return true;
+  // Recovery words however written: numbered, one per line, in a grid, capitals, after a label (phraseGuard.ts).
+  if (containsPhrase(t)) return true;
   // 12 / 15 / 18 / 21 / 24 lowercase words and nothing else: a recovery phrase.
   const words = t.split(/\s+/);
   return [12, 15, 18, 21, 24].includes(words.length) && words.every((w) => /^[a-z]{3,8}$/.test(w));

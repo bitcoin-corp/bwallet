@@ -1,5 +1,5 @@
-import * as bip39 from 'bip39';
 import { setAgentVoice } from '../agent/handoff';
+import { hidePhrases } from './phraseGuard';
 
 /**
  * Every error the wallet shows gets "Copy" and "Ask b" (owner, 10 Oct 2026). Ask b opens the b agent
@@ -11,7 +11,6 @@ import { setAgentVoice } from '../agent/handoff';
  * seed, mnemonic, private key or WIF, and balances.
  */
 
-const WORDS = new Set(bip39.wordlists.english);
 const SECRET_LABEL =
   /\b(password|passphrase|pass|pin|seed|mnemonic|recovery words?|private key|priv(?:ate)?key|wif|secret)\s*[:=]\s*\S+/gi;
 const WIF = /\b[5KL][1-9A-HJ-NP-Za-km-z]{50,51}\b/g;
@@ -21,38 +20,8 @@ const BALANCE =
   /\b(balance|total|you have|available)\b([^.\n]{0,40}?)\d[\d,]*(?:\.\d+)?\s*(bsv|sats?|satoshis|usd|\$)?/gi;
 const MONEY = /(?:\$\s?\d[\d,]*(?:\.\d+)?|\b\d[\d,]*(?:\.\d+)?\s*(?:bsv|sats?|satoshis)\b)/gi;
 
-/** Runs of 11+ consecutive BIP39 words look like a recovery phrase (12/24 words, maybe one mistyped). */
-const hideWordRuns = (text: string): string => {
-  const tokens = text.split(/(\s+)/);
-  const isWord = (t: string) => WORDS.has(t.toLowerCase().replace(/^[^a-z]+|[^a-z]+$/gi, ''));
-  const out: string[] = [];
-  let i = 0;
-  while (i < tokens.length) {
-    if (!/\s/.test(tokens[i]) && isWord(tokens[i])) {
-      let j = i;
-      let count = 0;
-      let end = i;
-      while (j < tokens.length && (/\s/.test(tokens[j]) || isWord(tokens[j]))) {
-        if (!/\s/.test(tokens[j])) {
-          count++;
-          end = j;
-        }
-        j++;
-      }
-      if (count >= 11) {
-        out.push('[recovery words hidden]');
-        i = end + 1;
-        continue;
-      }
-    }
-    out.push(tokens[i]);
-    i++;
-  }
-  return out.join('');
-};
-
 export const redactSecrets = (text: string): string =>
-  hideWordRuns(
+  hidePhrases(
     String(text ?? '')
       .replace(SECRET_LABEL, (_m, label: string) => `${label}: [hidden]`)
       .replace(XPRV, '[private key hidden]')

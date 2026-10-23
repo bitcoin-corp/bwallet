@@ -8,7 +8,11 @@ import {
   cardPaymentOutputs,
   cardTitle,
   checkQuote,
+  finishInFlight,
   generateOnce,
+  NOT_SENT,
+  refusedMessage,
+  sendStuckPayment,
   getPrice,
   getQuote,
   limitsFrom,
@@ -83,7 +87,7 @@ describe('quote', () => {
     const { f } = fake([422, { reason: 'No real people', refused: true }]);
     const e = await getQuote(f, { prompt: 'x' }).catch((x) => x);
     expect(e.code).toBe('refused');
-    expect(e.message).toBe('No real people. Nothing was charged.');
+    expect(e.message).toBe("This card can't be made: No real people. Nothing was charged.");
   });
   test('503 on quote is coming soon too', async () => {
     const { f } = fake([503, {}]);
@@ -314,5 +318,96 @@ describe('in-flight paid quote', () => {
     expect(inFlightDone({ ok: false, error: new CardError('x', 'expired') })).toBe(true);
     expect(inFlightDone({ ok: false, error: new CardError('x', 'payment_pending') })).toBe(false);
     expect(inFlightDone({ ok: false, error: new CardError('x', 'generation_failed', 502, true, true) })).toBe(false);
+  });
+});
+
+describe('cards fixes 23 Oct: broadcast now, rescue a stuck payment, show the refusal', () => {
+  const T = 'cd'.repeat(32);
+  test('refusal reason: one trailing stop, and a plain message without one', () => {
+    expect(refusedMessage('Too violent.')).toBe("This card can't be made: Too violent. Nothing was charged.");
+    expect(refusedMessage(undefined)).toBe("This card can't be made. Nothing was charged.");
+  });
+  test('pay asks the wallet to broadcast now, not delayed', async () => {
+    let args: { options?: { acceptDelayedBroadcast?: boolean } } = {};
+    const wallet = {
+      createAction: async (a: typeof args) => (
+        (args = a),
+        { txid: T, sendWithResults: [{ txid: T, status: 'unproven' }] }
+      ),
+    };
+    expect(await payCardQuote({ wallet } as never, quote())).toEqual({ quoteId: 'q1', txid: T });
+    expect(args.options?.acceptDelayedBroadcast).toBe(false);
+  });
+  test('a failed broadcast is an error before /generate, saying nothing was charged', async () => {
+    const wallet = { createAction: async () => ({ txid: T, sendWithResults: [{ txid: T, status: 'failed' }] }) };
+    const e = await payCardQuote({ wallet } as never, quote()).catch((x) => x);
+    expect(e).toBeInstanceOf(CardError);
+    expect(e.message).toBe(NOT_SENT);
+  });
+  test('sendStuckPayment re-sends only that txid and spends nothing new', async () => {
+    const seen: Record<string, unknown>[] = [];
+    const ok = {
+      createAction: async (a: Record<string, unknown>) => (
+        seen.push(a),
+        { sendWithResults: [{ txid: T, status: 'sending' }] }
+      ),
+    };
+    expect(await sendStuckPayment(ok as never, T)).toBe('sent');
+    expect(seen[0].outputs).toBeUndefined();
+    expect(seen[0].inputs).toBeUndefined();
+    expect(seen[0].options).toEqual({ sendWith: [T], acceptDelayedBroadcast: false });
+    const bad = { createAction: async () => ({ sendWithResults: [{ txid: T, status: 'failed' }] }) };
+    expect(await sendStuckPayment(bad as never, T)).toBe('failed');
+    const throws = { createAction: async () => Promise.reject(new Error('ERR_UNKNOWN_TXID')) };
+    expect(await sendStuckPayment(throws as never, T)).toBe('unknown');
+  });
+  const pending = [402, { error: 'Payment not found yet' }] as [number, unknown];
+  const card = [200, { cardId: 'c', imageUrl: '/v1/cards/c/image', sha256: '', mime: 'image/png' }] as [
+    number,
+    unknown,
+  ];
+  const noWait = async () => undefined;
+  test('finish: still not seen → send the stuck payment → generate again → card', async () => {
+    let n = 0;
+    const f = async () => {
+      n++;
+      const [st, body] = n <= 8 ? pending : card;
+      return new Response(JSON.stringify(body), { status: st });
+    };
+    let sent = 0;
+    const wallet = { createAction: async () => (sent++, { sendWithResults: [{ txid: T, status: 'unproven' }] }) };
+    const r = await finishInFlight(f, wallet as never, { quoteId: 'q1', txid: T }, 1, noWait);
+    expect(sent).toBe(1);
+    expect(r.ok).toBe(true);
+  });
+  test('finish: payment cannot be sent → points to Activity with the txid, no retry offered', async () => {
+    const f = async () => new Response(JSON.stringify(pending[1]), { status: 402 });
+    const wallet = { createAction: async () => ({ sendWithResults: [{ txid: T, status: 'failed' }] }) };
+    const r = await finishInFlight(f, wallet as never, { quoteId: 'q1', txid: T }, 1, noWait);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error.message).toContain('Open Activity to send or cancel it');
+      expect(r.error.message).toContain(T);
+      expect(r.canRetry).toBe(false);
+    }
+  });
+  test('finish: a card that comes out first never touches the wallet', async () => {
+    const f = async () => new Response(JSON.stringify(card[1]), { status: 200 });
+    let touched = false;
+    const wallet = { createAction: async () => ((touched = true), {}) };
+    expect((await finishInFlight(f, wallet as never, { quoteId: 'q1', txid: T }, 1, noWait)).ok).toBe(true);
+    expect(touched).toBe(false);
+  });
+});
+
+describe('generating screen helpers', () => {
+  test('ring eases toward 90% by about a minute and completes only when done', async () => {
+    const { ringProgress, statusLine, STATUS_LINES } = await import('./generating');
+    expect(ringProgress(0)).toBe(0);
+    expect(ringProgress(60)).toBeGreaterThan(0.8);
+    expect(ringProgress(600)).toBeLessThanOrEqual(0.9);
+    expect(ringProgress(5, true)).toBe(1);
+    expect(statusLine(0)).toBe(STATUS_LINES[0]);
+    expect(statusLine(999)).toBe(STATUS_LINES[STATUS_LINES.length - 1]);
   });
 });
