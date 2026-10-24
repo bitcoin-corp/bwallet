@@ -237,6 +237,15 @@ describe('bApp links', () => {
     expect(built.map((a) => a.name)).not.toContain('bChatX');
   });
 
+  test('bMintX, bMailX, bCalX and bSharesX open the working in-wallet screens', () => {
+    const url = (n: string) => BAPPS.find((a) => a.name === n)?.url;
+    expect(url('bMintX')).toBe('/m/bmint');
+    expect(url('bMailX')).toBe('/m/bmail');
+    expect(url('bCalX')).toBe('/m/calendar');
+    expect(url('bSharesX')).toBe('/m/bshares');
+    for (const n of ['bMint', 'bMail', 'bCal', 'bShares']) expect(url(n)).toBeUndefined();
+  });
+
   test('product keys fold a b*X name onto its b-name only', () => {
     expect(productKey('bMoviesX')).toBe(productKey('bMovies'));
     expect(productKey('bChatX')).toBe('bchat');

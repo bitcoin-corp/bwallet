@@ -84,8 +84,8 @@ export const BAPPS: BApp[] = [
   },
   {
     name: 'bMintX',
-    // The live b*X site (24 Oct 2026). The in-wallet minter (/m/bmint) still opens from its own links.
-    url: 'https://bmintx.com',
+    // A tile opens the tool that works (owner, 24 Oct 2026): the in-wallet minter; bmintx.com lives inside it.
+    url: '/m/bmint',
     verb: 'Design, stamp and mint tokens, currency and media on-chain',
     group: 'featured',
     status: 'live',
@@ -119,9 +119,9 @@ export const BAPPS: BApp[] = [
   )
     ? [
         {
-          // The live b*X site (24 Oct 2026); members still reach the register (/m/bshares) from their shares card.
+          // The in-wallet register (members only, the screen checks); bsharesx.com lives inside it.
           name: 'bSharesX',
-          url: 'https://bsharesx.com',
+          url: '/m/bshares',
           verb: 'Share registers for any company',
           group: 'featured' as const,
           status: 'live' as const,
@@ -176,8 +176,8 @@ export const BAPPS: BApp[] = [
   },
   {
     name: 'bMailX',
-    // The live b*X site (24 Oct 2026). The in-wallet mailbox (/m/bmail) stays on the top-bar mail icon.
-    url: 'https://bmailx.com',
+    // The in-wallet mailbox (bmail/BMailScreen.tsx); bmailx.com lives inside it.
+    url: '/m/bmail',
     verb: 'Send email that pays and gets paid',
     group: 'work',
     status: 'live',
@@ -193,8 +193,15 @@ export const BAPPS: BApp[] = [
   },
   {
     name: 'bCalX',
-    // The live b*X site (24 Oct 2026). bWalletX's Spaces calendar (/m/calendar) stays on the Spaces screens.
-    url: 'https://bcalx.com',
+    // The in-wallet calendar of scheduled Spaces (spaces/CalendarPage.tsx); bcalx.com lives inside it.
+    // The store edition has no Spaces calendar (BSPACES_ENABLED), so it opens bcalx.com. Literal env check.
+    url: !(
+      import.meta.env.VITE_STORE_BUILD === '1' ||
+      import.meta.env.VITE_CHANNEL === 'ios-store' ||
+      import.meta.env.VITE_CHANNEL === 'android-play'
+    )
+      ? '/m/calendar'
+      : 'https://bcalx.com',
     verb: 'Keep a calendar on Bitcoin',
     group: 'work',
     status: 'live',

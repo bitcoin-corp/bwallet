@@ -20,6 +20,7 @@ import {
   BX_APPS,
   COMMERCIAL_APPS,
   byCategory,
+  productKey,
   withoutDuplicates,
   matchesQuery,
   meetsStandard,
@@ -231,8 +232,15 @@ export const BappsStore = ({
   const empty =
     !bx.length && !commercial.length && !built.length && !coming.length && !ready.length && !notReady.length;
 
+  // A tile opens the tool that works: a b*X card whose product has an in-wallet screen (bMintX → /m/bmint) opens it.
+  const inWallet = useMemo(
+    () => new Map(builtins.filter((b) => b.url?.startsWith('/')).map((b) => [productKey(b.name), b])),
+    [builtins],
+  );
   const openApp = (a: StoreApp) => {
     if (a.adult && !adultOk) return setConfirming(a);
+    const screen = inWallet.get(productKey(a.name));
+    if (screen) return screen.onOpen();
     open(a.url, a.name);
   };
   const art = (a: StoreApp) =>
