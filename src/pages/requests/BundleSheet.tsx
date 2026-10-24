@@ -17,6 +17,7 @@ import {
   sheetDecisions,
   type BundleRequest,
 } from '../../services/permissionBundle';
+import type { MintSheet } from '../../services/pinnedMint';
 import { approvalKindForSheet, privateTitleLabel, siteName } from '../../services/approvalKind';
 import { ApprovalCard, Check, Chip, Cross, SiteTile } from '../../components/approval/ApprovalCard';
 import { CARD } from '../../components/approval/cardTheme';
@@ -27,7 +28,13 @@ import { CarefulHero, ConnectHero, PayHero, SignInHero } from '../../components/
  * in plain words, ticked by default (risky lines never are), with one button. Used in the side panel,
  * the prompt window, the in-page sheet and the phone overlay alike: all of them load prompt.html.
  */
-export type BundlePayload = { bundleID: string; originator: string; items: BundleRequest[] };
+export type BundlePayload = {
+  bundleID: string;
+  originator: string;
+  items: BundleRequest[];
+  /** A pinned site's paid action (services/pinnedMint.ts): one sheet with these words, no allowance, no trust. */
+  mint?: MintSheet;
+};
 
 type Allowance = { usdPerBsv?: number; existingSats?: number; defaultUsd: number };
 
@@ -95,7 +102,9 @@ export const BundleSheet = (props: {
   }, [request.originator]);
 
   // The allowance line shows when the price is known and the site has none yet.
-  const showAllowance = !!allowance?.usdPerBsv && allowance.existingSats === undefined;
+  // A mint sheet is for this one mint: never an allowance or "don't ask again" (the background enforces it too).
+  const mint = request.mint && model.payment && model.lines.every((l) => !l.risky) ? request.mint : undefined;
+  const showAllowance = !mint && !!allowance?.usdPerBsv && allowance.existingSats === undefined;
   const payUsd =
     model.payment && allowance?.usdPerBsv ? (model.payment.satoshis / 1e8) * allowance.usdPerBsv : undefined;
 
@@ -119,7 +128,7 @@ export const BundleSheet = (props: {
         decisions,
         allowanceUsd: approve && showAllowance && allowanceOn ? allowanceUsd : 0,
         remember,
-        trustSite: approve && remember && canTrust && trustSite,
+        trustSite: !mint && approve && remember && canTrust && trustSite,
       });
       onResponse();
     } catch (error) {
@@ -137,8 +146,9 @@ export const BundleSheet = (props: {
     allowance?.existingSats !== undefined && allowance.usdPerBsv
       ? (allowance.existingSats / 1e8) * allowance.usdPerBsv
       : undefined;
-  const primary =
-    kind === 'post'
+  const primary = mint
+    ? `${mint.title.split(' ')[0]} · ${payLabel}`
+    : kind === 'post'
       ? model.payment
         ? `Allow & pay ${payLabel}`
         : 'Allow posting'
@@ -254,7 +264,7 @@ export const BundleSheet = (props: {
         />
         <span>Remember this site</span>
       </label>
-      {canTrust && remember && (
+      {!mint && canTrust && remember && (
         <label className="flex items-start gap-3 cursor-pointer" style={{ padding: '6px 0' }}>
           <input
             type="checkbox"
@@ -287,7 +297,38 @@ export const BundleSheet = (props: {
   let siteSub: string | undefined;
   const gold = (t: string) => <span style={{ color: CARD.gold }}>{t}</span>;
 
-  if (kind === 'careful') {
+  const satsText = (sats: number) =>
+    allowance?.usdPerBsv ? fmtUsd((sats / 1e8) * allowance.usdPerBsv) : fmtSats(sats);
+  if (mint && kind !== 'careful') {
+    // One button, one approval (owner, 24 Oct 2026): what will happen, then the price, then the button.
+    hero = (
+      <PayHero amount={payLabel} sub={model.payment ? `${model.payment.satoshis.toLocaleString()} sats` : undefined} />
+    );
+    siteSub = 'One approval for all of it';
+    title = <>{gold(mint.title)}</>;
+    body = (
+      <div className="flex flex-col" style={{ gap: 8 }} data-testid="mint-sheet">
+        <div className="flex items-center gap-2" style={{ fontSize: 15, fontWeight: 600 }} data-testid="mint-cost">
+          <Check size={18} />
+          Costs {satsText(mint.premiumSats)} + {satsText(mint.feeSats)} network fee
+        </div>
+        <div className="flex flex-wrap" style={{ gap: 8 }}>
+          <Chip>
+            <Check />
+            Locked with your keys
+          </Chip>
+          <Chip>
+            <Check />
+            Only on {mint.site}
+          </Chip>
+          <Chip>
+            <Check />
+            Next payment asks again
+          </Chip>
+        </div>
+      </div>
+    );
+  } else if (kind === 'careful') {
     hero = <CarefulHero />;
     siteSub = 'Check this carefully';
     const privileged = request.items.some((r) => r.privileged);

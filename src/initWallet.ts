@@ -4,7 +4,13 @@ import { rememberRefusals } from './services/broadcastRefusals';
 import { knownOnChain, recoverMinedFailedActions, type RecoverReport } from './services/recoverFailed';
 import { singleFlight } from './services/addressResync';
 import { sizeAwareBroadcast } from './services/bigBroadcast';
-import { releaseStuckSends, type QueuedSend, type ReleaseReport } from './services/stuckSends';
+import {
+  releaseStuckSends,
+  resolveUnsent,
+  type QueuedSend,
+  type ReleaseReport,
+  type UnsentOutcome,
+} from './services/stuckSends';
 import {
   createWebWallet,
   createIndexedDbTaskStateStore,
@@ -170,6 +176,10 @@ export interface AccountContext {
   restorePaymails: () => Promise<PaymailRestoreReport>;
   /** Cancel queued sends that never reached the network after GIVE_UP_MS, releasing inputs (stuckSends.ts). */
   releaseStuckSends: () => Promise<ReleaseReport>;
+  /** Send one queued payment now, or cancel it when the network never got it (services/stuckSends.ts). */
+  resolveUnsent: (txid: string, how: 'send' | 'cancel') => Promise<UnsentOutcome>;
+  /** The queued (not yet accepted) sends, read only. */
+  listUnsent: () => Promise<QueuedSend[]>;
   /** Run the Monitor's SendWaiting task now (a big send was queued: services/bigDelayed.ts). */
   sendWaitingNow: () => Promise<string>;
   /** Bytes storage holds for an action reference (unsigned tx + input BEEF), 0 when unknown. */
@@ -906,6 +916,38 @@ export const initWallet = async (
     });
 
   // Create close function
+  /** The queued-send review and the by-hand send/cancel share these (services/stuckSends.ts). */
+  const stuckDeps: Parameters<typeof releaseStuckSends>[0] & { listQueued: () => Promise<QueuedSend[]> } = {
+    listQueued: () =>
+      storage.runAsStorageProvider(async (sp) => {
+        const out: QueuedSend[] = [];
+        for (const t of await sp.findTransactions({
+          partial: { status: 'sending', isOutgoing: true },
+          noRawTx: true,
+        })) {
+          if (!t.txid) continue;
+          const [req] = await sp.findProvenTxReqs({ partial: { txid: t.txid } });
+          out.push({
+            transactionId: t.transactionId,
+            txid: t.txid,
+            createdAt: new Date(t.created_at).getTime(),
+            attempts: req?.attempts ?? 0,
+            description: t.description,
+            satoshis: t.satoshis,
+          });
+        }
+        return out;
+      }),
+    knownOnChain: (txid) => knownOnChain(txid, (t) => toolboxServices.getRawTx(t)),
+    cancel: (q) =>
+      storage.runAsStorageProvider(async (sp) => {
+        for (const req of await sp.findProvenTxReqs({ partial: { txid: q.txid } }))
+          await sp.updateProvenTxReq(req.provenTxReqId, { status: 'invalid' });
+        await sp.updateTransactionStatus('failed', q.transactionId);
+      }),
+    available: () => storage.isActiveStorageProvider(),
+  };
+
   const close = async () => {
     await destroyWallet();
   };
@@ -1005,37 +1047,14 @@ export const initWallet = async (
         const [t] = await sp.findTransactions({ partial: { reference } });
         return (t?.rawTx?.length ?? 0) + (t?.inputBEEF?.length ?? 0);
       }),
-    releaseStuckSends: () =>
-      releaseStuckSends({
-        listQueued: () =>
-          storage.runAsStorageProvider(async (sp) => {
-            const out: QueuedSend[] = [];
-            for (const t of await sp.findTransactions({
-              partial: { status: 'sending', isOutgoing: true },
-              noRawTx: true,
-            })) {
-              if (!t.txid) continue;
-              const [req] = await sp.findProvenTxReqs({ partial: { txid: t.txid } });
-              out.push({
-                transactionId: t.transactionId,
-                txid: t.txid,
-                createdAt: new Date(t.created_at).getTime(),
-                attempts: req?.attempts ?? 0,
-                description: t.description,
-                satoshis: t.satoshis,
-              });
-            }
-            return out;
-          }),
-        knownOnChain: (txid) => knownOnChain(txid, (t) => toolboxServices.getRawTx(t)),
-        cancel: (q) =>
-          storage.runAsStorageProvider(async (sp) => {
-            for (const req of await sp.findProvenTxReqs({ partial: { txid: q.txid } }))
-              await sp.updateProvenTxReq(req.provenTxReqId, { status: 'invalid' });
-            await sp.updateTransactionStatus('failed', q.transactionId);
-          }),
-        available: () => storage.isActiveStorageProvider(),
-      }),
+    releaseStuckSends: () => releaseStuckSends(stuckDeps),
+    listUnsent: () => stuckDeps.listQueued(),
+    resolveUnsent: (txid: string, how: 'send' | 'cancel') =>
+      resolveUnsent(
+        { ...stuckDeps, sendWaiting: async () => (walletMonitor ? await walletMonitor.runTask('SendWaiting') : '') },
+        txid,
+        how,
+      ),
     close,
   };
 };

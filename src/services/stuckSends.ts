@@ -109,3 +109,44 @@ export function releasedMessage(released: Pick<QueuedSend, 'description'>[]): st
     `Nothing was paid, and the money is spendable again.`
   );
 }
+
+// ─── By hand: send a queued payment now, or cancel one the network never got (24 Oct 2026) ───
+
+export type UnsentDeps = Pick<ReleaseDeps, 'listQueued' | 'knownOnChain' | 'cancel' | 'available'> & {
+  /** Run the Monitor's SendWaiting now (it re-posts every queued send). */
+  sendWaiting: () => Promise<unknown>;
+};
+
+export type UnsentOutcome =
+  | { ok: true; txid: string; result: 'network-may-have-it' | 'still-queued' | 'cancelled' }
+  | { ok: false; txid: string; error: string };
+
+/**
+ * The bvideox.com mint b6963e8c… (24 Oct 2026) was queued ('sending'), answered as sent, and never posted; its
+ * inputs stay locked until it goes out or is given up on (24 h and 6 attempts, above). This lets the wallet's own
+ * screen act on ONE queued send now:
+ *  - 'send': run SendWaiting (re-posts it), then report whether the network has (or may have) it.
+ *  - 'cancel': only when the network has no copy (knownOnChain fails closed: any doubt keeps it). Then the request
+ *    is marked 'invalid' and the action 'failed', which releases its inputs: the same cancel the 24 h review does.
+ * Only sends in the queued list are touched; anything else is refused.
+ */
+export async function resolveUnsent(deps: UnsentDeps, txid: string, how: 'send' | 'cancel'): Promise<UnsentOutcome> {
+  if (!/^[0-9a-f]{64}$/i.test(txid)) return { ok: false, txid, error: 'Not a transaction id' };
+  if (deps.available && !deps.available()) return { ok: false, txid, error: 'This account’s storage is remote' };
+  const known = async () => {
+    try {
+      return await deps.knownOnChain(txid);
+    } catch {
+      return true;
+    }
+  };
+  const queued = (await deps.listQueued()).find((s) => s.txid.toLowerCase() === txid.toLowerCase());
+  if (!queued) return { ok: false, txid, error: 'That payment is not waiting to send' };
+  if (how === 'send') {
+    await deps.sendWaiting().catch(() => undefined);
+    return { ok: true, txid, result: (await known()) ? 'network-may-have-it' : 'still-queued' };
+  }
+  if (await known()) return { ok: false, txid, error: 'The network may already have it, so it is kept' };
+  await deps.cancel(queued);
+  return { ok: true, txid, result: 'cancelled' };
+}

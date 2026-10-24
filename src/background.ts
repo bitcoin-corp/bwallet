@@ -138,7 +138,17 @@ import { markPayeeMismatch, parsePayees, payeesAllowed } from './services/allowa
 import { ADMIN_ORIGINATOR, initWallet, openAccountStorageForBackup, type AccountContext } from './initWallet';
 import { isExtensionSender, reservedOriginatorRefusal } from './services/adminOriginator';
 import { isReservedBasket, RESERVED_BASKET_REFUSAL, revokeBasketGrantsForOriginator } from './services/reservedBaskets';
-import { pinnedProtocolRefusal, PINNED_PROTOCOLS_VERSION, versionWithPins } from './services/pinnedProtocols';
+import { pinnedProtocol, pinnedProtocolRefusal, PINNED_PROTOCOLS_VERSION, versionWithPins } from './services/pinnedProtocols';
+import {
+  DeferredEncrypts,
+  labelCoveredByIntent,
+  mintIntentFor,
+  mintSheetFor,
+  ProtocolCalls,
+  shouldDeferEncrypt,
+  type MintIntent,
+  type MintSheet,
+} from './services/pinnedMint';
 import { isReservedProtocol, reservedProtocolRefusal, RESERVED_REFUSAL, withoutReservedProtocols } from './services/reservedProtocols';
 import { healIndexFundActions } from './mobile/tokens/indexFundHeal';
 import { continuesChain, endChain, isAlreadyProcessedAbort, markChainStep, startsChain } from './services/dappChain';
@@ -161,6 +171,8 @@ import { createSendRetry, SEND_RETRY_ALARM } from './services/sendRetry';
 import {
   createActionBytes,
   kickSendWaiting,
+  resultIsQueued,
+  withBroadcastNow,
   pendingShape,
   shouldDelay,
   signActionBytes,
@@ -1009,6 +1021,17 @@ const updateStreamState = <T>(fn: (s: StreamState) => { state?: StreamState; res
   streamWrites = run.catch(() => undefined);
   return run;
 };
+/**
+ * One sheet for a pinned site's paid action (services/pinnedMint.ts). protocolCalls: protocol calls each site has
+ * running. deferredEncrypts: rate cap for self-encrypts let through. mintIntents: the mint createAction running per
+ * site (spendSeen once its spend reached a sheet; after that nothing more is let through). mintBundles: the sheet
+ * words for a bundle holding a mint's spend.
+ */
+const protocolCalls = new ProtocolCalls();
+const deferredEncrypts = new DeferredEncrypts();
+const mintIntents = new Map<string, MintIntent & { spendSeen?: boolean }>();
+const mintBundles = new Map<string, MintSheet>();
+
 /** One in-flight stream-approved createAction per originator (see StreamPass). */
 const streamPasses = new Map<string, StreamPass & { done: Promise<void>; finish: () => void }>();
 /** Sites waiting on the "Allow <site> to stream up to $X/hour" sheet. */
@@ -1174,7 +1197,10 @@ const getPendingPromptPayload = (kind: string, requestID?: string): unknown => {
       return requestID ? pendingPermissionRequests.get(requestID)?.request : undefined;
     case 'bundle': {
       const bundle = requestID ? permissionBundler.get(requestID) : undefined;
-      return bundle ? { bundleID: bundle.id, originator: bundle.originator, items: bundle.items } : undefined;
+      const mint = bundle ? mintBundles.get(bundle.id) : undefined;
+      return bundle
+        ? { bundleID: bundle.id, originator: bundle.originator, items: bundle.items, ...(mint ? { mint } : {}) }
+        : undefined;
     }
     case 'groupedPermission':
       return requestID ? pendingGroupedPermissionRequests.get(requestID)?.request : undefined;
@@ -1367,6 +1393,20 @@ const showPermissionPrompt = (request: PermissionRequest & { requestID: string }
     accountContext?.wallet.denyPermission(request.requestID).catch(() => undefined);
     return Promise.reject(new Error(RESERVED_BASKET_REFUSAL));
   }
+  // A pinned site's paid action (services/pinnedMint.ts): its self-encrypts, and its own label while its
+  // createAction runs, go through for that one call (ephemeral, nothing stored); its spend is the one sheet.
+  const mintSite = request.originator && request.originator !== ADMIN_ORIGINATOR ? normalizeOriginator(request.originator) : '';
+  if (mintSite && accountContext?.wallet) {
+    const asSite = { ...request, originator: mintSite };
+    const now = Date.now();
+    if (shouldDeferEncrypt(asSite, protocolCalls, deferredEncrypts, now)) {
+      deferredEncrypts.note(mintSite, request.protocolID as [number, string], now);
+      return accountContext.wallet.grantPermission({ requestID: request.requestID, ephemeral: true });
+    }
+    const intent = mintIntents.get(mintSite);
+    if (intent && !intent.spendSeen && labelCoveredByIntent(asSite, intent))
+      return accountContext.wallet.grantPermission({ requestID: request.requestID, ephemeral: true });
+  }
   // A stream-approved createAction is running for this site: its spend (within the budget) and its label are
   // answered here, without a sheet. Nothing else is (services/streamGrants.ts passCovers).
   const pass = request.originator ? streamPasses.get(normalizeOriginator(request.originator)) : undefined;
@@ -1388,8 +1428,38 @@ const showPermissionPrompt = (request: PermissionRequest & { requestID: string }
         pendingPermissionRequests.set(request.requestID, { request, resolve, reject });
         const bundle = permissionBundler.add(request as BundledRequest & BundleRequest);
         askPostCompanions(request.originator, bundle.items);
+        askMintCompanions(mintSite, request, bundle.id);
       }),
   );
+};
+
+/**
+ * A pinned site's mint spend reached a sheet: ask, on the SAME sheet, for the pinned protocol (so its records open
+ * later without a sheet) and the action's own labels (so it can list them). The manager only asks for what the site
+ * has not been granted. The sheet gets the mint's words ("Mint 3 videos, locked to you on bvideox.com").
+ */
+const askMintCompanions = (site: string, request: PermissionRequest & { requestID: string }, bundleID: string) => {
+  const wallet = accountContext?.wallet;
+  const intent = site ? mintIntents.get(site) : undefined;
+  if (!wallet || !intent || intent.spendSeen || request.type !== 'spending') return;
+  intent.spendSeen = true;
+  mintBundles.set(bundleID, mintSheetFor(intent, request.spending?.satoshis ?? 0));
+  const reason = pinnedProtocol(intent.protocolID)?.label ?? intent.description;
+  const asks = [
+    { protocolID: intent.protocolID as [0 | 1 | 2, string], usageType: 'encrypting' as const },
+    ...intent.labels.map((l) => ({ protocolID: [1, `action label ${l}`] as [0 | 1 | 2, string], usageType: 'generic' as const })),
+  ];
+  for (const a of asks)
+    wallet
+      .ensureProtocolPermission({
+        originator: request.originator,
+        privileged: false,
+        protocolID: a.protocolID,
+        counterparty: 'self',
+        usageType: a.usageType,
+        reason,
+      })
+      .catch(() => undefined);
 };
 
 /**
@@ -1819,6 +1889,31 @@ if (!(
         return true;
       }
       void handleStreamGrantInternal(message as { action: string } & Record<string, unknown>, sendResponse);
+      return true;
+    }
+
+    // Queued sends the network has not accepted (services/stuckSends.ts resolveUnsent): list them, send one now, or
+    // cancel one the network never got (releases its inputs). Extension pages only; never a site.
+    if (message?.action === 'UNSENT_SENDS') {
+      if (!isFromExtension) {
+        sendResponse({ type: message.action, success: false, error: 'Unauthorized' });
+        return true;
+      }
+      void (async () => {
+        const ctx = accountContext;
+        if (!ctx) throw new Error('Unlock your wallet first');
+        const m = message as { txid?: string; how?: 'send' | 'cancel' };
+        if (!m.txid) return { queued: await ctx.listUnsent() };
+        if (m.how !== 'send' && m.how !== 'cancel') throw new Error('Say send or cancel');
+        const out = await ctx.resolveUnsent(m.txid, m.how);
+        if (out.ok && out.result === 'cancelled') notifyBalanceUpdate();
+        if (out.ok && out.result === 'still-queued') sendRetry.arm();
+        return out;
+      })()
+        .then((data) => sendResponse({ type: 'UNSENT_SENDS', success: true, data }))
+        .catch((e: unknown) =>
+          sendResponse({ type: 'UNSENT_SENDS', success: false, error: e instanceof Error ? e.message : String(e) }),
+        );
       return true;
     }
 
@@ -2376,6 +2471,17 @@ if (!(
     // Track dApp CWI work so the floating popup closes when the request is
     // done and no approval UI remains. Extension-internal callers skip this —
     // they use suppressPopup and must not own popupWindowId lifecycle.
+    // Which protocol calls a site has running (services/pinnedMint.ts): a pinned site's self-encrypt is only let
+    // through while nothing else on that protocol is in flight. Counted from the call's start to its end.
+    const trackProtocolCall = (run: () => Promise<unknown>): Promise<unknown> => {
+      const end =
+        !isFromExtension && typeof message?.originator === 'string' && message.originator !== ADMIN_ORIGINATOR
+          ? protocolCalls.start(String(message.action), normalizeOriginator(message.originator), message.params)
+          : () => undefined;
+      return Promise.resolve()
+        .then(run)
+        .finally(end);
+    };
     const runDappRequest = (work: Promise<unknown>) => {
       if (isFromExtension) {
         void work;
@@ -2417,28 +2523,28 @@ if (!(
             runDappRequest(processCWIGetHeaderForHeight(message, sendResponse));
             return true;
           case CWIEventName.GET_PUBLIC_KEY:
-            runDappRequest(processCWIGetPublicKey(message, sendResponse));
+            runDappRequest(trackProtocolCall(() => processCWIGetPublicKey(message, sendResponse)));
             return true;
           case CWIEventName.LIST_ACTIONS:
             runDappRequest(processCWIListActions(message, sendResponse));
             return true;
           case CWIEventName.VERIFY_SIGNATURE:
-            runDappRequest(processCWIVerifySignature(message, sendResponse));
+            runDappRequest(trackProtocolCall(() => processCWIVerifySignature(message, sendResponse)));
             return true;
           case CWIEventName.VERIFY_HMAC:
-            runDappRequest(processCWIVerifyHmac(message, sendResponse));
+            runDappRequest(trackProtocolCall(() => processCWIVerifyHmac(message, sendResponse)));
             return true;
           case CWIEventName.CREATE_HMAC:
-            runDappRequest(processCWICreateHmac(message, sendResponse));
+            runDappRequest(trackProtocolCall(() => processCWICreateHmac(message, sendResponse)));
             return true;
           case CWIEventName.CREATE_SIGNATURE:
-            runDappRequest(processCWICreateSignature(message, sendResponse));
+            runDappRequest(trackProtocolCall(() => processCWICreateSignature(message, sendResponse)));
             return true;
           case CWIEventName.ENCRYPT:
-            runDappRequest(processCWIEncrypt(message, sendResponse));
+            runDappRequest(trackProtocolCall(() => processCWIEncrypt(message, sendResponse)));
             return true;
           case CWIEventName.DECRYPT:
-            runDappRequest(processCWIDecrypt(message, sendResponse));
+            runDappRequest(trackProtocolCall(() => processCWIDecrypt(message, sendResponse)));
             return true;
           case CWIEventName.CREATE_ACTION:
             runDappRequest(processCWICreateAction(message, sendResponse));
@@ -2459,7 +2565,7 @@ if (!(
             runDappRequest(processCWIRevealCounterpartyKeyLinkage(message, sendResponse));
             return true;
           case CWIEventName.REVEAL_SPECIFIC_KEY_LINKAGE:
-            runDappRequest(processCWIRevealSpecificKeyLinkage(message, sendResponse));
+            runDappRequest(trackProtocolCall(() => processCWIRevealSpecificKeyLinkage(message, sendResponse)));
             return true;
           case CWIEventName.ACQUIRE_CERTIFICATE:
             runDappRequest(processCWIAcquireCertificate(message, sendResponse));
@@ -3441,6 +3547,10 @@ if (!(
     sendResponse: CallbackResponse,
   ) => {
     const bundle = permissionBundler.get(response.bundleID);
+    // A mint sheet answers this one mint: never a monthly allowance or "don't ask again" (services/pinnedMint.ts).
+    if (mintBundles.delete(response.bundleID)) {
+      response = { ...response, allowanceUsd: 0, allowancePerPaymentUsd: 0, allowancePayees: undefined, trustSite: false };
+    }
     const result = permissionBundler.resolve(response.bundleID, response.decisions ?? {});
     if (!bundle || !result) {
       sendResponse({ type: 'BUNDLE_PERMISSION_RESPONSE', success: false, error: 'Request expired' });
@@ -4496,6 +4606,7 @@ if (!(
     let streamPass: (StreamPass & { done: Promise<void>; finish: () => void }) | undefined;
     let spentHeal: HealReport | null | undefined;
     let releasePayeeMark: (() => void) | undefined;
+    let ownMintIntent: MintIntent | undefined;
     try {
       const w = await ensureWallet();
       await ensureUsbSeen('build and sign a transaction', message.originator);
@@ -4554,6 +4665,14 @@ if (!(
           console.log('[createAction] streaming grant covers this call; budget left', decision.budget);
         }
       }
+      // A pinned site's mint (services/pinnedMint.ts): read before spendingAuthorization is stripped. One per site.
+      if (streamKey) {
+        const intent = mintIntentFor(streamKey, message.params);
+        if (intent && !mintIntents.has(streamKey)) {
+          mintIntents.set(streamKey, intent);
+          ownMintIntent = intent;
+        }
+      }
       // options.spendingAuthorization is ours, not BRC-100: never pass it on to the signer.
       message.params = withoutStreamOption(message.params);
       const usesSendAllSentinel = message.params.outputs?.some((o) => o.satoshis === 2099999999999999) === true;
@@ -4589,8 +4708,19 @@ if (!(
       // A big transaction goes to the background sender, so the site gets {txid, pending} at once instead of
       // waiting on a long upload (services/bigDelayed.ts, owner 12 Oct 2026). Small ones are never changed.
       const bytes = createActionBytes(message.params);
-      const delayed = shouldDelay(bytes, message.params.options);
-      const args = delayed ? withDelayedBroadcast(message.params) : message.params;
+      // A site's own acceptDelayedBroadcast (or the BRC-100 default, true) is not honoured: a small send goes out
+      // now, so the answer is the network's; only the wallet decides to send a big one in the background, and then
+      // it answers {pending: true} and arms the retry (services/bigDelayed.ts withBroadcastNow, bvideox.com mint
+      // b6963e8c…, 24 Oct 2026: a queued send answered like a broadcast one and never went out).
+      const delayed = shouldDelay(
+        bytes,
+        isAdmin ? message.params.options : { ...(message.params.options ?? {}), acceptDelayedBroadcast: undefined },
+      );
+      const args = delayed
+        ? withDelayedBroadcast(message.params)
+        : isAdmin
+          ? message.params
+          : withBroadcastNow(message.params);
       if (delayed) console.log(`[createAction] ${bytes} bytes: sending in the background`);
 
       let result: Awaited<ReturnType<typeof signer.createAction>>;
@@ -4634,7 +4764,9 @@ if (!(
       const ref = result.signableTransaction?.reference;
       if (bigRefBytes.size > 200) bigRefBytes.clear();
       if (ref && bytes > 0) bigRefBytes.set(ref, bytes + (result.signableTransaction?.tx?.length ?? 0));
-      if (delayed && result.txid) {
+      // Queued, not accepted (the wallet's own background send, or a broadcaster with no verdict): never answered
+      // like a broadcast. Marked pending, and the retry is armed so it really goes out.
+      if (result.txid && (delayed || (!isAdmin && resultIsQueued(result)))) {
         result = pendingShape(result);
         if (accountContext) {
           sendRetry.arm();
@@ -4709,6 +4841,7 @@ if (!(
       });
     } finally {
       releasePayeeMark?.();
+      if (ownMintIntent && mintIntents.get(ownMintIntent.origin) === ownMintIntent) mintIntents.delete(ownMintIntent.origin);
       if (streamPass) {
         if (streamPasses.get(streamPass.originator) === streamPass) streamPasses.delete(streamPass.originator);
         streamPass.finish();
@@ -4746,11 +4879,19 @@ if (!(
       markChainStep();
       // Big: the background sender uploads it (services/bigDelayed.ts).
       const bytes = (await signableBytes(message.params.reference)) + signActionBytes(message.params);
-      const delayed = shouldDelay(bytes, message.params.options);
+      const site = !!message.originator && message.originator !== ADMIN_ORIGINATOR;
+      // As createAction: a site's acceptDelayedBroadcast is not honoured; small sends go out now (withBroadcastNow).
+      const delayed = shouldDelay(
+        bytes,
+        site ? { ...(message.params.options ?? {}), acceptDelayedBroadcast: undefined } : message.params.options,
+      );
       if (delayed) console.log(`[signAction] ${bytes} bytes: sending in the background`);
       bigRefBytes.delete(message.params.reference);
-      let result = await w.signAction(delayed ? withDelayedBroadcast(message.params) : message.params, message.originator);
-      if (delayed && result?.txid) {
+      let result = await w.signAction(
+        delayed ? withDelayedBroadcast(message.params) : site ? withBroadcastNow(message.params) : message.params,
+        message.originator,
+      );
+      if (result?.txid && (delayed || (site && resultIsQueued(result)))) {
         result = pendingShape(result);
         if (accountContext) {
           sendRetry.arm();
