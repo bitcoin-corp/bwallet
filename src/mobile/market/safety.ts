@@ -139,29 +139,72 @@ export function compileKeywords(keywords: string[], substrings: string[] = []): 
 const TRUE = new Set(['true', '1', 'yes', 'y']);
 const ADULT_RATINGS = new Set(['adult', 'explicit', 'nsfw', 'x', 'xxx', 'r18', 'r-18', '18+', 'mature', 'porn']);
 
-/** Inscription metadata that declares itself adult: nsfw/adult/explicit flags or an adult rating. */
-export function metadataFlagsAdult(map: Record<string, unknown> | undefined | null): boolean {
-  if (!map) return false;
-  const maps = [map, map.subTypeData].filter((m): m is Record<string, unknown> => !!m && typeof m === 'object');
-  for (const m of maps) {
-    for (const [k, v] of Object.entries(m)) {
-      const key = k.toLowerCase();
-      const val = String(v ?? '')
-        .trim()
-        .toLowerCase();
-      if (
-        ['nsfw', 'adult', 'explicit', 'mature', 'isnsfw', 'is_nsfw', 'isadult'].includes(key) &&
-        (v === true || TRUE.has(val))
-      )
-        return true;
-      if (
-        ['rating', 'contentrating', 'content_rating', 'agerating', 'age_rating'].includes(key) &&
-        ADULT_RATINGS.has(val)
-      )
-        return true;
+const MAX_DEPTH = 10;
+const MAX_NODES = 500;
+
+/** A string that is itself a JSON object or array (MAP values often are), parsed; otherwise null. */
+const parseJsonish = (s: string): unknown => {
+  const t = s.trim();
+  if (t.length < 2 || t.length > 20_000 || !/^[[{]/.test(t)) return null;
+  try {
+    return JSON.parse(t);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Every object reachable in inscription metadata, nested objects/arrays and JSON-in-string values included,
+ * to MAX_DEPTH levels and at most MAX_NODES nodes (b-Aware report: nesting deeper than the old walk hid terms).
+ */
+const walkMap = (map: unknown, onObject: (o: Record<string, unknown>) => void, onString: (s: string) => void): void => {
+  let nodes = 0;
+  const walk = (v: unknown, depth: number, fromJson: boolean) => {
+    if (depth > MAX_DEPTH || ++nodes > MAX_NODES) return;
+    if (typeof v === 'string') {
+      onString(v);
+      if (!fromJson) {
+        const parsed = parseJsonish(v);
+        if (parsed && typeof parsed === 'object') walk(parsed, depth + 1, true);
+      }
+    } else if (Array.isArray(v)) v.forEach((x) => walk(x, depth + 1, fromJson));
+    else if (v && typeof v === 'object') {
+      onObject(v as Record<string, unknown>);
+      Object.values(v).forEach((x) => walk(x, depth + 1, fromJson));
     }
+  };
+  walk(map, 0, false);
+};
+
+const objectFlagsAdult = (m: Record<string, unknown>): boolean => {
+  for (const [k, v] of Object.entries(m)) {
+    const key = k.toLowerCase();
+    const val =
+      typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? String(v).trim().toLowerCase() : '';
+    if (
+      ['nsfw', 'adult', 'explicit', 'mature', 'isnsfw', 'is_nsfw', 'isadult'].includes(key) &&
+      (v === true || TRUE.has(val))
+    )
+      return true;
+    if (
+      ['rating', 'contentrating', 'content_rating', 'agerating', 'age_rating'].includes(key) &&
+      ADULT_RATINGS.has(val)
+    )
+      return true;
   }
   return false;
+};
+
+/** Inscription metadata that declares itself adult at any nesting level: nsfw/adult/explicit flags or an adult rating. */
+export function metadataFlagsAdult(map: Record<string, unknown> | undefined | null): boolean {
+  if (!map) return false;
+  let flagged = false;
+  walkMap(
+    map,
+    (o) => void (flagged ||= objectFlagsAdult(o)),
+    () => undefined,
+  );
+  return flagged;
 }
 
 /** Everything the filter can look at for one listing / item. */
@@ -174,16 +217,15 @@ export type SafetySubject = {
   map?: Record<string, unknown> | null;
 };
 
+// Each string is matched on its own: joining fields would match words formed across field boundaries.
 const mapTexts = (map: Record<string, unknown> | null | undefined): string[] => {
   if (!map) return [];
   const out: string[] = [];
-  const walk = (v: unknown, depth: number) => {
-    if (depth > 3) return;
-    if (typeof v === 'string') out.push(v);
-    else if (Array.isArray(v)) v.forEach((x) => walk(x, depth + 1));
-    else if (v && typeof v === 'object') Object.values(v).forEach((x) => walk(x, depth + 1));
-  };
-  walk(map, 0);
+  walkMap(
+    map,
+    () => undefined,
+    (s) => void out.push(s),
+  );
   return out;
 };
 
