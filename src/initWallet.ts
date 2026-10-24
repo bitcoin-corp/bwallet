@@ -18,6 +18,7 @@ import {
 import { preserveOriginalErrors } from './services/permissionAbortGuard';
 import { guardReservedBaskets, revokeReservedBasketGrants } from './services/reservedBaskets';
 import { guardReservedProtocols, revokeReservedProtocolGrants } from './services/reservedProtocols';
+import { guardCrossSiteSigning } from './services/crossSiteSignGuard';
 import { guardSpending } from './mobile/config/killSwitch';
 import {
   syncAddresses,
@@ -381,18 +382,23 @@ export const initWallet = async (
   // Wallet-internal protocols (bTrust, Locks, funds, presign…) are refused to every outside originator before any
   // prompt (services/reservedProtocols.ts, security audit 19 Oct 2026 C1).
   // The wallet's own baskets (coins, ordinals, tokens, locks, names) likewise (services/reservedBaskets.ts).
+  // A message naming another site (a login challenge fetched from good.com) is never signed for evil.com
+  // (services/crossSiteSignGuard.ts, payment-safety audit 24 Oct 2026 B1).
   const wallet = guardReservedBaskets(
     guardReservedProtocols(
-      preserveOriginalErrors(
-        withLocalSpendLedger(
-          new LocalWalletPermissionsManager(
-            baseWallet,
-            ADMIN_ORIGINATOR,
-            { permissionModules: assetModules },
-            { store: permissionStore },
+      guardCrossSiteSigning(
+        preserveOriginalErrors(
+          withLocalSpendLedger(
+            new LocalWalletPermissionsManager(
+              baseWallet,
+              ADMIN_ORIGINATOR,
+              { permissionModules: assetModules },
+              { store: permissionStore },
+            ),
+            spendLedger,
           ),
-          spendLedger,
         ),
+        ADMIN_ORIGINATOR,
       ),
       ADMIN_ORIGINATOR,
     ),

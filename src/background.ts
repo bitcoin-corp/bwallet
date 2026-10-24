@@ -133,6 +133,7 @@ import {
   type BundleRequest,
 } from './services/permissionBundle';
 import { normalizeOriginator } from '@1sat/wallet';
+import { withDefaultExpiry } from './services/grantExpiry';
 import { ADMIN_ORIGINATOR, initWallet, openAccountStorageForBackup, type AccountContext } from './initWallet';
 import { isExtensionSender, reservedOriginatorRefusal } from './services/adminOriginator';
 import { isReservedBasket, RESERVED_BASKET_REFUSAL, revokeBasketGrantsForOriginator } from './services/reservedBaskets';
@@ -1377,7 +1378,7 @@ const showPermissionPrompt = (request: PermissionRequest & { requestID: string }
         if (trusted && accountContext?.wallet) {
           // A site the user said "don't ask again" for: routine requests go through without a sheet.
           accountContext.wallet
-            .grantPermission({ requestID: request.requestID, expiry: 0 })
+            .grantPermission({ requestID: request.requestID, expiry: withDefaultExpiry(0) })
             .then(() => resolve())
             .catch((error: unknown) => reject(error instanceof Error ? error : new Error(String(error))));
           return;
@@ -1752,6 +1753,13 @@ if (!(
     if (reserved) {
       sendResponse({ type: message?.action, success: false, error: reserved });
       return true;
+    }
+
+    // A page message with no claimed originator takes the sender's real one, so it is never checked (or granted)
+    // as "no site" (payment-safety audit 24 Oct 2026, B1 Low).
+    if (!isFromExtension && message && typeof message === 'object' && !message.originator && sender.origin) {
+      const filled = originatorForOrigin(sender.origin);
+      if (filled.originator) message.originator = filled.originator;
     }
 
     // Cross-validate originator against sender.origin for external messages
@@ -3183,11 +3191,11 @@ if (!(
 
     if (response.granted) {
       // Grant the permission through the manager
-      // expiry defaults to 0 (never expires), ephemeral defaults to false (persist on-chain)
+      // No expiry given: the grant lasts GRANT_DEFAULT_DAYS (services/grantExpiry.ts, audit 24 Oct B1), never for ever.
       accountContext?.wallet
         .grantPermission({
           requestID: response.requestID,
-          expiry: response.expiry,
+          expiry: withDefaultExpiry(response.expiry),
         })
         .then(() => {
           pending.resolve();
@@ -3434,7 +3442,8 @@ if (!(
     }
     const remember = response.remember !== false;
     // Not remembered: the grants last this visit (an hour), then the site asks again.
-    const expiry = remember ? 0 : Math.floor(Date.now() / 1000) + 3600;
+    // Remembered: GRANT_DEFAULT_DAYS (services/grantExpiry.ts), not for ever (audit 24 Oct B1).
+    const expiry = remember ? withDefaultExpiry(0) : Math.floor(Date.now() / 1000) + 3600;
     const wallet = accountContext?.wallet;
 
     const work = (async () => {
@@ -3455,7 +3464,7 @@ if (!(
       if (response.trustSite && remember && result.granted.length > 0 && accountContext?.permissionStore) {
         await accountContext.permissionStore.putGrant({
           key: { type: 'basket', originator: normalizeOriginator(bundle.originator), basket: TRUST_SITE_BASKET },
-          expiry: 0,
+          expiry,
           grantedAt: Date.now(),
           reason: 'Sign-in and signing without asking',
           // Only the baskets on this sheet; any other basket asks again.
@@ -3528,7 +3537,7 @@ if (!(
                 protocolPermissions: withoutReservedProtocols(response.granted.protocolPermissions),
               }
             : response.granted,
-          expiry: response.expiry,
+          expiry: withDefaultExpiry(response.expiry),
         })
         .then(() => {
           pending.resolve();
@@ -3576,7 +3585,7 @@ if (!(
         .grantCounterpartyPermission({
           requestID: response.requestID,
           granted: response.granted,
-          expiry: response.expiry,
+          expiry: withDefaultExpiry(response.expiry),
         })
         .then(() => {
           pending.resolve();
