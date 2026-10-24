@@ -15,12 +15,16 @@ const Passkeys = registerPlugin<PasskeysPlugin>('Passkeys');
 export const SEEDLESS_ENABLED: boolean = import.meta.env.VITE_SEEDLESS === '1' && !STORE_BUILD;
 
 /**
- * One rpId for the whole bwalletx.com family: web.bwalletx.com, desktop.bwalletx.com and bwalletx.com all share
- * the same passkeys. Anywhere else (localhost, preview hosts) falls back to the page's own host, so a passkey
- * made there only works there.
+ * The only hosts that use the wallet's rpId (web.bwalletx.com). An explicit list, never a wildcard over
+ * *.bwalletx.com (same rule as WALLET_ORIGINS in openHere.ts): other subdomains must not be able to reach the
+ * seed backup. desktop. is allowed by the browser through https://web.bwalletx.com/.well-known/webauthn.
+ * Anywhere else (bwalletx.com, other subdomains, localhost, previews) uses its own host, so a passkey made there
+ * only works there and opens nothing of the wallet's.
  */
+export const WALLET_RP_HOSTS: readonly string[] = ['web.bwalletx.com', 'desktop.bwalletx.com'];
+
 export const rpIdFor = (hostname: string, native = IS_NATIVE): string =>
-  native || hostname === 'bwalletx.com' || hostname.endsWith('.bwalletx.com') ? NATIVE_RP_ID : hostname;
+  native || WALLET_RP_HOSTS.includes(hostname) ? NATIVE_RP_ID : hostname;
 
 export type PrfSupport = {
   webauthn: boolean;
@@ -107,7 +111,7 @@ const prfOut = (ext: AuthenticationExtensionsClientOutputs): PrfResults | undefi
 const bytes = (b: ArrayBuffer | ArrayBufferView): Uint8Array =>
   b instanceof ArrayBuffer ? new Uint8Array(b) : new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
 
-/** Ask the passkey for its PRF output. With no credentialId the browser offers any bwalletx.com passkey. */
+/** Ask the passkey for its PRF output. With no credentialId the browser offers any passkey for this rpId. */
 export async function getPrf(rpId: string, credentialId?: string): Promise<{ credentialId: string; prf: Uint8Array }> {
   const first = await prfSalt();
   if (IS_NATIVE) return nativeGetPrf(Passkeys, first, rpId, credentialId);

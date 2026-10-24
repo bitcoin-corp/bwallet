@@ -30,9 +30,9 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * Native side of src/mobile/passkey/nativePasskeys.ts: passkeys for rpId bwalletx.com through Credential Manager,
+ * Native side of src/mobile/passkey/nativePasskeys.ts: passkeys for rpId web.bwalletx.com through Credential Manager,
  * with the WebAuthn PRF extension in the request JSON, so the app and web.bwalletx.com share one passkey and derive
- * the same backup key. The OS checks https://bwalletx.com/.well-known/assetlinks.json (get_login_creds) for this
+ * the same backup key. The OS checks https://web.bwalletx.com/.well-known/assetlinks.json (get_login_creds) for this
  * package + signing cert. PRF results come from the provider (Google Password Manager returns them on recent Play
  * services; others may not), so create() may return only prf.enabled and JS follows with one get().
  * Binary values cross the bridge as base64url, the same encoding WebAuthn JSON uses.

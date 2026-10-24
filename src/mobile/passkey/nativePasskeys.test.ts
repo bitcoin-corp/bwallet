@@ -28,11 +28,11 @@ const mockPlugin = (opts: { prfAtCreate?: boolean; prfEnabled?: boolean; noPrf?:
 };
 
 describe('native passkey bridge', () => {
-  test('apps always claim the bwalletx.com rpId, web keeps its host rule', () => {
-    expect(NATIVE_RP_ID).toBe('bwalletx.com');
-    expect(rpIdFor('localhost', true)).toBe('bwalletx.com');
+  test('apps always claim the web.bwalletx.com rpId, web keeps its host rule', () => {
+    expect(NATIVE_RP_ID).toBe('web.bwalletx.com');
+    expect(rpIdFor('localhost', true)).toBe('web.bwalletx.com');
     expect(rpIdFor('localhost', false)).toBe('localhost');
-    expect(rpIdFor('web.bwalletx.com', false)).toBe('bwalletx.com');
+    expect(rpIdFor('web.bwalletx.com', false)).toBe('web.bwalletx.com');
   });
 
   test('create returning PRF uses it directly with the shared web salt', async () => {
@@ -40,7 +40,7 @@ describe('native passkey bridge', () => {
     const { plugin, calls } = mockPlugin({ prfAtCreate: true });
     const r = await nativeCreateWithPrf(plugin, salt, NATIVE_RP_ID, 'bWalletX · test');
     expect(calls.map((c) => c.method)).toEqual(['create']);
-    expect(calls[0]!.args.rpId).toBe('bwalletx.com');
+    expect(calls[0]!.args.rpId).toBe('web.bwalletx.com');
     expect(calls[0]!.args.prfSalt).toBe(b64url(salt));
     expect(fromB64url(calls[0]!.args.userId as string).length).toBe(16);
     expect(r.prf.length).toBe(32);
