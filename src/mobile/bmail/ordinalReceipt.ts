@@ -85,6 +85,19 @@ export const receiptTags = (t: unknown): string[] => [
   ]),
 ];
 
+/**
+ * The per-output tracking id (`id:` tag, read by @1sat/types readAssetIdTag) that sendOrdinals needs to spend it
+ * again. Derived from the outpoint, so it is stable across re-opens of the same letter.
+ */
+export const receiptIdTag = (txid: string, vout: number) => `id:${txid.toLowerCase()}_${vout}`;
+
+/** Hide a letter's NFT (persisted in the airdrops hidden list, like other Quarantine items). */
+export const hideReceipt = (account: string, txid: string) => {
+  const s = loadInbox(account);
+  if (!s.hidden.includes(receiptKey(txid))) saveInbox(account, { ...s, hidden: [...s.hidden, receiptKey(txid)] });
+};
+export const receiptHidden = (s: Pick<InboxState, 'hidden'>, txid: string) => s.hidden.includes(receiptKey(txid));
+
 export type ReceiveDeps = { getBeef: (txid: string) => Promise<number[]> };
 
 export class ReceiptError extends Error {}
@@ -124,7 +137,7 @@ export const internalizeSealedOrdinal = async (
         protocol: 'basket insertion' as const,
         insertionRemittance: {
           basket: ORDINALS_BASKET,
-          tags,
+          tags: [...tags, receiptIdTag(o.txid, d.outputIndex)],
           customInstructions: buildOrdinalCustomInstructions({
             protocolID: d.protocolID,
             keyID: d.keyID,

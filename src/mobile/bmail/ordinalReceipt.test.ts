@@ -5,10 +5,13 @@ import {
   deliveriesFor,
   internalizeSealedOrdinal,
   receiptAccepted,
+  receiptHidden,
   receiptKey,
   receiptTags,
   ReceiptError,
 } from './ordinalReceipt';
+import { readAssetIdTag } from '@1sat/types';
+import { nftSendButton } from '../media/nftSend';
 import { bytesToSealed, sealedToBytes, type SealedOrdinal } from './envelope';
 
 const senderKey = PrivateKey.fromString('a1'.repeat(32), 'hex');
@@ -88,11 +91,24 @@ describe('NFT sent to an identity key, received by letter', () => {
     const out = r.basket[0].outputs[0];
     expect(out.protocol).toBe('basket insertion');
     expect(out.insertionRemittance?.basket).toBe(ORDINALS_BASKET);
-    expect(out.insertionRemittance?.tags).toEqual([
+    const tags = out.insertionRemittance!.tags!;
+    expect(tags).toEqual([
       'type:image/png',
       `origin:${sourceOutpoint.replace('.', '_')}`,
       'bmail',
+      `id:${ordinal.txid}_0`,
     ]);
+    // Sendable onward straight away: NftDetail reads the tracking id and its Send button enables.
+    expect(readAssetIdTag(tags)).toBe(`${ordinal.txid}_0`);
+    const send = nftSendButton({
+      to: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
+      status: 'ready',
+      busy: false,
+      onChain: true,
+      isSelf: false,
+      pending: false,
+    });
+    expect(send.enabled).toBe(true);
     const ci = JSON.parse(out.insertionRemittance!.customInstructions!);
     expect(ci.keyID).toBe(sourceOutpoint);
     expect(ci.counterparty).toBe(sKey);
@@ -127,6 +143,11 @@ describe('NFT sent to an identity key, received by letter', () => {
       "isn't locked to your key",
     );
     expect(r.basket).toHaveLength(0);
+  });
+
+  test('Hide is a persisted airdrops-hidden entry', () => {
+    expect(receiptHidden({ hidden: [receiptKey('ab'.repeat(32))] }, 'ab'.repeat(32))).toBe(true);
+    expect(receiptHidden({ hidden: [] }, 'ab'.repeat(32))).toBe(false);
   });
 
   test('receiptTags keeps only ordinal identity tags', () => {

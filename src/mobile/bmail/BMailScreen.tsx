@@ -93,7 +93,14 @@ import { sendMessageAsync } from '../../utils/chromeHelpers';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import type { WalletInterface } from '@bsv/sdk';
 import type { Sealed, SealedOrdinal } from './envelope';
-import { deliveriesFor, internalizeSealedOrdinal, keepReceipt, receiptAccepted } from './ordinalReceipt';
+import {
+  deliveriesFor,
+  hideReceipt,
+  internalizeSealedOrdinal,
+  keepReceipt,
+  receiptAccepted,
+  receiptHidden,
+} from './ordinalReceipt';
 import { loadInbox } from '../airdrops/inbox';
 import { notifyMinted } from '../mint/mint';
 import { accountNamesFor } from '../names/accountNames';
@@ -1892,7 +1899,9 @@ const ReceivedNft = ({ r, ordinal }: { r: Received; ordinal: SealedOrdinal }) =>
   const { chromeStorageService, apiContext } = useServiceContext();
   const account = chromeStorageService.getCurrentAccountObject().account?.addresses?.identityAddress ?? '';
   const valid = deliveriesFor(ordinal, r.env.to, r.from).length > 0;
-  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'hidden'>('idle');
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'hidden'>(() =>
+    receiptHidden(loadInbox(account), ordinal.txid) ? 'hidden' : 'idle',
+  );
   const [err, setErr] = useState('');
   const accepted = receiptAccepted(loadInbox(account), ordinal.txid, r.from);
   const receive = async (keep: boolean) => {
@@ -1943,7 +1952,10 @@ const ReceivedNft = ({ r, ordinal }: { r: Received; ordinal: SealedOrdinal }) =>
             </button>
             <button
               type="button"
-              onClick={() => setState('hidden')}
+              onClick={() => {
+                hideReceipt(account, ordinal.txid);
+                setState('hidden');
+              }}
               className="min-h-[44px] flex-1 rounded-lg text-xs font-semibold bg-[#2b2f36] text-white"
             >
               Hide
