@@ -358,17 +358,31 @@ export function forgetSiteConnected(originator: string, s: Store | null = local(
 export const shouldWearSiteTheme = (originator: string, s: Store | null = local()): boolean =>
   !!themeOrigin(originator) && siteThemesOn(s) && siteThemeAllowed(originator, s) && siteConnected(originator, s);
 
+/**
+ * Whether an approval sheet from this site may wear its theme. Unlike shouldWearSiteTheme it does not need an
+ * earlier approval: the site is asking right now (the background checked the origin), so its first connect sheet is
+ * dressed too. Switches and paired-session rules still apply.
+ */
+export const shouldWearOnSheet = (originator: string, s: Store | null = local()): boolean =>
+  !!themeOrigin(originator) && siteThemesOn(s) && siteThemeAllowed(originator, s);
+
 type CacheEntry = { at: number; theme: WornTheme | null };
 const inflight = new Map<string, Promise<WornTheme | null>>();
 
-/** The site's theme from cache or the network. Never fetched for a site the user hasn't approved. */
+/** The site's theme from cache or the network. Fetched only for a site the user approved or that is asking now. */
 export async function loadConnectTheme(
   originator: string,
-  { s = local(), f = fetch, now = Date.now() }: { s?: Store | null; f?: Fetch; now?: number } = {},
+  {
+    s = local(),
+    f = fetch,
+    now = Date.now(),
+    asking = false,
+  }: { s?: Store | null; f?: Fetch; now?: number; asking?: boolean } = {},
 ): Promise<WornTheme | null> {
   const h = trueHost(originator);
   const origin = themeOrigin(h);
-  if (!origin || !siteConnected(h, s)) return null;
+  // `asking`: the site has a request on screen right now (its first connect sheet), so it may be fetched.
+  if (!origin || (!asking && !siteConnected(h, s))) return null;
   const cache = (get(s, CACHE_KEY) ?? {}) as Record<string, CacheEntry>;
   const hit = cache[h];
   if (hit && now - hit.at < (hit.theme ? CACHE_MS : MISS_CACHE_MS)) return hit.theme;

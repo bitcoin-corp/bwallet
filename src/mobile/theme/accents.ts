@@ -769,6 +769,8 @@ let custom: Accent | null = null;
 export const setCustomAccent = (a: Accent | null): void => {
   custom = a;
 };
+/** The pack 'custom' paints right now (accent.ts keeps it across a connected site's look). */
+export const getCustomAccent = (): Accent | null => custom;
 
 export const accentById = (id: string | null | undefined): Accent => {
   const want = (id && RETIRED_PACKS[id]) || id;

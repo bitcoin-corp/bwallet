@@ -1183,21 +1183,30 @@ const activeTabId = async (): Promise<number | undefined> => {
     return undefined;
   }
 };
+// Tabs whose page has talked to the wallet → that page's origin (from Chrome). The panel wears the active one's
+// v2 theme file while the user has it connected (docs/SITE-THEME.md "The whole view").
+const siteOriginTabs = new Map<number, string>();
+let siteOriginShown: string | null | undefined;
 const pushSiteTheme = async (force = false) => {
   const tab = await activeTabId();
   const theme = (tab !== undefined && siteThemeTabs.get(tab)) || null;
-  if (!force && theme === siteThemeShown) return;
+  const origin = (tab !== undefined && siteOriginTabs.get(tab)) || null;
+  if (!force && theme === siteThemeShown && origin === siteOriginShown) return;
   siteThemeShown = theme;
-  postToPanels({ action: 'SITE_THEME', theme });
+  siteOriginShown = origin;
+  postToPanels({ action: 'SITE_THEME', theme, origin });
 };
 chrome.tabs?.onActivated?.addListener(() => void pushSiteTheme());
 chrome.windows?.onFocusChanged?.addListener(() => void pushSiteTheme());
 chrome.tabs?.onRemoved?.addListener((tabId) => {
-  if (siteThemeTabs.delete(tabId)) void pushSiteTheme();
+  const a = siteThemeTabs.delete(tabId);
+  if (siteOriginTabs.delete(tabId) || a) void pushSiteTheme();
 });
 chrome.tabs?.onUpdated?.addListener((tabId, info) => {
   // A reload or navigation: the page declares again once it reconnects.
-  if (info.status === 'loading' && siteThemeTabs.delete(tabId)) void pushSiteTheme();
+  if (info.status !== 'loading') return;
+  const a = siteThemeTabs.delete(tabId);
+  if (siteOriginTabs.delete(tabId) || a) void pushSiteTheme();
 });
 const postToPanels = (msg: unknown) =>
   activePopupPorts.forEach((p) => {
@@ -1934,6 +1943,7 @@ if (isInServiceWorker) {
         const id = siteThemeFor(sender.origin, message.theme);
         if (id) siteThemeTabs.set(sender.tab.id, id);
         else siteThemeTabs.delete(sender.tab.id);
+        if (sender.origin) siteOriginTabs.set(sender.tab.id, sender.origin);
         void pushSiteTheme();
       }
       return false;
@@ -1943,6 +1953,8 @@ if (isInServiceWorker) {
       if (sender.id === chrome.runtime.id && sender.frameId === 0 && sender.origin) {
         const { originator } = originatorForOrigin(sender.origin);
         if (originator) void updateReconnectState((s) => ({ state: noteDisconnect(s, originator, Date.now()), result: null }));
+        // Disconnected: the panel drops the site's look.
+        if (sender.tab?.id !== undefined && siteOriginTabs.delete(sender.tab.id)) void pushSiteTheme();
       }
       return false;
     }

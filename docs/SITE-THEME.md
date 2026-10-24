@@ -47,9 +47,16 @@ is picked by the wallet.
 
 ## When it kicks in
 
-- Only after the user approves a request from that origin (Allow on a connect, sign or pay sheet). The approval
-  marks the site connected and starts the fetch, so the next sheet is already dressed. A site the user never
-  approved is never fetched.
+- Approval sheets: whenever that origin has a request on screen, including its **first connect sheet** (24 Oct
+  2026). The origin is the request's originator as checked by the background, so a site can only ever dress its
+  own sheets. Approving marks the site connected.
+- The whole view (extension, 24 Oct 2026): while the active tab is a site the user has connected, and that page
+  has talked to the wallet, the side panel / popup wears the site's look: page, cards, bars, text and buttons in its
+  colours (`src/mobile/theme/siteLook.ts`, built only from the validated colours above; derived shades are
+  contrast-checked again). It is never saved. It reverts when the tab changes to another site, reloads, closes,
+  the site disconnects (`bwallet:disconnect`, see `src/services/reconnectGate.ts`), the user revokes it, or a
+  switch below is turned off. A bundled pack the page names (`<meta name="bwalletx-theme">`) wins over the file.
+- A site that never made a request is never fetched.
 - Fetch: no cookies, no referrer, 4 s timeout, size caps, no redirect to another origin. Images are fetched by the
   wallet and kept as `data:` URLs. Cached a day (a site with no theme: an hour). Per device (localStorage).
 - Extension: every approval (side panel, popup window, in-page sheet) is `prompt.html`, so all three wear it.
@@ -64,6 +71,8 @@ is picked by the wallet.
   host is the request's originator as checked by the background (never from the theme).
 - The sheet itself: amounts, recipients, warnings, allowance, Approve / Deny keep the wallet's styling. A theme
   dresses only the banner (logo, name, colours) and a thin accent edge around the sheet.
+- The whole-view look is colours only: no logo, art, fonts, CSS or patterns from the site reach the wallet's own
+  screens.
 
 ## Switches
 
