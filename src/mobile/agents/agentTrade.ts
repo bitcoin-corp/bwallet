@@ -65,6 +65,12 @@ export const pickListing = (listings: Listing[], maxUsd: number, bsvUsd: number)
     .filter((l) => l.buyable && (l.priceSats / 1e8) * bsvUsd <= maxUsd + 1e-9)
     .sort((a, b) => a.priceSats - b.priceSats)[0] ?? null;
 
+/** A listing's own per-token price in USD, or undefined when unknown (a buyBelowUsd rule then refuses). */
+export const listingPriceUsd = (l: Pick<Listing, 'perTokenSats'>, bsvUsd: number): number | undefined =>
+  l.perTokenSats !== undefined && Number.isFinite(l.perTokenSats) && l.perTokenSats > 0
+    ? (l.perTokenSats / 1e8) * bsvUsd
+    : undefined;
+
 /** Extra system-prompt text for an agent account: its strategy and how to ask for actions. Empty otherwise. */
 export const agentAccountPrompt = (id: string | undefined, name: string) => {
   if (!id || !getAgentAccount(id)) return '';
@@ -132,7 +138,8 @@ export const runAgentAction = async (
   const pick = pickListing(market.listings, a.usd, bsvUsd);
   if (!pick) return { ok: false, text: `No listing of that token fits $${a.usd.toFixed(2)}.` };
   const usd = (pick.priceSats / 1e8) * bsvUsd;
-  const priceUsd = market.floorSats !== null ? (market.floorSats / 1e8) * bsvUsd : undefined;
+  // The picked listing's own per-token price, never the market floor (b-Aware report, 24 Oct 2026).
+  const priceUsd = listingPriceUsd(pick, bsvUsd);
   const amount = priceUsd ? usd / priceUsd : undefined;
   const g = checkAgentAction(id, { kind: 'buy', token: a.token, ticker, usd, priceUsd, amount });
   if (!g.ok) return { ok: false, text: `Refused: ${g.reason}` };

@@ -44,6 +44,9 @@ const KEY = 'bwallet.agentAccounts';
 const LOG = (id: string) => `bwallet.agentLog.${id}`;
 const STOP_ALL = 'bwallet.agentsStopAll';
 const LOG_MAX = 500;
+const SPEND = (id: string) => `bwallet.agentSpend.${id}`;
+/** Daily cap a new agent account starts with (USD). The owner can change it; null caps are no longer the default. */
+export const DEFAULT_AGENT_DAILY_CAP_USD = 20;
 const EVENT = 'bwallet:agents';
 
 type Store = Record<string, AgentAccount>;
@@ -110,7 +113,8 @@ export const markAgentAccount = (
     identityAddress,
     labels: cleanLabels(labels),
     stopped: false,
-    dailyCapUsd: null,
+    // Pots pay standing orders and keep no cap; agents start capped (b-Aware report, 24 Oct 2026).
+    dailyCapUsd: opts.kind === 'pot' ? null : DEFAULT_AGENT_DAILY_CAP_USD,
     createdAt: now,
     ghostColor,
   };
@@ -159,12 +163,42 @@ export const allAgentsStopped = () => read<boolean>(STOP_ALL, false);
 export const setAllAgentsStopped = (on: boolean) => write(STOP_ALL, on);
 
 export const getAgentLog = (id: string): AgentLogEntry[] => read<AgentLogEntry[]>(LOG(id), []);
-export const appendAgentLog = (id: string, e: AgentLogEntry) =>
-  write(LOG(id), [e, ...getAgentLog(id)].slice(0, LOG_MAX));
+/**
+ * Trim a log to `max` entries, dropping the oldest zero-dollar entries first, so a flood of refusals, paper fills
+ * or listings can never push real spends out of the log the caps are read from (b-Aware report, 24 Oct 2026).
+ */
+export const trimLog = (log: AgentLogEntry[], max = LOG_MAX): AgentLogEntry[] => {
+  if (log.length <= max) return log;
+  let drop = log.length - max;
+  const keep = new Array<boolean>(log.length).fill(true);
+  for (let i = log.length - 1; i >= 0 && drop > 0; i--)
+    if (!(log[i].usd > 0)) {
+      keep[i] = false;
+      drop--;
+    }
+  const out = log.filter((_, i) => keep[i]);
+  return out.length > max ? out.slice(0, max) : out;
+};
 
 const dayStart = (now: number) => {
   const d = new Date(now);
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+};
+
+type SpendDay = { day: number; usd: number };
+/** Dollars spent today per the day ledger (kept apart from the log so the log's size cannot reset it). */
+export const ledgerSpentToday = (id: string, now = Date.now()): number => {
+  const l = read<SpendDay | null>(SPEND(id), null);
+  return l && l.day === dayStart(now) && l.usd > 0 ? l.usd : 0;
+};
+
+export const appendAgentLog = (id: string, e: AgentLogEntry) => {
+  if (e.usd > 0) {
+    const day = dayStart(e.at);
+    const l = read<SpendDay | null>(SPEND(id), null);
+    write(SPEND(id), { day, usd: (l && l.day === day ? l.usd : 0) + e.usd });
+  }
+  write(LOG(id), trimLog([e, ...getAgentLog(id)]));
 };
 
 /** Dollars agents have spent from this account today (UTC). */
@@ -183,12 +217,13 @@ export const spendAllowed = (
   log: AgentLogEntry[],
   usd: number,
   now = Date.now(),
+  ledgerUsd = 0,
 ): SpendCheck => {
   if (!account) return { ok: false, reason: 'Not an agent account' };
   if (stopAll) return { ok: false, reason: 'All agents are stopped' };
   if (account.stopped) return { ok: false, reason: 'This agent account is stopped' };
   if (account.dailyCapUsd !== null) {
-    const left = account.dailyCapUsd - spentToday(log, now);
+    const left = account.dailyCapUsd - Math.max(spentToday(log, now), ledgerUsd);
     if (usd > left + 1e-9)
       return {
         ok: false,
@@ -199,4 +234,4 @@ export const spendAllowed = (
 };
 
 export const checkAgentSpend = (id: string, usd: number, now = Date.now()) =>
-  spendAllowed(getAgentAccount(id), allAgentsStopped(), getAgentLog(id), usd, now);
+  spendAllowed(getAgentAccount(id), allAgentsStopped(), getAgentLog(id), usd, now, ledgerSpentToday(id, now));

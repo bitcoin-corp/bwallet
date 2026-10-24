@@ -123,7 +123,7 @@ export const CliPairConfirm = ({
             'Buy tokens and load strategies',
             'Within the account’s limits and its strategy’s rules',
           )}
-        {agent && toggle(send, setSend, 'Send BSV', 'To anyone, unless a strategy limits who')}
+        {agent && toggle(send, setSend, 'Send BSV', "To anyone, up to the account's daily cap")}
         {toggle(mint, setMint, 'Mint NFTs', 'Photos, music, video, PDFs: signed here, within the limits below')}
         {mint && (
           <div className="rounded-xl px-3 py-3" style={{ background: PANEL }}>

@@ -12,6 +12,7 @@ import {
   spendAllowed,
   getAgentAccount,
   allAgentsStopped,
+  ledgerSpentToday,
   type AgentLogEntry,
 } from './agentAccounts';
 
@@ -346,7 +347,14 @@ export const checkAgentAction = (
     appendAgentLog(id, { at: now, action: 'refused', detail: `Refused ${a.kind} ${a.token}: ${reason}`, usd: 0, rule });
     return { ok: false, reason, rule };
   };
-  const acct = spendAllowed(getAgentAccount(id), allAgentsStopped(), log, paper ? 0 : a.usd, now);
+  const acct = spendAllowed(
+    getAgentAccount(id),
+    allAgentsStopped(),
+    log,
+    paper ? 0 : a.usd,
+    now,
+    ledgerSpentToday(id, now),
+  );
   if (!acct.ok) return refuse(acct.reason);
   if (!loaded) return { ok: true, paper: false };
 

@@ -121,6 +121,7 @@ import {
 } from './services/oneSatPrompt';
 import type { PromptKind, UsbCheckRequest } from './promptProtocol';
 import {
+  allowanceGranted,
   allowanceSats,
   DEFAULT_ALLOWANCE_USD,
   PermissionBundler,
@@ -3575,7 +3576,8 @@ if (!(
 
     const work = (async () => {
       const usd = Number(response.allowanceUsd ?? 0);
-      if (result.granted.length > 0 && usd > 0 && accountContext?.permissionStore) {
+      // Only a sheet about money may set one; a plain sign-in never does (permissionBundle.ts offersAllowance).
+      if (usd > 0 && allowanceGranted(bundle, result.granted) && accountContext?.permissionStore) {
         const usdPerBsv = await cachedUsdPerBsv();
         const sats = allowanceSats(usd, usdPerBsv);
         if (sats > 0) {
