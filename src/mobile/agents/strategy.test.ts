@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import { markAgentAccount, getAgentLog } from './agentAccounts';
+import { markAgentAccount, getAgentLog, appendAgentLog } from './agentAccounts';
 import {
   checkAgentAction,
   checkRules,
@@ -197,5 +197,52 @@ describe('tickers', () => {
     const id = 'a'.repeat(64) + '_0';
     expect(checkRules(rules(), { kind: 'buy', token: id, ticker: 'B0ASEX', usd: 1 }, st()).ok).toBe(true);
     expect(checkRules(rules(), { kind: 'buy', token: id, ticker: 'FAKE', usd: 1 }, st()).ok).toBe(false);
+  });
+});
+
+describe('strategy spend ledger (b-Aware: refusal floods must not reset strategy caps)', () => {
+  beforeEach(() => mem.clear());
+  const spend = (id: string, usd: number, at: number) =>
+    appendAgentLog(id, { at, action: 'buy', detail: `Bought for $${usd}`, usd });
+  const load = (id: string, at: number) =>
+    loadStrategy(
+      id,
+      {
+        ...exampleStrategy('ABC'),
+        rules: rules({ tokens: ['ABC'], maxPerTradeUsd: 5, maxPerDayUsd: 5, maxTotalUsd: 8 }),
+      },
+      'live',
+      undefined,
+      at,
+    );
+  const buy = (usd: number) => ({ kind: 'buy' as const, token: 'ABC', usd });
+
+  test('600 refusals (distinct and repeated) leave per-day and total limits holding', () => {
+    markAgentAccount('1L', [], NOW);
+    load('1L', NOW);
+    spend('1L', 4, NOW + 1);
+    for (let i = 0; i < 300; i++) checkAgentAction('1L', { kind: 'sell', token: `X${i}`, usd: 0 }, {}, NOW + 2 + i);
+    for (let i = 0; i < 300; i++) checkAgentAction('1L', { kind: 'sell', token: 'SAME', usd: 0 }, {}, NOW + 400 + i);
+    expect(getAgentLog('1L').length).toBeLessThanOrEqual(500);
+    expect(getAgentLog('1L')[0]).toMatchObject({ action: 'refused', repeat: 300 });
+    expect(checkAgentAction('1L', buy(2), {}, NOW + 800)).toMatchObject({ ok: false, rule: 'maxPerDayUsd' });
+    // Even with the log wiped entirely, the ledger still holds both limits.
+    mem.delete('bwallet.agentLog.1L');
+    expect(checkAgentAction('1L', buy(2), {}, NOW + 801)).toMatchObject({ ok: false, rule: 'maxPerDayUsd' });
+    const tomorrow = NOW + 86_400_000;
+    spend('1L', 4, tomorrow);
+    mem.delete('bwallet.agentLog.1L');
+    expect(checkAgentAction('1L', buy(1), {}, tomorrow + 1)).toMatchObject({ ok: false, rule: 'maxTotalUsd' });
+  });
+
+  test('reloading a strategy resets the ledger', () => {
+    markAgentAccount('1R', [], NOW);
+    load('1R', NOW);
+    spend('1R', 5, NOW + 1);
+    mem.delete('bwallet.agentLog.1R');
+    expect(checkAgentAction('1R', buy(1), {}, NOW + 2)).toMatchObject({ ok: false, rule: 'maxPerDayUsd' });
+    const later = NOW + 86_400_000;
+    load('1R', later);
+    expect(checkAgentAction('1R', buy(5), {}, later + 1)).toEqual({ ok: true, paper: false });
   });
 });
