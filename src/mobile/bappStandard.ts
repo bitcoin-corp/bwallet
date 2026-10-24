@@ -348,6 +348,40 @@ export const standardReport = (): { name: string; tier: string; missing: Standar
 export const visibleApps = (apps: StoreApp[], store: boolean): StoreApp[] =>
   apps.filter((a) => !(store && (a.privateOnly || a.adult)));
 
+/**
+ * One entry per product (24 Oct 2026): "bMovies" and "bMoviesX" are the same product, so both reduce to "bmovies".
+ * Only b-names drop a trailing X; other names are just lower-cased.
+ */
+export const productKey = (name: string) => {
+  const n = name.trim().toLowerCase();
+  return /^b[a-z0-9]+x$/.test(n) ? n.slice(0, -1) : n;
+};
+
+/** Host without "www.", or null for a wallet path. */
+export const bareHostOf = (url: string): string | null => {
+  try {
+    return /^https?:/i.test(url) ? new URL(url).hostname.replace(/^www\./, '') : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Drops items that repeat a product (same productKey) or a site (same host) already listed in `taken`. */
+export const withoutDuplicates = <T extends { name: string; url?: string }>(
+  items: T[],
+  taken: { name: string; url?: string }[],
+): T[] => {
+  const names = new Set(taken.map((t) => productKey(t.name)));
+  const hosts = new Set(taken.map((t) => (t.url ? bareHostOf(t.url) : null)).filter(Boolean));
+  return items.filter((i) => {
+    const host = i.url ? bareHostOf(i.url) : null;
+    if (names.has(productKey(i.name)) || (host && hosts.has(host))) return false;
+    names.add(productKey(i.name));
+    if (host) hosts.add(host);
+    return true;
+  });
+};
+
 /** Case-insensitive search over name, verb and token. */
 export const matchesQuery = (a: { name: string; verb?: string; standard?: BappStandard }, q: string) => {
   const s = q.trim().toLowerCase();

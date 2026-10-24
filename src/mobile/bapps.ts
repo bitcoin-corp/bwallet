@@ -64,26 +64,18 @@ export const BAPPS: BApp[] = [
     icon: bappIconUrl('bchatx'),
   },
   {
-    name: 'bChat',
-    url: 'https://www.bchatx.com',
-    noFrame: true,
-    verb: 'Chat, voice and video messages, tokenised group chats',
-    group: 'featured',
-    status: 'live',
-    icon: bappIconUrl('bchat'),
-  },
-  {
-    name: 'bMovies',
-    url: 'https://www.bmovies.app',
-    noFrame: true,
+    // One entry per product (24 Oct 2026): the live b*X site, not bmovies.app.
+    name: 'bMoviesX',
+    url: 'https://www.bmoviesx.com',
     verb: 'Watch and back tokenised films',
     group: 'featured',
     status: 'live',
     icon: bappIconUrl('bmovies'),
   },
   {
-    name: 'bMusic',
-    url: 'https://www.bmovies.app/bmusic',
+    name: 'bMusicX',
+    url: 'https://bmusicx.com',
+    // frame-ancestors doesn't list the wallet (24 Oct 2026).
     noFrame: true,
     verb: 'Tokenise your music; fans who hold it make the video with you',
     group: 'featured',
@@ -91,9 +83,9 @@ export const BAPPS: BApp[] = [
     icon: bappIconUrl('bmusic'),
   },
   {
-    name: 'bMint',
-    // In the wallet (bmint/BmintPage.tsx), not bitcoin-mint.com: a path opens by route (BrowserPage bappTile).
-    url: '/m/bmint',
+    name: 'bMintX',
+    // The live b*X site (24 Oct 2026). The in-wallet minter (/m/bmint) still opens from its own links.
+    url: 'https://bmintx.com',
     verb: 'Design, stamp and mint tokens, currency and media on-chain',
     group: 'featured',
     status: 'live',
@@ -127,14 +119,14 @@ export const BAPPS: BApp[] = [
   )
     ? [
         {
-          name: 'bShares',
-          url: '/m/bshares',
-          verb: 'Share registers for any company. Restricted: registered members only',
+          // The live b*X site (24 Oct 2026); members still reach the register (/m/bshares) from their shares card.
+          name: 'bSharesX',
+          url: 'https://bsharesx.com',
+          verb: 'Share registers for any company',
           group: 'featured' as const,
           status: 'live' as const,
           icon: bappIconUrl('bshares'),
           privateOnly: true,
-          restricted: 'Restricted · members only',
         },
       ]
     : []),
@@ -165,13 +157,12 @@ export const BAPPS: BApp[] = [
     icon: bappIconUrl('names'),
   },
   {
-    name: 'bWriter',
-    url: 'https://bitcoin-writer.com/',
+    name: 'bWriterX',
+    url: 'https://bwriterx.com',
     verb: 'Write and save documents on-chain',
     group: 'featured',
     status: 'live',
     icon: bappIconUrl('bwriter'),
-    source: 'https://github.com/b0ase/bitcoin-writer',
   },
   // Work
   {
@@ -184,40 +175,30 @@ export const BAPPS: BApp[] = [
     source: suite('bitcoin-spreadsheet'),
   },
   {
-    name: 'bMail',
-    // In the wallet (bmail/BMailScreen.tsx), not the bitcoin-email site: a path opens by route (BrowserPage bappTile).
-    url: '/m/bmail',
+    name: 'bMailX',
+    // The live b*X site (24 Oct 2026). The in-wallet mailbox (/m/bmail) stays on the top-bar mail icon.
+    url: 'https://bmailx.com',
     verb: 'Send email that pays and gets paid',
     group: 'work',
     status: 'live',
     icon: bappIconUrl('bmail'),
-    source: suite('bitcoin-email'),
   },
   {
-    name: 'bDrive',
-    url: 'https://bitcoin-drive.vercel.app',
+    name: 'bDriveX',
+    url: 'https://bdrivex.com',
     verb: 'Store and share files on-chain',
     group: 'work',
     status: 'live',
     icon: bappIconUrl('bdrive'),
-    source: suite('bitcoin-drive'),
   },
   {
-    name: 'bCal',
-    // bWalletX: the one calendar of scheduled Spaces, in the wallet (spaces/CalendarPage.tsx, owner 18 Oct 2026).
-    // The store edition has no bSpaces (BSPACES_ENABLED), so it keeps the bitcoin-calendar site. Literal env check.
-    url: !(
-      import.meta.env.VITE_STORE_BUILD === '1' ||
-      import.meta.env.VITE_CHANNEL === 'ios-store' ||
-      import.meta.env.VITE_CHANNEL === 'android-play'
-    )
-      ? '/m/calendar'
-      : 'https://bitcoin-calendar.vercel.app',
+    name: 'bCalX',
+    // The live b*X site (24 Oct 2026). bWalletX's Spaces calendar (/m/calendar) stays on the Spaces screens.
+    url: 'https://bcalx.com',
     verb: 'Keep a calendar on Bitcoin',
     group: 'work',
     status: 'live',
     icon: bappIconUrl('bcal'),
-    source: suite('bitcoin-calendar'),
   },
   {
     name: 'bCode',
@@ -229,13 +210,12 @@ export const BAPPS: BApp[] = [
     source: suite('bitcoin-code'),
   },
   {
-    name: 'bJobs',
-    url: 'https://bitcoin-jobs.vercel.app',
+    name: 'bJobsX',
+    url: 'https://bjobsx.com',
     verb: 'Find work and hire, paid in BSV',
     group: 'work',
     status: 'live',
     icon: bappIconUrl('bjobs'),
-    source: suite('bitcoin-jobs'),
   },
   {
     name: 'bID',
@@ -266,22 +246,20 @@ export const BAPPS: BApp[] = [
   },
   // Media
   {
-    name: 'bVideo',
-    url: 'https://bitcoin-video-nine.vercel.app',
+    name: 'bVideoX',
+    url: 'https://bvideox.com',
     verb: 'Watch and publish video',
     group: 'media',
     status: 'live',
     icon: bappIconUrl('bvideo'),
-    source: suite('bitcoin-video'),
   },
   {
-    name: 'bRadio',
-    url: 'https://bitcoin-radio.vercel.app',
+    name: 'bRadioX',
+    url: 'https://bradiox.com',
     verb: 'Listen to and run Bitcoin radio',
     group: 'media',
     status: 'live',
     icon: bappIconUrl('bradio'),
-    source: suite('bitcoin-radio'),
   },
   {
     name: 'bPhotos',
@@ -328,15 +306,6 @@ export const BAPPS: BApp[] = [
     icon: bappIconUrl('bbooks'),
     source: suite('bitcoin-books'),
   },
-  {
-    name: 'bEdu',
-    url: 'https://bitcoin-education-psi.vercel.app',
-    verb: 'Learn and teach courses',
-    group: 'media',
-    status: 'demo',
-    icon: bappIconUrl('bedu'),
-    source: suite('bitcoin-education'),
-  },
   // Social & money
   {
     // bAgents (owner, 6 Oct 2026; docs/BAGENTS-PLAN.md): the home for agent accounts. The only origin the wallet's
@@ -350,13 +319,12 @@ export const BAPPS: BApp[] = [
     privateOnly: true,
   },
   {
-    name: 'bSocial',
-    url: 'https://bitcoin-social.vercel.app',
+    name: 'bSocialX',
+    url: 'https://bsocialx.com',
     verb: 'Post and follow on Bitcoin',
     group: 'social',
     status: 'live',
     icon: bappIconUrl('bsocial'),
-    source: suite('bitcoin-social'),
   },
   {
     name: 'bGames',
@@ -378,6 +346,14 @@ export const BAPPS: BApp[] = [
     icon: bappIconUrl('bmaps'),
     source: suite('bitcoin-maps'),
   },
+];
+
+/**
+ * Not ready (checked 24 Oct 2026: the site answered 404): shown as a non-tappable "Coming" chip with gold
+ * bApp art, never as a tile. Move an entry back into BAPPS once its site answers 200 with a real page.
+ */
+export const COMING_BAPPS: { name: string; verb: string; icon: string }[] = [
+  { name: 'bEdu', verb: 'Learn and teach courses', icon: bappIconUrl('bedu') },
 ];
 
 export const bappsIn = (group: BAppGroup) => BAPPS.filter((a) => a.group === group && !(STORE_BUILD && a.privateOnly));
