@@ -22,6 +22,7 @@ import {
   publicGrant,
   recordSpend,
   revokeGrant,
+  revokeGrantsForOriginator,
   SPENDING_AUTH_REQUEST,
   SPENDING_AUTH_REVOKE,
   SPENDING_AUTH_STATUS,
@@ -39,6 +40,7 @@ import {
   ENVELOPE_PRESETS_USD,
   isMicropaymentSite,
   markMicropayments,
+  closeEnvelopeInAccounts,
 } from './services/envelopes';
 import {
   ADDRESS_RESYNC_ALARM,
@@ -1417,7 +1419,9 @@ const showPermissionPrompt = (request: PermissionRequest & { requestID: string }
   }
   // A stream-approved createAction is running for this site: its spend (within the budget) and its label are
   // answered here, without a sheet. Nothing else is (services/streamGrants.ts passCovers).
-  const pass = request.originator ? streamPasses.get(normalizeOriginator(request.originator)) : undefined;
+  // Streaming grants are allowances: with envelopes (the default) no pass ever answers a spend (allowanceFlag.ts).
+  const pass =
+    ALLOWANCES_ENABLED && request.originator ? streamPasses.get(normalizeOriginator(request.originator)) : undefined;
   if (pass && accountContext?.wallet && passCovers(pass, { ...request, originator: normalizeOriginator(request.originator) })) {
     if (request.type === 'spending') pass.charged = request.spending?.satoshis;
     return accountContext.wallet.grantPermission({ requestID: request.requestID, ephemeral: true });
@@ -1569,6 +1573,8 @@ if (isInServiceWorker) {
     console.log('[background] switchAccount: starting');
     const doSwitch = async () => {
       try {
+        // An envelope sheet asked under the old account must not be answered on the new one.
+        failPendingStreamGrants();
         dropWalletContext('switchAccount');
         chromeStorageService = new ChromeStorageService();
         await chromeStorageService.getAndSetStorage();
@@ -3286,13 +3292,19 @@ if (!(
       // Forget site removes its basket grants and site-trust record too, whatever form the originator was
       // stored under, and drops the manager's short-lived memory of recent grants.
       await revokeBasketGrantsFor(message.originator);
+      // Envelopes and streaming grants are spend rights too: Forget site / Revoke all / unpair ends them (Coin
+      // return) and revokes the site's streaming grants (b-Aware rows 53, 62, 24 Oct 2026).
+      const site = normalizeOriginator(message.originator);
+      await accountContext?.envelopes.close(site);
+      await updateStreamState((st) => ({ state: revokeGrantsForOriginator(st, site, Date.now()), result: undefined }));
       // Grants are per account; a device-wide pairing is withdrawn from the other accounts' stores too.
       if (message.allAccounts) {
         const ids = chromeStorageService
           .getAllAccounts()
           .map((a) => a.addresses?.identityAddress)
           .filter((x): x is string => !!x);
-        await revokeOriginatorInAccounts(ids, normalizeOriginator(message.originator));
+        await revokeOriginatorInAccounts(ids, site);
+        await closeEnvelopeInAccounts(ids, site);
       }
       sendResponse({ type: 'PERMISSIONS_REVOKE_ALL', success: true, data: { revokedCount: revoked.length } });
     } catch (error) {
@@ -3577,7 +3589,9 @@ if (!(
           const pending = pendingStreamGrantRequests.get(requestID);
           pendingStreamGrantRequests.delete(requestID);
           const cap = message.capSatsPerHour;
-          pending?.resolve(typeof cap === 'number' && Number.isFinite(cap) && cap >= 1 ? cap : null);
+          // A pairing that ended while the sheet was open gets nothing, as on the other four sheets.
+          const allowed = !!pending && pairedGrantAllowed(pending.request.originator);
+          pending?.resolve(allowed && typeof cap === 'number' && Number.isFinite(cap) && cap >= 1 ? cap : null);
           return reply({ success: !!pending });
         }
         case 'STREAM_GRANTS_LIST': {
@@ -3741,7 +3755,11 @@ if (!(
       const paid = result.granted.some((r) => (r as BundleRequest).type === 'spending');
       if (!ALLOWANCES_ENABLED && envUsd > 0 && Number.isFinite(envUsd) && paid && accountContext?.envelopes) {
         const sats = allowanceSats(envUsd, await cachedUsdPerBsv());
-        if (sats > 0) await accountContext.envelopes.fill(normalizeOriginator(bundle.originator), sats);
+        // Keyed exactly as guardEnvelopes spends it: the site's own originator, port kept (the bundle's is the
+        // host-only permission key, so "shop.com:8443" would otherwise fill "shop.com"'s envelope; b-Aware row 58).
+        const spendReq = result.granted.find((r) => (r as BundleRequest).type === 'spending') as BundleRequest;
+        const site = normalizeOriginator(spendReq.displayOriginator ?? bundle.originator);
+        if (sats > 0) await accountContext.envelopes.fill(site, sats);
       }
       // "Don't ask again": routine requests from this site are granted without a sheet from now on.
       if (response.trustSite && remember && result.granted.length > 0 && accountContext?.permissionStore) {
@@ -5424,6 +5442,9 @@ if (!(
       accountContext?.wallet.denyCounterpartyPermission(requestID).catch(console.error);
       pending.reject(new Error('The site was disconnected'));
     }
+    // The envelope / stream sheet too: an open one answers "declined", so Allow after a disconnect writes nothing
+    // (b-Aware rows 53-54, 24 Oct 2026).
+    for (const [, pending] of takePendingFor(pendingStreamGrantRequests, originator)) pending.resolve(null);
     closeDappPopupIfNoUi();
   };
 

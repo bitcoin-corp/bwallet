@@ -223,6 +223,21 @@ export const chromeEnvelopeBackend = (accountId: string): EnvelopeBackend => {
   };
 };
 
+/**
+ * Coin return for one site in other accounts' envelopes (a device-wide unpair / Revoke all). The live account uses
+ * its own store (its queue); this is for the accounts that are not open.
+ */
+export const closeEnvelopeInAccounts = async (
+  accountIds: string[],
+  originator: string,
+  backendFor: (accountId: string) => EnvelopeBackend = chromeEnvelopeBackend,
+): Promise<number> => {
+  let released = 0;
+  for (const id of new Set(accountIds.filter(Boolean)))
+    released += await new EnvelopeStore(backendFor(id)).close(originator);
+  return released;
+};
+
 /** Sites whose payments are many and tiny (arcade games, per-second streams): their pay sheet offers an envelope. */
 export const MICROPAYMENT_SITES: readonly string[] = ['tokenblaster.lol'];
 

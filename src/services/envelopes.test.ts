@@ -6,6 +6,7 @@ import { describe, expect, test } from 'bun:test';
 import { InMemoryPermissionStore, LocalWalletPermissionsManager, normalizeOriginator } from '@1sat/wallet';
 import {
   EnvelopeStore,
+  closeEnvelopeInAccounts,
   fillEnvelope,
   guardEnvelopes,
   isMicropaymentSite,
@@ -277,5 +278,44 @@ describe('micropayment sites', () => {
     done();
     done();
     expect(isMicropaymentSite('stream.example')).toBe(false);
+  });
+});
+
+describe('b-Aware 24 Oct 2026: envelope keys, accounts and Revoke all', () => {
+  test('an envelope for https://shop.com is never spent by https://shop.com:8443 (ports are separate sites)', async () => {
+    const store = new EnvelopeStore(memBackend());
+    await store.fill(normalizeOriginator('https://shop.com'), 500);
+    const f = fakeManager();
+    const g = guardEnvelopes(f.m, { envelopes: store, adminOriginator: 'admin', normalize: normalizeOriginator });
+    expect(await g.ensureSpendingAuthorization({ originator: 'https://shop.com:8443', satoshis: 100 } as never)).toBe(
+      false,
+    );
+    expect(f.flowCalls).toHaveLength(1);
+    expect(f.flowCalls[0].originator).toBe(normalizeOriginator('https://shop.com:8443'));
+    expect(normalizeOriginator('http://localhost:3001')).not.toBe(normalizeOriginator('http://localhost:3002'));
+    expect((await store.get(normalizeOriginator('https://shop.com')))?.balanceSats).toBe(500);
+  });
+
+  test('one account never sees or spends another account’s envelope', async () => {
+    const backends = new Map<string, ReturnType<typeof memBackend>>();
+    const be = (id: string) => backends.get(id) ?? (backends.set(id, memBackend()), backends.get(id)!);
+    const a = new EnvelopeStore(be('acctA'));
+    const b = new EnvelopeStore(be('acctB'));
+    await a.fill(A, 500);
+    expect(await b.get(A)).toBeUndefined();
+    expect(await b.trySpend(A, 1)).toBe(false);
+    expect((await a.get(A))?.balanceSats).toBe(500);
+  });
+
+  test('Revoke all across accounts closes the site’s envelope in each, and only that site’s', async () => {
+    const backends = new Map<string, ReturnType<typeof memBackend>>();
+    const be = (id: string) => backends.get(id) ?? (backends.set(id, memBackend()), backends.get(id)!);
+    await new EnvelopeStore(be('x')).fill(A, 300);
+    await new EnvelopeStore(be('y')).fill(A, 200);
+    await new EnvelopeStore(be('y')).fill(B, 50);
+    expect(await closeEnvelopeInAccounts(['x', 'y', 'y', ''], A, be)).toBe(500);
+    expect(await new EnvelopeStore(be('x')).get(A)).toBeUndefined();
+    expect(await new EnvelopeStore(be('y')).get(A)).toBeUndefined();
+    expect((await new EnvelopeStore(be('y')).get(B))?.balanceSats).toBe(50);
   });
 });
