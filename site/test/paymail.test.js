@@ -753,3 +753,48 @@ describe('1 cent name fee', () => {
     expect(sent).toEqual([tx.id('hex')]);
   });
 });
+
+describe('b_feedback 67: destinations the payer can check', () => {
+  test('each P2P output carries the derivation that re-derives its script from the identity key', async () => {
+    const store = memStore();
+    const h = pm.makeHandlers({ store, env: ENV });
+    const u = user();
+    await h.register({}, await u.sign('register', { alias: 'dora' }));
+    const [s, dest] = await h.p2pDestination({ handle: 'dora@pay.test' }, { satoshis: 500 });
+    expect(s).toBe(200);
+    const o = dest.outputs[0];
+    expect(typeof o.derivationPrefix).toBe('string');
+    expect(typeof o.derivationSuffix).toBe('string');
+    expect(o.senderIdentityKey).toBe(new PrivateKey(1).toPublicKey().toString());
+    const pub = new KeyDeriver(new PrivateKey(1)).derivePublicKey(
+      [2, '3241645161d8'],
+      `${o.derivationPrefix} ${o.derivationSuffix}`,
+      u.identityKey,
+      false,
+    );
+    expect(o.script).toBe(new P2PKH().lock(pub.toAddress()).toHex());
+  });
+
+  test('ord answers carry the owner-signed proof; a bad proof is refused', async () => {
+    const store = memStore();
+    store.setOrdProof = async (alias, proof) => void (store.aliases.get(alias).ord_proof = proof);
+    const h = pm.makeHandlers({ store, env: ENV });
+    const u = user();
+    const ord = PrivateKey.fromRandom().toAddress();
+    const proof = await u.sign('ord', { ordAddress: ord });
+    const body = await u.sign('register', { alias: 'eve', ordAddress: ord });
+    const bad = {
+      timestamp: String(proof.timestamp),
+      signature: (await user().sign('ord', { ordAddress: ord })).signature,
+    };
+    expect((await h.register({}, { ...body, ordProof: bad }))[0]).toBe(400);
+    const good = { timestamp: String(proof.timestamp), signature: proof.signature };
+    expect((await h.register({}, { ...body, ordProof: good }))[0]).toBe(200);
+    const [, r] = await h.ord({ handle: 'eve@pay.test' });
+    expect(r.address).toBe(ord);
+    expect(r.ordProof).toEqual(good);
+    // The address changed without a new proof: the old proof is not served for it.
+    store.aliases.get('eve').ord_address = PrivateKey.fromRandom().toAddress();
+    expect((await h.ord({ handle: 'eve@pay.test' }))[1].ordProof).toBeUndefined();
+  });
+});

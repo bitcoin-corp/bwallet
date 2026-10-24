@@ -7,7 +7,9 @@ import { loadPoisonData, poisonWarning } from '../airdrops/poison';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import {
   destinationFor,
+  destinationCheck,
   externalLabel,
+  NOT_VERIFIED_NOTE,
   isOurDomain,
   opnsBinding,
   parseRecipient,
@@ -239,6 +241,11 @@ export const NameInput = ({ theme, value, onChange, asset, placeholder, style, a
                       style={{ color: '#FEC84B' }}
                     >
                       {externalLabel(r)}
+                    </div>
+                  )}
+                  {d.ok && destinationCheck(r, asset) === 'unverified' && (
+                    <div data-testid="destination-unverified" className="text-[11px]" style={{ color: '#FEC84B' }}>
+                      {NOT_VERIFIED_NOTE}
                     </div>
                   )}
                   {r.via === 'pubkey' && (

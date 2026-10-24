@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { P2PKH } from '@bsv/sdk';
+import { KeyDeriver, P2PKH, PrivateKey, ProtoWallet, Random, Utils } from '@bsv/sdk';
+import { BAD_ORD_PROOF, destinationCheck, destinationFor, resolvePaymail } from '../mobile/names/names';
+import { signOrdProof } from '../mobile/names/paymail';
 import { checkPaymentOutputs, sendBsv } from './guardedSendBsv';
 
 const PAYMAIL = 'payer@wedge.test';
@@ -90,5 +92,116 @@ describe('sendBsv to a paymail host', () => {
     expect(calls).toHaveLength(1);
     const outs = (calls[0] as { outputs: { satoshis: number }[] }).outputs;
     expect(outs.reduce((a, o) => a + o.satoshis, 0)).toBe(1000);
+  });
+});
+
+describe('b_feedback 67: paymail scripts re-derived from the payee key before signing', () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+  const payee = PrivateKey.fromRandom();
+  const KEY = payee.toPublicKey().toString();
+  const derived = (satoshis: number, key = KEY) => {
+    const derivationPrefix = Utils.toBase64(Random(16));
+    const derivationSuffix = Utils.toBase64(Random(16));
+    const pub = new KeyDeriver(new PrivateKey(1)).derivePublicKey(
+      [2, '3241645161d8'],
+      `${derivationPrefix} ${derivationSuffix}`,
+      key,
+      false,
+    );
+    return { script: new P2PKH().lock(pub.toAddress()).toHex(), satoshis, derivationPrefix, derivationSuffix };
+  };
+
+  /** Our host (bwallet.space) serving pki `KEY`, the given p2p outputs, and recording BEEF deliveries. */
+  const setup = (outputs: unknown[], domain = 'bwallet.space', ord?: Record<string, unknown>) => {
+    const delivered: unknown[] = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
+      if (url.includes('dns.google')) return json({ Status: 3 });
+      if (url.endsWith('/.well-known/bsvalias'))
+        return json({
+          capabilities: {
+            pki: `https://${domain}/id/{alias}@{domain.tld}`,
+            ...(ord ? { ordAddress: `https://${domain}/ord/{alias}@{domain.tld}` } : {}),
+            '2a40af698840': `https://${domain}/p2p/{alias}@{domain.tld}`,
+            '5c55a7fdb7bb': `https://${domain}/beef/{alias}@{domain.tld}`,
+          },
+        });
+      if (url.includes('/id/')) return json({ pubkey: KEY });
+      if (url.includes('/ord/')) return json(ord);
+      if (url.includes('/p2p/')) return json({ outputs, reference: 'ref-1' });
+      if (url.includes('/beef/')) return (delivered.push(JSON.parse(String(init?.body))), json({ txid: 'x' }));
+      return json({}, 404);
+    }) as typeof fetch;
+    const calls: unknown[] = [];
+    const wallet = {
+      createAction: async (args: unknown) => {
+        calls.push(args);
+        return { txid: 'deadbeef' };
+      },
+    };
+    return { calls, delivered, ctx: { wallet } as unknown as Parameters<typeof sendBsv.execute>[0] };
+  };
+
+  test('a correct derived script passes and pays exactly that script', async () => {
+    const out = derived(1000);
+    const { calls, ctx } = setup([out]);
+    const res = await sendBsv.execute(ctx, { requests: [{ paymail: 'ann@bwallet.space', satoshis: 1000 }] });
+    expect(res.error).toBeUndefined();
+    expect(res.txid).toBe('deadbeef');
+    const outs = (calls[0] as { outputs: { lockingScript: string; satoshis: number }[] }).outputs;
+    expect(outs).toEqual([expect.objectContaining({ lockingScript: out.script, satoshis: 1000 })]);
+  });
+
+  test('a tampered script is refused before createAction', async () => {
+    const out = { ...derived(1000), script: scriptB };
+    const { calls, ctx } = setup([out]);
+    const res = await sendBsv.execute(ctx, { requests: [{ paymail: 'ann@bwallet.space', satoshis: 1000 }] });
+    expect(calls).toHaveLength(0);
+    expect(String(res.error)).toContain("does not belong to the payee's key");
+  });
+
+  test('a script derived for another key is refused, even if the request names the key the user saw', async () => {
+    const { calls, ctx } = setup([derived(1000, PrivateKey.fromRandom().toPublicKey().toString())]);
+    const res = await sendBsv.execute(ctx, {
+      requests: [{ paymail: 'ann@bwallet.space', satoshis: 1000, identityKey: KEY } as never],
+    });
+    expect(calls).toHaveLength(0);
+    expect(String(res.error)).toContain('Payment refused');
+  });
+
+  test('our host without derivation is refused; a third-party host without it is paid, flagged unverified', async () => {
+    const plain = { script: scriptA, satoshis: 1000 };
+    let s = setup([plain]);
+    let res = await sendBsv.execute(s.ctx, { requests: [{ paymail: 'ann@bwallet.space', satoshis: 1000 }] });
+    expect(s.calls).toHaveLength(0);
+    expect(String(res.error)).toContain('did not let us check');
+    s = setup([plain], 'other.test');
+    res = await sendBsv.execute(s.ctx, { requests: [{ paymail: 'ann@other.test', satoshis: 1000 }] });
+    expect(res.error).toBeUndefined();
+    expect(s.calls).toHaveLength(1);
+    expect((res as { unverified?: string[] }).unverified).toEqual(['ann@other.test']);
+  });
+
+  test('ord_address: a proof that does not verify drops it and token sends are refused', async () => {
+    const ord = PrivateKey.fromRandom().toAddress();
+    const f = (u: string, i?: RequestInit) => fetch(u, i);
+    const good = await signOrdProof(new ProtoWallet(payee), ord);
+    setup([], 'bwallet.space', { address: ord, ordProof: good });
+    let r = await resolvePaymail(f, 'ann@bwallet.space');
+    expect(r.ordVerified).toBe(true);
+    expect(destinationFor(r, 'token')).toEqual({ ok: true, to: ord });
+    const forged = await signOrdProof(new ProtoWallet(PrivateKey.fromRandom()), ord);
+    setup([], 'bwallet.space', { address: ord, ordProof: forged });
+    r = await resolvePaymail(f, 'ann@bwallet.space');
+    expect(r.ordAddress).toBeUndefined();
+    expect(destinationFor(r, 'token')).toEqual({ ok: false, error: BAD_ORD_PROOF });
+    setup([], 'bwallet.space', { address: ord });
+    r = await resolvePaymail(f, 'ann@bwallet.space');
+    expect(r.ordAddress).toBe(ord);
+    expect(destinationCheck(r, 'token')).toBe('unverified');
   });
 });
