@@ -44,12 +44,15 @@ g.localStorage = {
 g.document = { visibilityState: 'visible', addEventListener: () => undefined };
 
 const sessions = await import('./sessions');
+const { pairedOrigin } = await import('../../services/originKey');
 
 const settle = () => new Promise<void>((r) => setTimeout(r, 25));
 const HOST = 'https://pairtest.example';
-const PAIRED_KEY = 'pairtest.example.paired.invalid';
+/** The paired key of the most recent pairing (it names that pairing's channel, originKey.ts). */
+let PAIRED_KEY = '';
 
 const pair = async (channel: string) => {
+  PAIRED_KEY = pairedOrigin(HOST, channel).slice('https://'.length);
   const url = pairUrl({
     v: PAIR_VERSION,
     r: 'relay.bwallet.space',

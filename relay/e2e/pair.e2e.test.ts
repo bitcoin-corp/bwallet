@@ -90,9 +90,12 @@ test('QR → scan → same code → connect → request reaches the wallet and t
     .wallet;
   const r = await wallet.getPublicKey({ identityKey: true });
   expect(r).toEqual({ publicKey: '02' + 'ab'.repeat(32) });
-  // Audit H1: the call runs under the paired key, not the site's own originator (no inherited grants).
+  // Audit H1: the call runs under the paired key, not the site's own originator (no inherited grants), and the key
+  // names this pairing's channel (b-Aware 24 Oct 2026), so no other pairing claiming the origin shares it.
+  const [{ c: ch }] = phone.pairedSites() as { c: string }[];
+  const label = 'c' + [...ch].map((x) => x.charCodeAt(0).toString(16).padStart(2, '0')).join('');
   expect(calls).toEqual([
-    { origin: 'https://localhost.paired.invalid:3000', type: 'getPublicKey', params: { identityKey: true } },
+    { origin: `https://localhost.${label}.paired.invalid:3000`, type: 'getPublicKey', params: { identityKey: true } },
   ]);
   expect(phone.pairedSites().map((s: { origin: string }) => s.origin)).toEqual([SITE_ORIGIN]);
 
