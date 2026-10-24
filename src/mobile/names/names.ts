@@ -1,5 +1,6 @@
 import { checkBinding, keyChange, type BindingStatus } from './binding';
-import { Utils } from '@bsv/sdk';
+import { ProtoWallet, Utils } from '@bsv/sdk';
+import { SIGN_KEY_ID, SIGN_PROTOCOL, signedMessage } from './paymail';
 import { AMOUNT_HINT, cleanRecipient, isMainnetAddress, looksLikeAmount } from './address';
 import { BWALLET_PAYMAIL_DOMAIN, LEGACY_PAYMAIL_DOMAINS, SIBLING_PAYMAIL_DOMAINS } from './config';
 
@@ -105,6 +106,10 @@ export type Resolved = {
    * Only ever set for a full name@domain the user typed; a $handle never resolves outside bWalletX.
    */
   external?: string;
+  /** The ordinal address came with a valid signature by `pubkey` (checkOrdProof). False: served without one. */
+  ordVerified?: boolean;
+  /** The ordinal address came with a proof that does NOT verify against `pubkey`: ordAddress is dropped. */
+  ordProofBad?: boolean;
   /** A raw public key exactly as typed (via 'pubkey'); `pubkey` holds its compressed form. */
   rawKey?: string;
 };
@@ -236,7 +241,19 @@ export const resolvePaymail = async (f: Fetch, paymail: string, input = paymail)
   }
 
   const ord = ordCapability(caps);
-  if (ord) r.ordAddress = str((await tryJson<Fields>(f, fill(ord, alias, domain)))?.address);
+  if (ord) {
+    const o = await tryJson<Fields & { ordProof?: unknown }>(f, fill(ord, alias, domain));
+    const address = str(o?.address);
+    if (address) {
+      // b_feedback 67: the host could swap the address. Trust it only with the key owner's signature over it.
+      const proof = o?.ordProof === undefined ? 'none' : await checkOrdProof(r.pubkey, address, o.ordProof);
+      if (proof === 'bad') r.ordProofBad = true;
+      else {
+        r.ordAddress = address;
+        r.ordVerified = proof === 'ok';
+      }
+    }
+  }
 
   // Prefer P2P (BRC-29-style per-payment outputs) — upstream sendBsv handles it natively.
   const p2p = str(caps[CAP.p2pDestination]);
@@ -409,6 +426,55 @@ export const resolveRecipient = async (
 
 export const TOKENS_UNSUPPORTED = "This name can't receive tokens";
 
+/** The host served an ordinal address its key owner didn't sign. */
+export const BAD_ORD_PROOF =
+  "This name's ordinal address isn't signed by its owner's key, so it may have been swapped. Not sending tokens to it.";
+
+/** Shown on the pay sheet when bWalletX can't check the destination against the payee's key. */
+export const NOT_VERIFIED_NOTE =
+  "Not verified: this name's host doesn't let bWalletX check the payment address against the owner's key.";
+
+/** "ord" proof (paymail.ts signOrdProof) by `pubkey` over `address`: ok, bad, or none (nothing to check against). */
+export const checkOrdProof = async (
+  pubkey: string | undefined,
+  address: string,
+  proof: unknown,
+): Promise<'ok' | 'bad' | 'none'> => {
+  const p = proof as { timestamp?: unknown; signature?: unknown } | null;
+  if (!p || typeof p !== 'object') return 'bad';
+  if (!pubkey || typeof p.timestamp !== 'string' || typeof p.signature !== 'string') return 'bad';
+  try {
+    const { valid } = await new ProtoWallet('anyone').verifySignature({
+      data: Utils.toArray(
+        signedMessage('ord', { ordAddress: address, identityKey: pubkey, timestamp: p.timestamp }),
+        'utf8',
+      ),
+      signature: Utils.toArray(p.signature, 'hex'),
+      protocolID: SIGN_PROTOCOL,
+      keyID: SIGN_KEY_ID,
+      counterparty: pubkey,
+    });
+    return valid ? 'ok' : 'bad';
+  } catch {
+    return 'bad';
+  }
+};
+
+/**
+ * Whether the destination a send will use is checked against the payee's key: P2P paymail outputs are re-derived
+ * at send time (utils/paymailDestination.ts), which only our host supports; token sends need a signed ord address.
+ * 'unverified' puts NOT_VERIFIED_NOTE on the pay sheet; null means there's nothing a host could swap.
+ */
+export const destinationCheck = (
+  r: Pick<Resolved, 'via' | 'external' | 'ordVerified'>,
+  asset: 'bsv' | 'token',
+): 'verified' | 'unverified' | null => {
+  if (r.via !== 'p2p-paymail' && r.via !== 'paymail-address') return null;
+  if (asset === 'token') return r.ordVerified ? 'verified' : 'unverified';
+  if (r.via === 'paymail-address') return 'unverified';
+  return r.external ? 'unverified' : 'verified';
+};
+
 /** Pick the destination for a send. Tokens only go to a name with an ordinal-receive address. */
 /**
  * "No binding, no payment" (OpNS docs; BWALLETX-MEDIA-SPEC §6.4): an OpNS name pays only once its holder has
@@ -434,6 +500,7 @@ export const destinationFor = (
   if (r.nameBinding === 'bad') return { ok: false, error: BAD_BINDING };
   if (r.nameBinding === 'changed') return { ok: false, error: KEY_CHANGED };
   if (asset === 'bsv') return { ok: true, to: r.target };
+  if (r.ordProofBad) return { ok: false, error: BAD_ORD_PROOF };
   if (r.ordAddress) return { ok: true, to: r.ordAddress };
   return { ok: false, error: TOKENS_UNSUPPORTED };
 };
