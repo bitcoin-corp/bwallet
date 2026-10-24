@@ -101,7 +101,8 @@ export const App = () => {
         } else {
           // Only one of the two is ever worn: drop a pack first, then (maybe) wear the site's file.
           if (!wearingSiteLook()) wearConnectedSiteTheme(null);
-          void wearActiveSite(typeof o === 'string' ? o : null);
+          const path = (msg as { path?: unknown }).path;
+          void wearActiveSite(typeof o === 'string' ? o : null, typeof path === 'string' ? path : null);
         }
         return;
       }

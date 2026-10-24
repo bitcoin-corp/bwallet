@@ -1187,14 +1187,18 @@ const activeTabId = async (): Promise<number | undefined> => {
 // v2 theme file while the user has it connected (docs/SITE-THEME.md "The whole view").
 const siteOriginTabs = new Map<number, string>();
 let siteOriginShown: string | null | undefined;
+const sitePathTabs = new Map<number, string>();
+let sitePathShown: string | null | undefined;
 const pushSiteTheme = async (force = false) => {
   const tab = await activeTabId();
   const theme = (tab !== undefined && siteThemeTabs.get(tab)) || null;
   const origin = (tab !== undefined && siteOriginTabs.get(tab)) || null;
-  if (!force && theme === siteThemeShown && origin === siteOriginShown) return;
+  const path = (origin && tab !== undefined && sitePathTabs.get(tab)) || null;
+  if (!force && theme === siteThemeShown && origin === siteOriginShown && path === sitePathShown) return;
   siteThemeShown = theme;
   siteOriginShown = origin;
-  postToPanels({ action: 'SITE_THEME', theme, origin });
+  sitePathShown = path;
+  postToPanels({ action: 'SITE_THEME', theme, origin, path });
 };
 chrome.tabs?.onActivated?.addListener(() => void pushSiteTheme());
 chrome.windows?.onFocusChanged?.addListener(() => void pushSiteTheme());
@@ -1944,6 +1948,14 @@ if (isInServiceWorker) {
         if (id) siteThemeTabs.set(sender.tab.id, id);
         else siteThemeTabs.delete(sender.tab.id);
         if (sender.origin) siteOriginTabs.set(sender.tab.id, sender.origin);
+        // The page's path, from Chrome's sender.url (never from the message), picks a path sub-theme.
+        try {
+          const u = sender.url ? new URL(sender.url) : null;
+          if (u && u.origin === sender.origin) sitePathTabs.set(sender.tab.id, u.pathname);
+          else sitePathTabs.delete(sender.tab.id);
+        } catch {
+          sitePathTabs.delete(sender.tab.id);
+        }
         void pushSiteTheme();
       }
       return false;

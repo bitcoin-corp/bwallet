@@ -39,7 +39,29 @@ Either file, served over https from the site's own origin, `Access-Control-Allow
 | `logo`                            | optional; a path or https URL on the **same origin**; png, jpeg, webp, gif or svg; ≤ 64 KB |
 | `cardArt`                         | optional; same rules, ≤ 256 KB; drawn behind the banner                                    |
 
+| `paths` | optional, root file only; see "Path sub-themes" below |
+
 No other keys. No CSS, fonts, scripts, gradients or arbitrary values. File ≤ 8 KB.
+
+### Path sub-themes
+
+A site with several games or sections can give each its own look (agreed with TokenBlaster, b0ase/tokenblaster.lol
+#38). The root file carries a `paths` map from a page-path prefix to another theme file:
+
+```json
+{ "v": 2, "name": "TokenBlaster", "…": "…", "paths": { "/arcade/assault": "/.well-known/bwalletx-theme.assault.json" } }
+```
+
+- At most 8 entries. Keys are `/` or `/segment[/segment…]` (letters, digits, `. _ ~ -`), no trailing slash.
+- Targets are **same-origin** `/.well-known/<name>.json` only (no query, no fragment, not the root file itself).
+- The page's path comes from Chrome (`sender.url` of the page's own messages), never from the page's message. The
+  **longest** prefix wins, and it matches only on a `/` boundary (`/arcade/assault` covers `/arcade/assault` and
+  `/arcade/assault/…`, not `/arcade/assaulted`).
+- A sub-theme file passes exactly the same v2 checks and caps. It may not have its own `paths`.
+- If anything fails (bad map, missing file, bad file, failed contrast), the wallet falls back to the root theme. A
+  malformed `paths` map is dropped and the root theme still applies.
+- Cached like the root file. The whole view follows the active tab's path, including in-app route changes (checked
+  once a second while connected). Sheets use the last path the panel saw for that site, otherwise the root theme.
 
 Contrast: `text` must reach 4.5:1 on both `bg` and `surface`; if it doesn't, the wallet swaps it for black or white,
 and refuses the theme if neither works. `accent` must reach 3:1 on `bg` or the theme is refused. Text on the accent

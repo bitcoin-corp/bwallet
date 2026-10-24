@@ -38,6 +38,8 @@ export type ConnectTheme = {
   /** Same-origin https URL as declared (validated). */
   logo?: string;
   cardArt?: string;
+  /** Root file only: path prefix → same-origin /.well-known/*.json sub-theme URL (validated, ≤ PATHS_MAX). */
+  paths?: Record<string, string>;
 };
 
 /** A theme ready to paint: images already fetched and checked. */
@@ -55,6 +57,7 @@ const KEYS = new Set([
   'text',
   'logo',
   'cardArt',
+  'paths',
 ]);
 const HEX = /^#[0-9a-f]{6}$/i;
 // Plain words: no markup, links or addresses.
@@ -101,6 +104,52 @@ export function sameOriginImage(raw: unknown, origin: string): string | null {
   } catch {
     return null;
   }
+}
+
+export const PATHS_MAX = 8;
+const PREFIX = /^\/(?:[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*)?$/;
+const SUB_FILE = /^\/\.well-known\/[A-Za-z0-9._-]{1,64}\.json$/;
+
+/** A sub-theme target: same origin, under /.well-known/, a .json file, no query or fragment. Null otherwise. */
+export function subThemeUrl(raw: unknown, origin: string): string | null {
+  if (typeof raw !== 'string' || !raw || raw.length > 128 || /[\s\\?#]/.test(raw)) return null;
+  try {
+    const u = new URL(raw, `${origin}/`);
+    if (u.origin !== origin || u.username || u.password || u.search || u.hash) return null;
+    if (!SUB_FILE.test(u.pathname) || u.pathname === CONNECT_THEME_PATH) return null;
+    return u.href;
+  } catch {
+    return null;
+  }
+}
+
+/** The root file's `paths` map, checked; null when it is malformed (the root theme still applies). */
+export function parsePaths(v: unknown, origin: string): Record<string, string> | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const entries = Object.entries(v as Record<string, unknown>);
+  if (entries.length > PATHS_MAX) return null;
+  const out: Record<string, string> = {};
+  for (const [k, target] of entries) {
+    if (k.length > 128 || !PREFIX.test(k)) return null;
+    const url = subThemeUrl(target, origin);
+    if (!url) return null;
+    out[k] = url;
+  }
+  return out;
+}
+
+/** The sub-theme for a page path: the longest prefix that matches on a "/" boundary, or null. */
+export function pickSubTheme(
+  paths: Record<string, string> | undefined,
+  path: string | null | undefined,
+): string | null {
+  if (!paths || !path) return null;
+  let best: string | null = null;
+  for (const k of Object.keys(paths)) {
+    const hit = k === '/' || path === k || path.startsWith(`${k}/`);
+    if (hit && (best === null || k.length > best.length)) best = k;
+  }
+  return best === null ? null : (paths[best] ?? null);
 }
 
 const bestOn = (bg: string) => (contrast('#FFFFFF', bg) >= contrast('#000000', bg) ? '#FFFFFF' : '#000000');
@@ -150,6 +199,8 @@ export function parseConnectTheme(v: unknown, origin: string): ParseResult {
     if (!a) return { error: 'cardArt must be a same-origin URL' };
     cardArt = a;
   }
+  // A bad `paths` map is dropped, never fatal: the root theme still applies.
+  const paths = t.paths === undefined ? null : parsePaths(t.paths, origin);
   return {
     theme: {
       name: t.name.trim(),
@@ -162,6 +213,7 @@ export function parseConnectTheme(v: unknown, origin: string): ParseResult {
       text,
       ...(logo ? { logo } : {}),
       ...(cardArt ? { cardArt } : {}),
+      ...(paths && Object.keys(paths).length ? { paths } : {}),
     },
     fixed,
   };
@@ -269,6 +321,23 @@ export async function fetchConnectTheme(origin: string, f: Fetch = fetch): Promi
   return null;
 }
 
+/**
+ * Fetches a path sub-theme (`url` already checked by subThemeUrl). Same checks as the root file; it may not carry
+ * its own `paths`. Null on any failure: the caller falls back to the root theme.
+ */
+export async function fetchSubTheme(url: string, origin: string, f: Fetch = fetch): Promise<WornTheme | null> {
+  if (subThemeUrl(url, origin) !== url) return null;
+  const v = await readJson(url, origin, f);
+  if (!v || typeof v !== 'object' || 'paths' in (v as object)) return null;
+  const p = parseConnectTheme(v, origin);
+  if (!p.theme) return null;
+  const [logoData, artData] = await Promise.all([
+    fetchImage(p.theme.logo, origin, LOGO_MAX_BYTES, f),
+    fetchImage(p.theme.cardArt, origin, ART_MAX_BYTES, f),
+  ]);
+  return { ...p.theme, origin, ...(logoData ? { logoData } : {}), ...(artData ? { artData } : {}) };
+}
+
 // ---- per-device state (localStorage: prompt.html shares the wallet page's origin in every build) ----
 
 type Store = Pick<Storage, 'getItem' | 'setItem'>;
@@ -350,6 +419,7 @@ export function forgetSiteConnected(originator: string, s: Store | null = local(
   );
   const c = (get(s, CACHE_KEY) ?? {}) as Record<string, unknown>;
   delete c[h];
+  for (const k of Object.keys(c)) if (k.startsWith(`${h} `)) delete c[k];
   put(s, CACHE_KEY, c);
   announce();
 }
@@ -370,7 +440,7 @@ type CacheEntry = { at: number; theme: WornTheme | null };
 const inflight = new Map<string, Promise<WornTheme | null>>();
 
 /** The site's theme from cache or the network. Fetched only for a site the user approved or that is asking now. */
-export async function loadConnectTheme(
+async function loadRootTheme(
   originator: string,
   {
     s = local(),
@@ -404,3 +474,54 @@ export async function loadConnectTheme(
   inflight.set(h, p);
   return p;
 }
+
+const subInflight = new Map<string, Promise<WornTheme | null>>();
+
+/**
+ * The site's theme for a page: the root file, or the sub-theme its `paths` map names for `path` (longest prefix on
+ * a "/" boundary). Any failure falls back to the root theme. Fetch rules as loadRootTheme.
+ */
+export async function loadConnectTheme(
+  originator: string,
+  opts: { s?: Store | null; f?: Fetch; now?: number; asking?: boolean; path?: string | null } = {},
+): Promise<WornTheme | null> {
+  const root = await loadRootTheme(originator, opts);
+  const url = root ? pickSubTheme(root.paths, opts.path) : null;
+  if (!root || !url) return root;
+  const { s = local(), f = fetch, now = Date.now() } = opts;
+  const key = `${trueHost(originator)} ${url}`;
+  const cache = (get(s, CACHE_KEY) ?? {}) as Record<string, CacheEntry>;
+  const hit = cache[key];
+  if (hit && now - hit.at < (hit.theme ? CACHE_MS : MISS_CACHE_MS)) return hit.theme ?? root;
+  let p = subInflight.get(key);
+  if (!p) {
+    p = fetchSubTheme(url, root.origin, f)
+      .catch(() => null)
+      .then((theme) => {
+        const c = (get(s, CACHE_KEY) ?? {}) as Record<string, CacheEntry>;
+        c[key] = { at: now, theme };
+        const keep = Object.entries(c)
+          .sort((a, b) => b[1].at - a[1].at)
+          .slice(0, 50);
+        put(s, CACHE_KEY, Object.fromEntries(keep));
+        return theme;
+      })
+      .finally(() => subInflight.delete(key));
+    subInflight.set(key, p);
+  }
+  return (await p) ?? root;
+}
+
+// The page path the panel last saw for a host, so a sheet can wear the same sub-theme (per device).
+const PATH_KEY = 'bwx.connectTheme.path';
+export const rememberSitePath = (originator: string, path: string | null, s: Store | null = local()): void => {
+  const m = (get(s, PATH_KEY) ?? {}) as Record<string, string>;
+  const h = trueHost(originator);
+  if (path) m[h] = path.slice(0, 256);
+  else delete m[h];
+  put(s, PATH_KEY, Object.fromEntries(Object.entries(m).slice(-100)));
+};
+export const lastSitePath = (originator: string, s: Store | null = local()): string | null => {
+  const v = ((get(s, PATH_KEY) ?? {}) as Record<string, unknown>)[trueHost(originator)];
+  return typeof v === 'string' ? v : null;
+};

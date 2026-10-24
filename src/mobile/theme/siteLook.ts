@@ -1,6 +1,12 @@
 import { BASE_LOOK, type Accent } from './accents';
 import { contrast, ensureContrast, mix } from './colour';
-import { CONNECT_THEME_EVENT, loadConnectTheme, shouldWearSiteTheme, type WornTheme } from './connectSiteTheme';
+import {
+  CONNECT_THEME_EVENT,
+  loadConnectTheme,
+  rememberSitePath,
+  shouldWearSiteTheme,
+  type WornTheme,
+} from './connectSiteTheme';
 import { wearSiteLook } from './accent';
 
 /**
@@ -34,17 +40,20 @@ export function siteLookAccent(t: WornTheme): Accent {
 }
 
 let shown: string | null = null;
+let shownPath: string | null = null;
 let seq = 0;
 
 /**
  * The panel's active tab is this connected site (origin from Chrome via the background), or null. Wears its look
  * while the user has the site connected and its theme switched on; anything else puts the user's own theme back.
  */
-export async function wearActiveSite(origin: string | null): Promise<void> {
+export async function wearActiveSite(origin: string | null, path: string | null = null): Promise<void> {
   shown = origin;
+  shownPath = path;
+  if (origin) rememberSitePath(origin, path);
   const mine = ++seq;
   if (!origin || !shouldWearSiteTheme(origin)) return wearSiteLook(null);
-  const t = await loadConnectTheme(origin).catch(() => null);
+  const t = await loadConnectTheme(origin, { path }).catch(() => null);
   if (mine !== seq) return;
   wearSiteLook(t ? siteLookAccent(t) : null);
 }
@@ -52,7 +61,7 @@ export async function wearActiveSite(origin: string | null): Promise<void> {
 // A switch flipped, a site revoked, or its theme arrived: look again.
 if (typeof window !== 'undefined') {
   try {
-    window.addEventListener(CONNECT_THEME_EVENT, () => void wearActiveSite(shown));
+    window.addEventListener(CONNECT_THEME_EVENT, () => void wearActiveSite(shown, shownPath));
   } catch {
     /* no window */
   }

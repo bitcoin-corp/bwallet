@@ -51,10 +51,14 @@ self.addEventListener(CustomListenerName.YOURS_REQUEST, (e: Event) => {
 // and paints only a pack the wallet bundles. Top frame only.
 let themeWatch: MutationObserver | undefined;
 let sentTheme: string | null | undefined;
+// Path sub-themes (docs/SITE-THEME.md): a single-page app changing route re-sends, so the background reads the new
+// path from Chrome's sender.url. Nothing about the path is taken from this message.
+let sentPath: string | undefined;
 const sendSiteTheme = () => {
   const v = document.querySelector('meta[name="bwalletx-theme"]')?.getAttribute('content')?.trim() || null;
   const theme = v && v.length <= 32 ? v : null;
-  if (theme === sentTheme) return;
+  if (theme === sentTheme && location.pathname === sentPath) return;
+  sentPath = location.pathname;
   // The meta going away is @bwalletx/connect's disconnect: the next connect re-asks (services/reconnectGate.ts).
   if (sentTheme && !theme) sendDisconnect();
   sentTheme = theme;
@@ -87,6 +91,7 @@ function siteThemeConnected() {
     attributeFilter: ['content', 'name'],
   });
   sendSiteTheme();
+  setInterval(sendSiteTheme, 1000);
 }
 
 // bWalletX: tell the page whether to be the wallet websites connect to (window.CWI over another
