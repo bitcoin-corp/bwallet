@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { AccountNameField } from '../../components/AccountNameField';
-import { accountNameError, cleanAccountName, suggestAccountName } from '../../utils/accountNameRules';
+import {
+  accountNameError,
+  cleanAccountName,
+  RESTORE_NAME_HINT,
+  RESTORE_NAME_LABEL,
+  suggestAccountName,
+} from '../../utils/accountNameRules';
 import { BetaGate } from '../../mobile/sweep/BetaGate';
 import { useNavigate } from 'react-router-dom';
 import { PasswordFields } from '../../mobile/names/PasswordFields';
@@ -722,6 +728,8 @@ const RestoreAccountInner = ({ onNavigateBack, newWallet = false, onNewAccount }
       <form onSubmit={handleRestore} className="flex flex-col items-center w-full">
         <AccountNameField
           theme={theme}
+          label={RESTORE_NAME_LABEL}
+          hint={RESTORE_NAME_HINT}
           value={accountName}
           error={nameError}
           onChange={(v) => {

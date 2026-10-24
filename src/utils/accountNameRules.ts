@@ -31,3 +31,10 @@ export const needsAccountName = (name: string | undefined | null): boolean => {
   const n = cleanAccountName(name ?? '');
   return !n || /^account \d+$/i.test(n);
 };
+
+/**
+ * Restore (24 Oct 2026): the account name is only a label on this device. A wallet with an on-chain profile name
+ * or a $name shows that once it syncs, so say so instead of asking for a name that looks like it will be used.
+ */
+export const RESTORE_NAME_LABEL = 'Name on this device only';
+export const RESTORE_NAME_HINT = 'If this wallet already has a name on chain or a $name, that comes back by itself.';

@@ -498,6 +498,8 @@ const TopNavBar = () => {
                 identityAddress={current}
                 paymail={names.paymail}
                 handle={names.handle}
+                names={names.names}
+                shown={names.payable}
                 onNavigate={() => setDrawer(false)}
                 onGetName={() => {
                   setDrawer(false);

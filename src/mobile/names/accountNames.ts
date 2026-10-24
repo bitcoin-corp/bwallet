@@ -7,9 +7,12 @@ import {
   collectPaymailNow,
   ctxIdentityAddress,
   getCachedProfileName,
+  getOwnedNames,
   getPaymail,
+  getPrimaryName,
   onAccountNamesChange,
   payableLabel,
+  pickPrimary,
   syncAccountNames,
 } from './accountName';
 
@@ -27,20 +30,38 @@ export type AccountNames = {
   payable: string;
   /** "Testytester · testytester" (or just the display name). */
   label: string;
+  /** Every name this identity can be shown as (paymail name, then OpNS names), for the primary-name picker. */
+  names: string[];
 };
+
+/** The paymail name first, then each OpNS name, without repeats. */
+export const nameCandidates = (paymailName: string, opns: readonly string[]): string[] =>
+  [paymailName, ...opns].filter((n, i, all) => !!n && all.findIndex((m) => m.toLowerCase() === n.toLowerCase()) === i);
 
 /** Names for an account from the cache (no network). Also used for the drawer rows of other accounts. */
 export const accountNamesFor = (identityAddress?: string, accountName = '', profileName = ''): AccountNames => {
   const handle = getMyName(identityAddress);
   const paymail = getPaymail(identityAddress);
   const short = bareName(paymail);
+  const names = nameCandidates(
+    short,
+    getOwnedNames(identityAddress).map((o) => o.name),
+  );
+  const payable = pickPrimary(names, getPrimaryName(identityAddress)) || short || handle;
   // A placeholder ("Anonymous", "Account 1") is never shown as the name: the paymail name wins over it.
   const displayName =
     [getCachedProfileName(identityAddress), profileName, accountName].find((n) => n && !isPlaceholderName(n)) ||
-    short ||
-    handle ||
+    payable ||
     accountName;
-  return { displayName, handle, paymail, payable: short || handle, label: payableLabel(displayName, handle, short) };
+  const primaryIsOpns = payable !== short && payable !== '';
+  return {
+    displayName,
+    handle,
+    paymail,
+    payable,
+    label: primaryIsOpns ? payableLabel(displayName, payable, '') : payableLabel(displayName, handle, short),
+    names,
+  };
 };
 
 /**

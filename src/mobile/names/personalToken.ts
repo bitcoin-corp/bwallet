@@ -213,3 +213,35 @@ export function pickOwnDeploy(deploys: OwnDeploy[], ticker: string): OwnDeploy |
   const hits = deploys.filter((d) => normId(d.tokenId) && (d.sym || '').replace(/^\$/, '').toUpperCase() === t);
   return hits.length ? { ...hits[hits.length - 1], tokenId: normId(hits[hits.length - 1].tokenId)! } : null;
 }
+
+// ── discovery: the link above is per device; a second device restored from the same words finds it again ──
+
+/** A link rebuilt from bit-sign's name → token binding (bit-sign binds a personal name only for its own handle). */
+export function linkFromBound(
+  handle: string,
+  bound: { tokenId: string | null; ticker: string | null } | null | undefined,
+): PersonalLink | null {
+  const tokenId = normId(bound?.tokenId);
+  const ticker = personalTicker(handle);
+  if (!tokenId || !ticker) return null;
+  return {
+    name: personalKey(handle),
+    tokenId,
+    ticker,
+    supply: '',
+    createdAt: Date.now(),
+    roomTicker: bound?.ticker ?? null,
+  };
+}
+
+export type DrawerRoomState = 'get-name' | 'finding' | 'create' | 'room';
+
+/** Drawer row: never "Create your room" while the lookup is still running or when a personal token exists. */
+export const drawerRoomState = (s: { name: string; link: PersonalLink | null; finding: boolean }): DrawerRoomState =>
+  !s.name ? 'get-name' : s.link ? 'room' : s.finding ? 'finding' : 'create';
+
+/** A second personal token for the same identity is refused (owner, 24 Oct 2026: restored devices minted twice). */
+export const secondPersonalError = (existing: Pick<PersonalLink, 'ticker'> | null | undefined): string | null =>
+  existing
+    ? `This wallet already has its personal token $${existing.ticker}. Open its room instead of creating another.`
+    : null;

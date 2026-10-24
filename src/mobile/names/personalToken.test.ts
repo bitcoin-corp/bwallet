@@ -4,6 +4,9 @@ import {
   DEFAULT_SUPPLY,
   MAP_PREFIX,
   cleanSupply,
+  drawerRoomState,
+  linkFromBound,
+  secondPersonalError,
   isPersonalTokenId,
   isVerified,
   personalKey,
@@ -89,5 +92,28 @@ describe('pickOwnDeploy', () => {
     expect(pickOwnDeploy(d.slice(0, 2), '$testy')?.tokenId).toBe(`${'2'.repeat(64)}_0`);
     expect(pickOwnDeploy(d, 'NOPE')).toBeNull();
     expect(pickOwnDeploy([{ tokenId: 'junk', sym: 'TESTY', amt: '1' }], 'TESTY')).toBeNull();
+  });
+});
+
+describe('personal token discovery (second device, 24 Oct 2026)', () => {
+  const id = `${'a'.repeat(64)}_0`;
+  const link = { name: 'b0asey', tokenId: id, ticker: 'B0ASEY', supply: '', createdAt: 1, roomTicker: null };
+  test('never "Create your room" while looking, or when one exists', () => {
+    expect(drawerRoomState({ name: '', link: null, finding: false })).toBe('get-name');
+    expect(drawerRoomState({ name: 'b0asey', link: null, finding: true })).toBe('finding');
+    expect(drawerRoomState({ name: 'b0asey', link, finding: true })).toBe('room');
+    expect(drawerRoomState({ name: 'b0asey', link: null, finding: false })).toBe('create');
+  });
+  test("bit-sign's binding becomes a cached link", () => {
+    const l = linkFromBound('$b0asey', { tokenId: `${'A'.repeat(64)}.0`, ticker: 'B0ASEY' });
+    expect(l?.tokenId).toBe(id);
+    expect(l?.ticker).toBe('B0ASEY');
+    expect(l?.name).toBe('b0asey');
+    expect(linkFromBound('b0asey', { tokenId: null, ticker: null })).toBeNull();
+    expect(linkFromBound('b0asey', null)).toBeNull();
+  });
+  test('a second personal token is refused', () => {
+    expect(secondPersonalError(link)).toContain('$B0ASEY');
+    expect(secondPersonalError(null)).toBeNull();
   });
 });

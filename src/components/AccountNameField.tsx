@@ -8,8 +8,13 @@ export const AccountNameField = ({
   value,
   onChange,
   error,
+  label = 'Account name',
+  hint,
 }: {
   theme: Theme;
+  /** Restore: "Name on this device only" (an on-chain profile name comes back by itself and wins). */
+  label?: string;
+  hint?: string;
   value: string;
   onChange: (v: string) => void;
   error?: string;
@@ -20,8 +25,13 @@ export const AccountNameField = ({
       className="w-[85%] text-left text-xs font-semibold mt-1"
       style={{ color: theme.color.global.gray }}
     >
-      Account name <span aria-hidden>(required)</span>
+      {label} <span aria-hidden>(required)</span>
     </label>
+    {hint && (
+      <p className="w-[85%] m-0 text-left text-[11px]" style={{ color: theme.color.global.gray }}>
+        {hint}
+      </p>
+    )}
     <Input
       theme={theme}
       id="account-name"

@@ -1,9 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { listOrdinals } from '@1sat/actions';
 import { Send } from 'lucide-react';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { NftDetail } from '../media/NftDetail';
 import type { MediaItem } from '../media/useWalletMedia';
+import { notifyMinted } from '../mint/mint';
+import { PENDING_CARD_TEXT } from '../media/nftSend';
+import { walletTxStates } from '../media/unbroadcast';
+
+const RECHECK_MS = 4000;
 
 /**
  * After a card is minted: "Send it" opens the minted NFT in the normal NFT detail, whose Send goes to a $name
@@ -15,8 +20,18 @@ export default function CardSend({ txid, title, to }: { txid: string; title: str
   const [item, setItem] = useState<MediaItem | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const live = useRef(true);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(
+    () => () => {
+      live.current = false;
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
 
-  const open = async () => {
+  const open = async (): Promise<void> => {
+    if (timer.current) clearTimeout(timer.current);
     setBusy(true);
     setMsg('');
     try {
@@ -37,6 +52,13 @@ export default function CardSend({ txid, title, to }: { txid: string; title: str
           });
         }
         await new Promise((r) => setTimeout(r, 1500));
+      }
+      // Still going out ('sending' / 'unprocessed'): say so and keep looking, never a silent dead end.
+      const st = await walletTxStates(apiContext.wallet).catch(() => null);
+      if (st?.pending.has(txid) && live.current) {
+        setMsg(PENDING_CARD_TEXT);
+        timer.current = setTimeout(() => live.current && void open(), RECHECK_MS);
+        return;
       }
       setMsg('Your card is still landing. Send it from Wallet › NFTs in a minute.');
     } catch {
@@ -62,7 +84,19 @@ export default function CardSend({ txid, title, to }: { txid: string; title: str
           {msg}
         </p>
       )}
-      {item && <NftDetail item={item} initialTo={to} onClose={() => setItem(null)} onSent={() => undefined} />}
+      {item && (
+        <NftDetail
+          item={item}
+          initialTo={to}
+          isCard
+          onClose={() => setItem(null)}
+          onSent={() => {
+            // Wallet › NFTs re-reads (the card has left), and the sheet closes.
+            notifyMinted();
+            setItem(null);
+          }}
+        />
+      )}
     </>
   );
 }

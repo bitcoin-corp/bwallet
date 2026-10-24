@@ -4,7 +4,10 @@ import { useBottomMenu } from '../../hooks/useBottomMenu';
 import { asMenuItem } from '../tabs/tabs';
 import { requestChatRoom } from '../chat/nav';
 import { tokenKey } from '../chat/tokenRooms';
-import { getPersonalLink, onPersonalChange } from './personalToken';
+import { drawerRoomState, getPersonalLink, onPersonalChange } from './personalToken';
+import { discoverPersonalLink } from './claimPersonal';
+import { useServiceContext } from '../../hooks/useServiceContext';
+import { setPrimaryName } from './accountName';
 
 /**
  * Account drawer: a link to the current account's personal $NAME room, or a "Get your $name" button. The handle is
@@ -16,7 +19,13 @@ export const DrawerHandle = ({
   handle,
   onGetName,
   onNavigate,
+  names = [],
+  shown = '',
 }: {
+  /** Every name this identity has (accountNames.ts nameCandidates): two or more → "Show as" picker. */
+  names?: string[];
+  /** The name shown now (AccountNames.payable). */
+  shown?: string;
   identityAddress?: string;
   paymail: string;
   handle: string;
@@ -32,42 +41,98 @@ export const DrawerHandle = ({
 
   const name = paymail || handle;
   const roomKey = link ? tokenKey('bsv21', link.tokenId) : null;
+  // The link is per device: on a second device (same words) look the personal token up before offering to make one.
+  const { apiContext } = useServiceContext();
+  const [finding, setFinding] = useState(false);
+  useEffect(() => {
+    if (!apiContext || !identityAddress || !name || getPersonalLink(identityAddress)) return;
+    let live = true;
+    setFinding(true);
+    void discoverPersonalLink(apiContext, identityAddress, name)
+      .catch(() => null)
+      .finally(() => live && setFinding(false));
+    return () => {
+      live = false;
+    };
+  }, [apiContext, identityAddress, name]);
+  const state = drawerRoomState({ name, link, finding });
+  const picker =
+    identityAddress && names.length > 1 ? (
+      <div className="mx-2 mb-2 flex flex-wrap items-center gap-1.5 px-1" aria-label="Show as">
+        <span className="text-[11px] text-[#98A2B3]">Show as</span>
+        {names.map((n) => (
+          <button
+            key={n}
+            type="button"
+            aria-pressed={n === shown}
+            onClick={() => setPrimaryName(identityAddress, n)}
+            className="rounded-full px-2.5 py-1 text-xs font-semibold cursor-pointer border"
+            style={
+              n === shown
+                ? { background: 'var(--bw-accent-hi)', color: '#010101', borderColor: 'transparent' }
+                : { background: 'transparent', color: 'var(--bw-accent-hi)', borderColor: '#3a2f0c' }
+            }
+          >
+            ${n}
+          </button>
+        ))}
+      </div>
+    ) : null;
 
-  if (!name || !link)
+  if (state === 'finding')
     return (
-      <button
-        type="button"
-        onClick={onGetName}
-        className="mx-2 mb-2 flex items-center gap-2 rounded-xl px-3 py-2.5 text-left cursor-pointer"
-        style={{ background: 'var(--bw-surface)', border: '1px solid #3a2f0c' }}
-      >
-        <AtSign size={15} color="var(--bw-accent-hi)" />
-        <span className="text-sm font-semibold" style={{ color: 'var(--bw-accent-hi)' }}>
-          {name ? 'Create your room' : 'Get your $name'}
-        </span>
-      </button>
+      <>
+        {picker}
+        <div
+          className="mx-2 mb-2 flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm"
+          style={{ background: 'var(--bw-surface)', border: '1px solid #2b2f36', color: '#98A2B3' }}
+        >
+          <AtSign size={15} /> Finding your room…
+        </div>
+      </>
+    );
+
+  if (state !== 'room')
+    return (
+      <>
+        {picker}
+        <button
+          type="button"
+          onClick={onGetName}
+          className="mx-2 mb-2 flex items-center gap-2 rounded-xl px-3 py-2.5 text-left cursor-pointer"
+          style={{ background: 'var(--bw-surface)', border: '1px solid #3a2f0c' }}
+        >
+          <AtSign size={15} color="var(--bw-accent-hi)" />
+          <span className="text-sm font-semibold" style={{ color: 'var(--bw-accent-hi)' }}>
+            {state === 'create' ? 'Create your room' : 'Get your $name'}
+          </span>
+        </button>
+      </>
     );
 
   return (
-    <div
-      className="mx-2 mb-2 flex flex-col gap-1.5 rounded-xl px-3 py-2"
-      style={{ background: 'var(--bw-surface)', border: '1px solid #2b2f36' }}
-    >
-      {roomKey && (
-        <button
-          type="button"
-          onClick={() => {
-            requestChatRoom(roomKey);
-            onNavigate();
-            handleSelect(asMenuItem('chat'));
-          }}
-          className="self-start mt-0.5 flex items-center gap-1.5 bg-transparent border-0 p-0 cursor-pointer text-xs font-semibold"
-          style={{ color: 'var(--bw-accent-hi)' }}
-        >
-          <MessageCircle size={13} />
-          Your ${link?.ticker} room{link?.roomTicker ? '' : ' (opening…)'}
-        </button>
-      )}
-    </div>
+    <>
+      {picker}
+      <div
+        className="mx-2 mb-2 flex flex-col gap-1.5 rounded-xl px-3 py-2"
+        style={{ background: 'var(--bw-surface)', border: '1px solid #2b2f36' }}
+      >
+        {roomKey && (
+          <button
+            type="button"
+            onClick={() => {
+              requestChatRoom(roomKey);
+              onNavigate();
+              handleSelect(asMenuItem('chat'));
+            }}
+            className="self-start mt-0.5 flex items-center gap-1.5 bg-transparent border-0 p-0 cursor-pointer text-xs font-semibold"
+            style={{ color: 'var(--bw-accent-hi)' }}
+          >
+            <MessageCircle size={13} />
+            Your ${link?.ticker} room{link?.roomTicker ? '' : ' (opening…)'}
+          </button>
+        )}
+      </div>
+    </>
   );
 };

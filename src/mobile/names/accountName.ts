@@ -19,6 +19,7 @@ const K = {
   profile: (id: string) => `bwallet.profile.${id}`,
   opns: (id: string) => `bwallet.opns.${id}`,
   paymail: (id: string) => `bwallet.paymail.${id}`,
+  primary: (id: string) => `bwallet.primaryName.${id}`,
 };
 const EVENT = 'bwallet-name-changed';
 
@@ -59,6 +60,21 @@ export const getPaymail = (id?: string) => (id && paymailEnabled() ? read(K.paym
 export const setPaymail = (id: string, p: string) => {
   write(K.paymail(id), p);
   changed();
+};
+
+/**
+ * Primary name (24 Oct 2026): an identity with several names ($b0asey paymail, $richardwboase OpNS) picks the one
+ * shown. Kept per identity on this device; there is no server or on-chain field for it yet (see PR notes).
+ */
+export const getPrimaryName = (id?: string) => (id ? read(K.primary(id)) : '');
+export const setPrimaryName = (id: string, name: string) => {
+  write(K.primary(id), name);
+  changed();
+};
+/** The chosen name if this identity still has it, else '' (the usual paymail-then-OpNS order applies). */
+export const pickPrimary = (candidates: readonly string[], preferred: string): string => {
+  const p = (preferred || '').trim().toLowerCase();
+  return (p && candidates.find((c) => c.toLowerCase() === p)) || '';
 };
 
 /**

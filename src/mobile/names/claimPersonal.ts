@@ -34,10 +34,12 @@ import {
   BWALLET_MARK_ICON,
   cleanSupply,
   getPersonalLink,
+  linkFromBound,
   personalKey,
   personalTicker,
   pickOwnDeploy,
   rememberPersonal,
+  secondPersonalError,
   type OwnDeploy,
   setPersonalLink,
   validateSupply,
@@ -95,6 +97,13 @@ export async function deployPersonalToken(
 ): Promise<PersonalLink> {
   const ticker = personalTicker(input.name);
   if (!ticker) throw new Error('That name cannot be a token ticker');
+  // One personal token per identity: another device may already have made it (the link is per device).
+  const second = secondPersonalError(
+    input.choice
+      ? getPersonalLink(input.identityAddress)
+      : await discoverPersonalLink(ctx, input.identityAddress, input.name),
+  );
+  if (second) throw new Error(second);
   // Never a silent duplicate (owner, 13 Oct 2026): an existing token this account controls is imported, a
   // BSV-20 tick is unique by protocol, and someone else's ticker needs the note first.
   const choice = input.choice ?? (await existingChoice(ctx, input.name));
@@ -316,4 +325,34 @@ async function personalIcon(
   const blob = await (await fetch(raw)).blob();
   if (!blob.type.startsWith('image/')) return undefined;
   return inscribeIcon(ctx, await iconFile(new File([blob], 'icon', { type: blob.type })), ticker, 'token');
+}
+
+const discovering = new Map<string, Promise<PersonalLink | null>>();
+
+/**
+ * Find this identity's personal token when this device has no link (restored on a second device): the wallet's own
+ * deploy of $HANDLE on chain (BSV-21 basket), else bit-sign's name → token binding for this account's own name.
+ * Caches what it finds (setPersonalLink). Read-only on chain; one lookup at a time per identity.
+ */
+export function discoverPersonalLink(
+  ctx: OneSatContext,
+  identityAddress: string,
+  handle: string,
+  client?: BchatClient,
+): Promise<PersonalLink | null> {
+  const local = getPersonalLink(identityAddress);
+  if (local) return Promise.resolve(local);
+  const key = `${identityAddress}:${personalKey(handle)}`;
+  const running = discovering.get(key);
+  if (running) return running;
+  const run = (async () => {
+    const own = await recoverPersonalLink(ctx, identityAddress, handle).catch(() => null);
+    if (own) return own;
+    const c = client ?? new BchatClient(defaultHttp(isNative), loadSession());
+    const link = linkFromBound(handle, await c.personalToken(personalKey(handle)).catch(() => null));
+    if (link) setPersonalLink(identityAddress, link);
+    return link;
+  })().finally(() => discovering.delete(key));
+  discovering.set(key, run);
+  return run;
 }

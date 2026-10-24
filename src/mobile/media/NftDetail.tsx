@@ -18,7 +18,14 @@ import type { MediaItem } from './useWalletMedia';
 import { TipButton } from '../tip/TipButton';
 import { nftCreator } from '../tip/tip';
 import { celebrateSend } from '../../components/sent/sent';
-import { nftSendButton, shortAddr } from './nftSend';
+import {
+  canUseAsAvatar,
+  isSelfRecipient,
+  nftSendButton,
+  PENDING_CARD_TEXT,
+  PENDING_SEND_TEXT,
+  shortAddr,
+} from './nftSend';
 import { txidOf, walletTxStates } from './unbroadcast';
 import { STORE_BUILD } from '../storeBuild';
 import { ReceiptBadge } from '../storeReceipt/ReceiptBadge';
@@ -36,6 +43,7 @@ import {
   toUnderscore,
 } from './nftBurn';
 
+const PENDING_RECHECK_MS = 4000;
 const ELLIPSIS = 'overflow-hidden text-ellipsis whitespace-nowrap';
 const short = (s: string) => (s.length > 22 ? `${s.slice(0, 10)}…${s.slice(-8)}` : s);
 
@@ -52,7 +60,10 @@ export const NftDetail = ({
   onClose,
   onSent,
   initialTo = '',
+  isCard = false,
 }: {
+  /** A just-made greeting card (CardSend): the pending note says "Your card…". */
+  isCard?: boolean;
   item: MediaItem;
   /** Recipient to fill in (Friends › Send NFT): the name box still resolves it and Send to … still confirms. */
   initialTo?: string;
@@ -78,24 +89,32 @@ export const NftDetail = ({
   // Step 1 (who): what the name box resolved. Step 2: one "Send to <name>" button (nftSend.ts).
   const [status, setStatus] = useState<'empty' | 'typing' | 'loading' | 'error' | 'ready'>('empty');
   const [toName, setToName] = useState<string | undefined>();
+  const [toKeys, setToKeys] = useState<{ pubkey?: string; ordAddress?: string }>({});
   const [sent, setSent] = useState<{ txid: string; name: string } | null>(null);
   const [failed, setFailed] = useState('');
   // An NFT from a mint the network never saw can't be sent (vexvoid, 11 Oct 2026: every try failed and hid it).
   const [onChain, setOnChain] = useState<boolean | null>(item.pending ? false : null);
   // Queued but not on chain yet ('sending'): pending, not owned; can't be sent or burned until it lands.
   const [pending, setPending] = useState(!!item.pending);
+  // While it is still going out, look again every few seconds: Send unlocks by itself once it lands.
   useEffect(() => {
     let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const txid = txidOf(item.output.outpoint);
-    void walletTxStates(apiContext.wallet)
-      .then((st) => {
-        if (!live) return;
-        setPending(st.pending.has(txid));
-        setOnChain(!st.offChain.has(txid) && !st.pending.has(txid));
-      })
-      .catch(() => live && setOnChain(null));
+    const check = () =>
+      void walletTxStates(apiContext.wallet)
+        .then((st) => {
+          if (!live) return;
+          const still = st.pending.has(txid);
+          setPending(still);
+          setOnChain(!st.offChain.has(txid) && !still);
+          if (still) timer = setTimeout(check, PENDING_RECHECK_MS);
+        })
+        .catch(() => live && setOnChain(null));
+    check();
     return () => {
       live = false;
+      if (timer) clearTimeout(timer);
     };
   }, [apiContext.wallet, item.output.outpoint]);
 
@@ -194,7 +213,21 @@ export const NftDetail = ({
   };
 
   const validTo = !!to && validate(to);
-  const button = nftSendButton({ to: validTo ? to : '', name: toName, status, busy, onChain });
+  const account = chromeStorageService.getCurrentAccountObject().account;
+  const isSelf =
+    status === 'ready' &&
+    isSelfRecipient(
+      { to, ...toKeys },
+      {
+        identityPubKey: account?.pubKeys?.identityPubKey,
+        addresses: [
+          account?.addresses?.bsvAddress,
+          account?.addresses?.ordAddress,
+          account?.addresses?.identityAddress,
+        ].filter((a): a is string => !!a),
+      },
+    );
+  const button = nftSendButton({ to: validTo ? to : '', name: toName, status, busy, onChain, isSelf, pending });
   const btn = 'flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold';
 
   return createPortal(
@@ -231,7 +264,8 @@ export const NftDetail = ({
             className="self-start"
           />
         )}
-        {item.kind === 'images' && (
+        {/* Only while it is still ours: not after a send or burn, nor while the mint is still going out. */}
+        {canUseAsAvatar(item.kind, { sent: !!sent, burned: !!burned, pending }) && (
           <button onClick={() => void setAvatar()} className={`${btn} bg-[#A1FF8B] text-[#010101]`}>
             <UserCircle size={16} /> Use as my bAvatar
           </button>
@@ -248,8 +282,11 @@ export const NftDetail = ({
               {short(sent.txid)}
             </a>
           </div>
-        ) : onChain === false && pending ? (
-          <PendingCard />
+        ) : pending ? (
+          <>
+            <PendingCard />
+            <p className="text-xs text-[#e6d08a] m-0">{isCard ? PENDING_CARD_TEXT : PENDING_SEND_TEXT}</p>
+          </>
         ) : onChain === false ? (
           <div className="rounded-xl bg-[var(--bw-surface)] p-3 text-xs text-[color:var(--bw-accent)]">
             Not on the blockchain yet. This NFT&apos;s mint never reached the network, so it can&apos;t be sent or
@@ -274,6 +311,7 @@ export const NftDetail = ({
               onStatus={(st, r) => {
                 setStatus(st);
                 setToName(r ? (r.displayName ?? r.input) : undefined);
+                setToKeys(r ? { pubkey: r.pubkey, ordAddress: r.ordAddress } : {});
               }}
               onChange={(v) => {
                 setTo(v);

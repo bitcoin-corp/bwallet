@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'bun:test';
-import { accountNameError, cleanAccountName, needsAccountName, suggestAccountName } from './accountNameRules';
+import { describe, expect, it, test } from 'bun:test';
+import {
+  accountNameError,
+  cleanAccountName,
+  needsAccountName,
+  RESTORE_NAME_HINT,
+  RESTORE_NAME_LABEL,
+  suggestAccountName,
+} from './accountNameRules';
 
 describe('account name is required', () => {
   it('suggests the next free Account N', () => {
@@ -27,5 +34,12 @@ describe('account name is required', () => {
     expect(needsAccountName(undefined)).toBe(true);
     expect(needsAccountName('Account 3')).toBe(true);
     expect(needsAccountName('Savings')).toBe(false);
+  });
+});
+
+describe('restore name label', () => {
+  test('says the name is local to this device', () => {
+    expect(RESTORE_NAME_LABEL).toBe('Name on this device only');
+    expect(RESTORE_NAME_HINT).toMatch(/comes back by itself/);
   });
 });
