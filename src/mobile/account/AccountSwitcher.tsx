@@ -1,4 +1,5 @@
 import { keyFingerprint } from '../wallet/identityLine';
+import { loadAccountOrigin, ORIGIN_NAMES, originTint } from '../origins/origins';
 import { accountTag } from './accountSwitch';
 import { Check, Loader2 } from 'lucide-react';
 import { useServiceContext } from '../../hooks/useServiceContext';
@@ -43,6 +44,9 @@ export const AccountRow = ({
   const isSwitching = switchingTo === id;
   const n = accountNamesFor(id, account.name, account.settings?.socialProfile?.displayName ?? '');
   const tag = accountTag(id, n.displayName, n.paymail, n.handle);
+  // Origin tint (owner, 24 Oct 2026): restored-from wallet as a coloured edge + plain-text pill; fresh = gold default.
+  const origin = loadAccountOrigin(id) ?? (account.settings?.relayx?.xpub ? 'relayx' : undefined);
+  const tint = originTint(origin);
   return (
     <div className="flex w-full items-center">
       <button
@@ -52,6 +56,7 @@ export const AccountRow = ({
         className={`flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left border-0 active:bg-white/5 ${compact ? 'px-3 py-2' : 'px-3 py-3'}`}
         style={{
           background: id === current ? '#17191E' : 'transparent',
+          boxShadow: tint ? `inset 3px 0 0 ${tint.accent}` : undefined,
           opacity: switchingTo && !isSwitching ? 0.4 : 1,
         }}
       >
@@ -77,6 +82,14 @@ export const AccountRow = ({
             <span className={ELLIPSIS}>{tag || n.displayName || n.label}</span>
             {id === current && verified && <Check size={13} strokeWidth={3} color="#2ecc71" />}
             <AgentMark id={id} />
+            {tint && origin && (
+              <span
+                className="shrink-0 rounded-full px-1.5 text-[10px] font-semibold leading-4"
+                style={{ background: tint.pill, color: tint.text }}
+              >
+                {ORIGIN_NAMES[origin] ?? origin}
+              </span>
+            )}
           </div>
           {/* Handle + identity-key fingerprint only (owner, 10 Oct 2026): never another handle, never copyable. */}
           {!compact && keyFingerprint(account.pubKeys?.identityPubKey) && (

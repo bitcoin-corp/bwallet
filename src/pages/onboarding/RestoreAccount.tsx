@@ -18,6 +18,7 @@ import relayXLogo from '../../assets/relayx.svg';
 import { relayxXpub } from '../../sweep/relayxRecover';
 import type { ChromeStorageService } from '../../services/ChromeStorage.service';
 import twetchLogo from '../../assets/twetch.svg';
+import { originFromImport, saveAccountOrigin } from '../../mobile/origins/origins';
 import yoursWhiteLogo from '../../assets/logos/white-logo.png';
 import otherWallet from '../../assets/other-wallet.svg';
 import wifWallet from '../../assets/wif-wallet.svg';
@@ -262,6 +263,9 @@ const RestoreAccountInner = ({ onNavigateBack, newWallet = false, onNewAccount }
       // RelayX: the inherited restore holds only /1/0 and /2/0. Keep the RelayX account's xpub (public, spends
       // nothing) so the wallet can find its Run NFTs on every RelayX address (sweep/relayxRecover.ts).
       if (importWallet === 'relayx') await rememberRelayx(chromeStorageService, keys.mnemonic);
+      // Origin card + drawer tint (owner, 24 Oct 2026): remember which wallet this account was restored from.
+      const from = originFromImport(importWallet);
+      if (from) saveAccountOrigin(keys.identityAddress, from);
       console.log('[restore] done at', at());
 
       if (cancelled.current) {

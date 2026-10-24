@@ -86,6 +86,7 @@ import { TermsScreen } from '../ugc/UgcSheets';
 import { SECURITY_URL, SUPPORT_EMAIL } from '../ugc/ugc';
 import { DeleteAccountScreen } from '../account/DeleteAccountScreen';
 import { HdSweepScreen } from '../sweep/HdSweepScreen';
+import { OriginsScreen } from '../origins/OriginsScreen';
 import { hasRate, money, useBsvUsd } from '../money/money';
 import {
   loadBlocks,
@@ -609,6 +610,7 @@ export const FeedSettings = ({ Section, Row, Divider, part }: Props) => {
     | 'terms'
     | 'delete'
     | 'sweep'
+    | 'origins'
     | 'tokens'
     | 'paired'
     | 'scan'
@@ -787,6 +789,13 @@ export const FeedSettings = ({ Section, Row, Divider, part }: Props) => {
             description="Move coins, NFTs and tokens from bWalletX, Yours, SimplyCash or any wallet: paste its phrase or private key"
             onClick={() => setScreen('sweep')}
             isFirst
+          />
+          <Divider />
+          <Row
+            icon={<History size={16} />}
+            label="Where this account came from"
+            description="What is still at older wallets this recovery phrase was used with: Yours, RelayX, Twetch, Money Button"
+            onClick={() => setScreen('origins')}
           />
           <Divider />
           <Row
@@ -1222,6 +1231,7 @@ export const FeedSettings = ({ Section, Row, Divider, part }: Props) => {
       {screen === 'terms' && <TermsScreen onBack={() => setScreen(null)} />}
       {screen === 'delete' && <DeleteAccountScreen onBack={() => setScreen(null)} />}
       {screen === 'sweep' && <HdSweepScreen onBack={() => setScreen(null)} />}
+      {screen === 'origins' && <OriginsScreen onBack={() => setScreen(null)} />}
       {screen === 'bookmarks' && <BookmarksScreen onBack={() => setScreen(null)} />}
       {screen === 'hidden' && <HiddenScreen onBack={() => setScreen(null)} />}
       {screen === 'signins' && <SignInsScreen onBack={() => setScreen(null)} />}
