@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { boundHosts, crossSiteSignRefusal, guardCrossSiteSigning } from './crossSiteSignGuard';
+import { boundHosts, crossSiteSignRefusal, guardCrossSiteSigning, sameSite } from './crossSiteSignGuard';
 
 const bytes = (s: string) => Array.from(new TextEncoder().encode(s));
 const sig = (s: string) => ({ protocolID: [2, 'good login'], keyID: '1', counterparty: 'anyone', data: bytes(s) });
@@ -67,5 +67,30 @@ describe('guardCrossSiteSigning', () => {
     await m.createSignature(relayed, 'good.com');
     await m.createSignature(relayed, 'admin.local');
     expect(calls).toEqual(['sig:good.com', 'sig:admin.local']);
+  });
+});
+
+describe('sameSite: shared hosting and dot boundaries', () => {
+  test('parent and subdomain match', () => {
+    expect(sameSite('app.bchatx.com', 'bchatx.com')).toBe(true);
+    expect(sameSite('bchatx.com', 'a.b.bchatx.com')).toBe(true);
+  });
+  test('siblings on shared suffixes are different sites', () => {
+    expect(sameSite('evil.vercel.app', 'good.vercel.app')).toBe(false);
+    expect(sameSite('evil.github.io', 'good.github.io')).toBe(false);
+    expect(sameSite('evil.co.uk', 'good.co.uk')).toBe(false);
+  });
+  test('no match without a dot boundary', () => {
+    expect(sameSite('notbchatx.com', 'bchatx.com')).toBe(false);
+    expect(sameSite('bchatx.com', 'notbchatx.com')).toBe(false);
+  });
+  test('relays between shared-hosting siblings are refused', () => {
+    for (const [evil, good] of [
+      ['evil.vercel.app', 'good.vercel.app'],
+      ['evil.github.io', 'good.github.io'],
+      ['evil.co.uk', 'good.co.uk'],
+      ['notbchatx.com', 'bchatx.com'],
+    ])
+      expect(crossSiteSignRefusal(evil, sig(JSON.stringify({ domain: good })))).not.toBeNull();
   });
 });

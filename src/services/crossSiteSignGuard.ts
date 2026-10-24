@@ -6,7 +6,7 @@
  * there as the user. Changing key derivation would change every existing login key, so instead the wallet
  * reads the data it is asked to sign: when it is text that names the site it is meant for (a SIWE-style
  * "<host> wants you to sign in" line, or a domain / origin / host / audience field), that site must be the one
- * calling. Data that names no site is signed as before; free links inside content (a post with a URL) are not
+ * calling (or a parent/subdomain of it). Data that names no site is signed as before; free links inside content (a post with a URL) are not
  * treated as a binding, so signed posts keep working.
  */
 
@@ -33,10 +33,11 @@ export const bareHost = (value: string): string | null => {
   return HOST_RE.test(v) ? v : null;
 };
 
-/** The last two labels: app.bchatx.com and bchatx.com are the same site for this check. */
-const site = (host: string) => host.split('.').slice(-2).join('.');
-
-export const sameSite = (a: string, b: string) => a === b || site(a) === site(b);
+/**
+ * Equal hosts, or one a dot-boundary subdomain of the other (app.bchatx.com and bchatx.com). Siblings never
+ * match: a.vercel.app / b.vercel.app, a.github.io / b.github.io and a.co.uk / b.co.uk are different sites.
+ */
+export const sameSite = (a: string, b: string) => a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`);
 
 const decodeText = (data: unknown): string | null => {
   if (!Array.isArray(data) || data.length === 0 || data.length > 64 * 1024) return null;
