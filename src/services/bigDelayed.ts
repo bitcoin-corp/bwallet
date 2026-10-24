@@ -95,3 +95,28 @@ export function kickSendWaiting(
         .catch((e: unknown) => log(`[bigSend] SendWaiting failed: ${e instanceof Error ? e.message : String(e)}`));
     }, ms);
 }
+
+/**
+ * A site's createAction / signAction that broadcasts goes out NOW, unless the wallet itself sends it in the
+ * background because it is big (shouldDelay). bvideox.com, 24 Oct 2026: the mint sent acceptDelayedBroadcast:
+ * true, the toolbox queued it (req 'unsent', tx 'sending') and answered with a txid at once, nothing armed the
+ * retry, and the site showed "Done" for a transaction no node had. The BRC-100 default for acceptDelayedBroadcast
+ * is also true, so a site that leaves it out was queued the same way. With false, the toolbox posts inline and a
+ * rejection throws (so the site gets an error, not a txid); a broadcaster with no verdict surfaces as a queued send
+ * that background.ts answers as {pending: true} and retries. Chain steps (noSend) and signAndProcess: false are
+ * left alone: they broadcast later, at the step that sends.
+ */
+export function withBroadcastNow<T extends CreateLike | SignLike>(args: T): T {
+  const o = (args.options ?? {}) as CreateLike['options'];
+  if (o?.noSend === true) return args;
+  if ((o as { signAndProcess?: boolean } | undefined)?.signAndProcess === false) return args;
+  if (o?.acceptDelayedBroadcast === false) return args;
+  return { ...args, options: { ...(args.options ?? {}), acceptDelayedBroadcast: false } };
+}
+
+/** True when a createAction / signAction result says its send is queued, not accepted by the network. */
+export function resultIsQueued(result: (ResultLike & { pending?: boolean }) | null | undefined): boolean {
+  if (!result) return false;
+  if (result.pending === true) return true;
+  return (result.sendWithResults ?? []).some((r) => r?.status === 'sending');
+}

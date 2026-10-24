@@ -120,3 +120,29 @@ test('unpaired wallet join still refused once the QR has expired (site away or n
   await assert.rejects(open(`${base}/v1/c/${C}?role=wallet`), /410/);
   await done();
 });
+
+test('a claimed wallet role admits only its claim; the owner can still reconnect', async () => {
+  const { base, done } = await boot();
+  const K = 'claimclaimclaimclaim_1'; // 22 chars
+  const site = await open(`${base}/v1/c/${C}?role=site&e=${exp()}`, 'https://tokenblaster.lol');
+  const phone = await open(`${base}/v1/c/${C}?role=wallet&claim=${K}`);
+  await assert.rejects(open(`${base}/v1/c/${C}?role=wallet`), /403/);
+  await assert.rejects(open(`${base}/v1/c/${C}?role=wallet&claim=otherotherotherother_2`), /403/);
+  const again = await open(`${base}/v1/c/${C}?role=wallet&claim=${K}`);
+  await until(() => phone.ws.readyState === 3);
+  await assert.rejects(open(`${base}/v1/c/${C}?role=wallet&claim=bad`), /400/);
+  site.ws.close();
+  again.ws.close();
+  await done();
+});
+
+test('an unclaimed role keeps the old behaviour (clients without a claim)', async () => {
+  const { base, done } = await boot();
+  const site = await open(`${base}/v1/c/${C}?role=site&e=${exp()}`, 'https://tokenblaster.lol');
+  const a = await open(`${base}/v1/c/${C}?role=wallet`);
+  const b = await open(`${base}/v1/c/${C}?role=wallet`);
+  await until(() => a.ws.readyState === 3);
+  site.ws.close();
+  b.ws.close();
+  await done();
+});

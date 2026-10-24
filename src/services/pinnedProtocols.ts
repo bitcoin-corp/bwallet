@@ -20,6 +20,11 @@ export interface PinnedProtocol {
   /** What the sheet says, in plain words. */
   label: string;
   description: string;
+  /**
+   * A paid action on this protocol that gets ONE sheet (services/pinnedMint.ts): "Mint 3 videos, locked to you on
+   * bvideox.com". `countFrom` reads the item count from the createAction description the site sends.
+   */
+  mint?: { verb: string; noun: string; countFrom: RegExp };
 }
 
 export const PINNED_PROTOCOLS: readonly PinnedProtocol[] = [
@@ -37,6 +42,8 @@ export const PINNED_PROTOCOLS: readonly PinnedProtocol[] = [
     label: 'Your video records (bVideoX)',
     description:
       'bVideoX wants to lock your video records with your own keys before they go on chain. Only your 12 words can open them; nothing is made public unless you choose.',
+    // bvideox.com mint/records.js: description `bVideoX: 3 private video records`.
+    mint: { verb: 'Mint', noun: 'video', countFrom: /(\d+) private video records?/i },
   },
 ];
 

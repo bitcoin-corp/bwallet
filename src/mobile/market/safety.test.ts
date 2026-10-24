@@ -195,3 +195,24 @@ describe('unicode obfuscation', () => {
       expect(blocked(t)).toBe(false);
   });
 });
+
+describe('nested metadata (b-Aware report)', () => {
+  const f = new SafetyFilter({ ...BUNDLED, keywords: ['blockedword'], substrings: [] });
+  test('a flag nested deep is caught', () => {
+    expect(metadataFlagsAdult({ a: { b: { c: { d: { e: { nsfw: true } } } } } })).toBe(true);
+    expect(metadataFlagsAdult({ a: [{ b: [{ rating: 'explicit' }] }] })).toBe(true);
+  });
+  test('a flag inside a JSON string is caught', () => {
+    expect(metadataFlagsAdult({ traits: JSON.stringify({ meta: { adult: 'yes' } }) })).toBe(true);
+  });
+  test('a keyword nested deep or in JSON-in-string is caught', () => {
+    expect(f.check({ map: { a: { b: { c: { d: { e: { f: 'blockedword' } } } } } } }).blocked).toBe(true);
+    expect(f.check({ map: { x: JSON.stringify({ y: ['blockedword'] }) } }).blocked).toBe(true);
+  });
+  test('ordinary metadata passes and a huge object is bounded', () => {
+    expect(metadataFlagsAdult({ rating: 'everyone', nsfw: false })).toBe(false);
+    const wide: Record<string, string> = {};
+    for (let i = 0; i < 5000; i++) wide[`k${i}`] = 'ok';
+    expect(f.check({ map: wide }).blocked).toBe(false);
+  });
+});

@@ -95,10 +95,14 @@ export function parsePairUrl(
   return link;
 }
 
-export const relaySocketUrl = (relay: string, channel: string, role: Role, expiry?: number) => {
+/** A fresh relay role claim (16 random bytes): the relay then admits this role only with the same claim. */
+export const newClaim = () => b64url(crypto.getRandomValues(new Uint8Array(16)));
+
+export const relaySocketUrl = (relay: string, channel: string, role: Role, expiry?: number, claim?: string) => {
   const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(relay);
   const q = new URLSearchParams({ role });
   if (expiry) q.set('e', String(expiry));
+  if (claim) q.set('claim', claim);
   return `${local ? 'ws' : 'wss'}://${relay}/v1/c/${channel}?${q}`;
 };
 

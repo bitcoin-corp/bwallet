@@ -11,6 +11,7 @@
  * it as proof of who is on the other end (audit C2); protocols that send secrets must authenticate the peer
  * themselves (e.g. "open on computer" makes the computer prove a code shown only on the phone).
  */
+import { createHash } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 
 export const LIMITS = {
@@ -26,6 +27,10 @@ export const LIMITS = {
 
 const CHANNEL = /^[A-Za-z0-9_-]{22}$/; // 16 random bytes, base64url
 const ROLES = new Set(['site', 'wallet']);
+// Optional per-role claim secret (b-Aware, 24 Oct 2026): the first socket that brings one owns the role; later
+// sockets for that role must bring the same one, so a stranger who knows the channel ID can't take it over.
+const CLAIM = /^[A-Za-z0-9_-]{22,64}$/;
+const claimHash = (c) => createHash('sha256').update(c).digest('hex');
 const other = (role) => (role === 'site' ? 'wallet' : 'site');
 
 /** True for an https origin, or http on localhost (local development). */
@@ -67,12 +72,17 @@ export function createRelay({ server, now = () => Date.now(), log = () => {} } =
   const timer = setInterval(sweep, 30_000);
   timer.unref?.();
 
+  /** A claimed role admits only its claim; an unclaimed role admits anyone (old clients). */
+  const claimOk = (ch, role, claim) => !ch.claims?.[role] || (claim !== null && claimHash(claim) === ch.claims[role]);
+
   /** Decide whether an upgrade is allowed. Returns { ok, code, reason, ... }. */
   function admit(req) {
     const url = new URL(req.url, 'http://relay');
     const m = url.pathname.match(/^\/v1\/c\/([^/]+)$/);
     const role = url.searchParams.get('role');
     if (!m || !CHANNEL.test(m[1]) || !ROLES.has(role)) return { ok: false, code: 400, reason: 'bad request' };
+    const claim = url.searchParams.get('claim');
+    if (claim !== null && !CLAIM.test(claim)) return { ok: false, code: 400, reason: 'bad request' };
     const id = m[1];
     const ip = (req.headers['x-real-ip'] || req.socket.remoteAddress || '').toString();
     let ch = channels.get(id);
@@ -83,7 +93,8 @@ export function createRelay({ server, now = () => Date.now(), log = () => {} } =
       if (!acceptableOrigin(origin)) return { ok: false, code: 403, reason: 'origin' };
       if (ch) {
         if (ch.origin !== origin) return { ok: false, code: 403, reason: 'origin mismatch' };
-        return { ok: true, id, role, ch };
+        if (!claimOk(ch, role, claim)) return { ok: false, code: 403, reason: 'role claimed' };
+        return { ok: true, id, role, ch, claim };
       }
       const e = Number(url.searchParams.get('e'));
       if (!Number.isFinite(e) || e * 1000 < t || e * 1000 > t + LIMITS.maxQrLifetimeS * 1000)
@@ -99,10 +110,11 @@ export function createRelay({ server, now = () => Date.now(), log = () => {} } =
         queue: { site: [], wallet: [] },
         lastActive: t,
         rate: { start: t, n: 0 },
+        claims: { site: null, wallet: null },
       };
       channels.set(id, ch);
       perIp.set(ip, (perIp.get(ip) ?? 0) + 1);
-      return { ok: true, id, role, ch };
+      return { ok: true, id, role, ch, claim };
     }
 
     // wallet
@@ -111,10 +123,14 @@ export function createRelay({ server, now = () => Date.now(), log = () => {} } =
     // user switches to bWallet on the same phone); the channel and its origin were fixed when the site
     // opened it, so the wallet may join and its frames queue for the site like any other away case.
     if (!ch.paired && t > ch.expiry) return { ok: false, code: 410, reason: 'qr expired' };
-    return { ok: true, id, role, ch };
+    if (!claimOk(ch, role, claim)) return { ok: false, code: 403, reason: 'role claimed' };
+    return { ok: true, id, role, ch, claim };
   }
 
-  function attach(ws, { id, role, ch }) {
+  function attach(ws, { role, ch, claim }) {
+    // Re-check: another socket may have claimed the role between admit and the upgrade finishing.
+    if (!claimOk(ch, role, claim ?? null)) return ws.close(4003, 'role claimed');
+    if (claim && !ch.claims[role]) ch.claims[role] = claimHash(claim);
     ch[role]?.close(4001, 'replaced');
     ch[role] = ws;
     ch.lastActive = now();

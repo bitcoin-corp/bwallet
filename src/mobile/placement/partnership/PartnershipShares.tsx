@@ -14,7 +14,16 @@ import { identityKey } from '../company';
 import { PartnershipAgreement, PartnershipSetup } from './PartnershipAgreement';
 import { broadcastProposal, lockUp, partnerKey, proposeMove, signProposal } from './actions';
 import { PARTNER_SIGN_PROTOCOL, lockKeyKeyID, lockKeyMessage, type PartnerLockState } from './lockState';
-import { RULE_WARNING, isReady, parsePartnerLock, partnershipLabel, signedBy, type Holding } from './partnerLock';
+import {
+  RULE_WARNING,
+  describeProposalMoves,
+  proposalMoveProblem,
+  isReady,
+  parsePartnerLock,
+  partnershipLabel,
+  signedBy,
+  type Holding,
+} from './partnerLock';
 import { ApprovalCard } from './ApprovalCard';
 import { SharedAccount } from './SharedAccount';
 
@@ -209,17 +218,31 @@ function Partnership({ api, ticker, name }: { api: BsharesApi; ticker: string; n
           const allKeys = [...new Set(p.proposal.locked.flatMap((l) => l.pubKeys))];
           const need = p.proposal.locked[0]?.m ?? 0;
           const mine = p.proposedBy === (loadSession()?.handle ?? '');
+          // What the transaction really does, decoded from its outputs; the summary is only the proposer's note.
+          let problem: string | null;
+          let movesText = '';
+          try {
+            const d = describeProposalMoves(p.proposal);
+            problem = proposalMoveProblem(d);
+            movesText = d.moves.map((m) => `${partnershipLabel(m.amt)} → ${handleOf(m.holder)}`).join(', ');
+          } catch {
+            problem = 'This move could not be read. Not signed.';
+          }
           return (
             <ApprovalCard
               key={p.id}
-              what={`${p.summary} · proposed by $${p.proposedBy}`}
+              what={
+                problem
+                  ? `${problem} · proposed by $${p.proposedBy}`
+                  : `${movesText} · proposed by $${p.proposedBy} (their note: “${p.summary}”)`
+              }
               rule={`Needs ${need} of ${allKeys.length} partners`}
               signed={signed.map(handleOf)}
               waiting={allKeys.filter((k) => !signed.includes(k)).map(handleOf)}
               status={p.signatureNeeded ? 'needs-you' : ready ? 'ready' : 'waiting'}
               busy={busy}
               onApprove={
-                p.signatureNeeded
+                p.signatureNeeded && !problem
                   ? run(async () => {
                       const signedP = await signProposal(ctx, p.proposal);
                       try {

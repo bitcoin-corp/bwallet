@@ -106,3 +106,33 @@ describe('kickSendWaiting', () => {
     expect(logs.some((l) => l.includes('offline'))).toBe(true);
   });
 });
+
+import { resultIsQueued, withBroadcastNow } from './bigDelayed';
+
+describe('withBroadcastNow: a site send goes out now (bvideox.com b6963e8c…, 24 Oct 2026)', () => {
+  test("overrides a site's acceptDelayedBroadcast: true and the BRC-100 default", () => {
+    expect(withBroadcastNow({ options: { acceptDelayedBroadcast: true } }).options?.acceptDelayedBroadcast).toBe(false);
+    expect(withBroadcastNow({}).options?.acceptDelayedBroadcast).toBe(false);
+  });
+  test('leaves chain steps and sign-later actions alone', () => {
+    const noSend = { options: { noSend: true, acceptDelayedBroadcast: true } };
+    expect(withBroadcastNow(noSend)).toBe(noSend);
+    const later = { options: { signAndProcess: false } };
+    expect(withBroadcastNow(later)).toBe(later);
+  });
+  test('does not mutate the site object', () => {
+    const a = { options: { acceptDelayedBroadcast: true } };
+    withBroadcastNow(a);
+    expect(a.options.acceptDelayedBroadcast).toBe(true);
+  });
+});
+
+describe('resultIsQueued', () => {
+  test('sending or pending is queued; unproven is accepted', () => {
+    expect(resultIsQueued({ txid: 'a', sendWithResults: [{ txid: 'a', status: 'sending' }] })).toBe(true);
+    expect(resultIsQueued({ txid: 'a', pending: true })).toBe(true);
+    expect(resultIsQueued({ txid: 'a', sendWithResults: [{ txid: 'a', status: 'unproven' }] })).toBe(false);
+    expect(resultIsQueued({ txid: 'a' })).toBe(false);
+    expect(resultIsQueued(null)).toBe(false);
+  });
+});

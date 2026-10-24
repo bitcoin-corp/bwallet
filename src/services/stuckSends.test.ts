@@ -123,3 +123,39 @@ describe('releaseStuckSends with a remote active store', () => {
     expect(r.released).toEqual([]);
   });
 });
+
+import { resolveUnsent } from './stuckSends';
+
+describe('resolveUnsent: send now or cancel one queued send by hand', () => {
+  const TX = 'b6963e8c3bb87bf0609e607017748fe578ff3b3920811630fdb26d9897ec3a23';
+  const q = { transactionId: 7, txid: TX, createdAt: 0, attempts: 0, description: 'bVideoX: 3 private video records' };
+  const deps = (known: boolean | 'throw', cancelled: unknown[] = [], sent: number[] = []) => ({
+    listQueued: async () => [q],
+    knownOnChain: async () => {
+      if (known === 'throw') throw new Error('woc down');
+      return known;
+    },
+    cancel: async (s: unknown) => void cancelled.push(s),
+    sendWaiting: async () => void sent.push(1),
+  });
+  test('cancel releases a send the network never got', async () => {
+    const c: unknown[] = [];
+    expect(await resolveUnsent(deps(false, c), TX, 'cancel')).toEqual({ ok: true, txid: TX, result: 'cancelled' });
+    expect(c).toHaveLength(1);
+  });
+  test('cancel keeps a send the network has, or when the check fails', async () => {
+    const c: unknown[] = [];
+    expect((await resolveUnsent(deps(true, c), TX, 'cancel')).ok).toBe(false);
+    expect((await resolveUnsent(deps('throw', c), TX, 'cancel')).ok).toBe(false);
+    expect(c).toHaveLength(0);
+  });
+  test('send runs SendWaiting and reports', async () => {
+    const s: number[] = [];
+    expect(await resolveUnsent(deps(false, [], s), TX, 'send')).toEqual({ ok: true, txid: TX, result: 'still-queued' });
+    expect(s).toHaveLength(1);
+  });
+  test('refuses a txid that is not queued', async () => {
+    const r = await resolveUnsent(deps(false), 'a'.repeat(64), 'cancel');
+    expect(r.ok).toBe(false);
+  });
+});
