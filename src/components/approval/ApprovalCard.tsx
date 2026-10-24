@@ -110,6 +110,8 @@ export interface ApprovalCardProps {
   primary?: CardButton;
   /** "Not now" (gold tone) or "I trust it, allow" (red tone). */
   secondary?: CardButton;
+  /** A third, small choice next to secondary (the careful card's "Block this site"). */
+  tertiary?: CardButton;
   /** Expanded under "Details": the per-permission lines, options and technical detail. */
   details?: ReactNode;
   detailsOpen?: boolean;
@@ -127,6 +129,7 @@ export const ApprovalCard = (p: ApprovalCardProps) => {
   return (
     <div
       data-testid={p.testId}
+      data-approval-scroll
       className="flex flex-col w-full h-full overflow-y-auto"
       style={{
         background: red ? CARD.redBg : CARD.bg,
@@ -180,7 +183,21 @@ export const ApprovalCard = (p: ApprovalCardProps) => {
         {p.children}
       </div>
 
-      <div className="flex flex-col" style={{ marginTop: 'auto', padding: '18px 20px 20px', gap: 10 }}>
+      {/* The choices stick to the bottom: on a short window (392×540) the user sees them without scrolling. */}
+      <div
+        className="flex flex-col"
+        data-testid="approval-choices"
+        style={{
+          position: 'sticky',
+          bottom: 0,
+          zIndex: 1,
+          margin: red ? 'auto 2px 0' : 'auto 0 0',
+          padding: '14px 20px 16px',
+          gap: 10,
+          background: red ? CARD.redBg : CARD.bg,
+          boxShadow: `0 -12px 24px ${red ? CARD.redBg : CARD.bg}`,
+        }}
+      >
         {p.error && (
           <p className="m-0 text-center" role="alert" style={{ fontSize: 13, color: CARD.redSoft }}>
             {p.error}
@@ -235,6 +252,29 @@ export const ApprovalCard = (p: ApprovalCardProps) => {
           ) : (
             <span />
           )}
+          {p.tertiary && (
+            <button
+              type="button"
+              aria-label={p.tertiary.ariaLabel}
+              disabled={p.tertiary.disabled}
+              onClick={p.tertiary.onClick}
+              className="flex items-center gap-2"
+              style={{
+                ...btnBase,
+                height: 44,
+                padding: '0 12px',
+                borderRadius: 12,
+                background: 'transparent',
+                border: `1px solid ${red ? CARD.redLine : CARD.muted}`,
+                color: red ? CARD.redSoft : CARD.muted,
+                fontSize: 14,
+                opacity: p.tertiary.disabled ? 0.6 : 1,
+              }}
+            >
+              {p.tertiary.busy && <Loader2 size={14} className="animate-spin" />}
+              {p.tertiary.label}
+            </button>
+          )}
           {p.details && (
             <button
               type="button"
@@ -254,7 +294,9 @@ export const ApprovalCard = (p: ApprovalCardProps) => {
             </button>
           )}
         </div>
-        {p.detailsOpen && p.details && (
+      </div>
+      {p.detailsOpen && p.details && (
+        <div style={{ padding: '0 20px 20px' }}>
           <div
             className="w-full"
             style={{
@@ -267,8 +309,8 @@ export const ApprovalCard = (p: ApprovalCardProps) => {
           >
             {p.details}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

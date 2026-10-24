@@ -10,6 +10,15 @@ import {
   isRiskyRequest,
   sheetCanTrust,
   sheetDecisions,
+  sheetView,
+  shownItems,
+  sheetAnswer,
+  sheetHash,
+  MAX_LIVE_CHANGES,
+  blockActive,
+  BLOCK_SITE_BASKET,
+  MAX_QUEUED_PER_SITE,
+  PermissionQueueFullError,
   TRUST_SITE_BASKET,
   PermissionBundler,
   type BundleRequest,
@@ -45,18 +54,20 @@ const fakeTimers = () => {
 const setup = () => {
   const clock = fakeTimers();
   const ready: PermissionBundle[] = [];
+  const promoted: PermissionBundle[] = [];
   const updated: PermissionBundle[] = [];
   let n = 0;
   const bundler = new PermissionBundler({
     windowMs: 400,
     onReady: (b) => ready.push(b),
+    onPromote: (b) => promoted.push(b),
     onUpdate: (b) => updated.push(b),
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
     now: clock.now,
     newId: () => `b${++n}`,
   });
-  return { clock, ready, updated, bundler };
+  return { clock, ready, promoted, updated, bundler };
 };
 
 const proto = (id: string, originator = 'bmovies.app', extra: Partial<BundleRequest> = {}): BundleRequest => ({
@@ -146,27 +157,37 @@ describe('PermissionBundler answers', () => {
     expect(bundler.get(id)).toBeUndefined();
   });
 
-  test('a request arriving mid-sheet joins the open sheet and fires onUpdate', () => {
-    const { clock, ready, updated, bundler } = setup();
-    bundler.add(proto('r1'));
+  test('a request arriving mid-sheet waits in the queue; the open sheet is unchanged', () => {
+    const { clock, ready, bundler } = setup();
+    const b = bundler.add(proto('r1'))!;
     clock.tick(400);
-    expect(ready).toHaveLength(1);
-    bundler.add(basket('r2'));
-    expect(ready).toHaveLength(1); // no second sheet
-    expect(updated).toHaveLength(1);
-    expect(updated[0].items.map((i) => i.requestID)).toEqual(['r1', 'r2']);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
+    expect(bundler.add(basket('r2'))).toBeUndefined();
+    expect(ready).toHaveLength(1); // no second sheet yet
+    expect(b.items.map((i) => i.requestID)).toEqual(['r1']);
+    expect(bundler.queued('bmovies.app').map((i) => i.requestID)).toEqual(['r2']);
+  });
+
+  test('an identical repeat still piggybacks on the open sheet (same requestID)', () => {
+    const { clock, bundler } = setup();
+    const b = bundler.add(proto('r1'))!;
+    clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
+    expect(bundler.add(proto('r1'))).toBe(b);
+    expect(b.items).toHaveLength(1);
+    expect(bundler.queued('bmovies.app')).toHaveLength(0);
   });
 
   test('a request the user never saw is carried into a new sheet, not approved', () => {
     const { clock, ready, bundler } = setup();
-    bundler.add(proto('r1'));
+    const b = bundler.add(proto('r1'))!;
     clock.tick(400);
-    const id = ready[0].id;
-    bundler.add(basket('late')); // joined after the view was built
-    const res = bundler.resolve(id, { r1: true })!;
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
+    b.items.push(basket('unseen')); // defensive path: an item missing from the decisions
+    const res = bundler.resolve(b.id, { r1: true })!;
     expect(res.granted.map((r) => r.requestID)).toEqual(['r1']);
     expect(res.denied).toHaveLength(0);
-    expect(res.carried?.items.map((r) => r.requestID)).toEqual(['late']);
+    expect(res.carried?.items.map((r) => r.requestID)).toEqual(['unseen']);
     expect(res.carried?.state).toBe('shown');
     expect(ready).toHaveLength(2);
   });
@@ -408,38 +429,312 @@ describe('allowance only on money sheets (b-Aware 24 Oct 2026: sign-in stored a 
   });
 });
 
-describe('requests that join a sheet already on screen (b-Aware report, 24 Oct 2026)', () => {
-  test('a basket request fired mid-sheet is risky, unticked and denied by a plain Allow', () => {
-    const { clock, bundler } = setup();
-    const b = bundler.add(proto('sign', 'evil.example', { counterparty: 'anyone' }));
+describe('requests that arrive after the user touched a sheet (option A, 24 Oct 2026)', () => {
+  test("the first sheet's Allow never grants a late request", () => {
+    const { clock, ready, bundler } = setup();
+    const b = bundler.add(proto('sign', 'evil.example', { counterparty: 'anyone' }))!;
     clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
     bundler.add(basket('late', 'evil.example'));
     const model = buildSheetModel(b);
-    const late = model.lines.find((l) => l.requestID === 'late')!;
-    expect(late.risky).toBe(true);
-    expect(late.checked).toBe(false);
-    expect(late.text).toMatch(/^Added while this was open/);
+    expect(model.lines.map((l) => l.requestID)).toEqual(['sign']);
     const d = sheetDecisions(model, true, {}, false);
-    expect(d.sign).toBe(true);
-    expect(d.late).toBe(false);
-    // Ticking it knowingly still works.
-    expect(sheetDecisions(model, true, { late: true }, true).late).toBe(true);
+    expect(d).toEqual({ sign: true });
+    const res = bundler.resolve(b.id, d)!;
+    expect(res.granted.map((r) => r.requestID)).toEqual(['sign']);
+    expect([...res.granted, ...res.denied].some((r) => r.requestID === 'late')).toBe(false);
+    // It gets its own sheet next, after the merge window.
+    expect(ready).toHaveLength(1);
+    clock.tick(400);
+    expect(ready).toHaveLength(2);
+    expect(ready[1].items.map((i) => i.requestID)).toEqual(['late']);
   });
 
-  test('a spend that joins an open sheet is never its main payment', () => {
-    const { clock, bundler } = setup();
-    const b = bundler.add(proto('sign', 'evil.example', { counterparty: 'anyone' }));
+  test('the queued request is judged on its own merits: a routine one is not a careful card', () => {
+    const { clock, ready, bundler } = setup();
+    const b = bundler.add(proto('sign', 'evil.example', { counterparty: 'anyone' }))!;
     clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
+    bundler.add(basket('late', 'evil.example'));
+    bundler.resolve(b.id, { sign: false });
+    clock.tick(400);
+    const line = buildSheetModel(ready[1]).lines[0];
+    expect(line.risky).toBe(false);
+    expect(line.text).not.toMatch(/Added while/);
+  });
+
+  test('a late spend becomes the main payment of its own sheet, not a line on the first', () => {
+    const { clock, ready, bundler } = setup();
+    const b = bundler.add(proto('sign', 'evil.example', { counterparty: 'anyone' }))!;
+    clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
     bundler.add(spend('pay', 5000, 'evil.example'));
+    const first = buildSheetModel(b);
+    expect(first.payment).toBeUndefined();
+    expect(sheetDecisions(first, true, {}, false).pay).toBeUndefined();
+    bundler.resolve(b.id, sheetDecisions(first, true, {}, false));
+    clock.tick(400);
+    expect(buildSheetModel(ready[1]).payment?.requestID).toBe('pay');
+  });
+
+  test('closing the sheet (drop) also promotes the queue', () => {
+    const { clock, ready, promoted, bundler } = setup();
+    const b = bundler.add(proto('a'))!;
+    clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
+    bundler.add(basket('q'));
+    bundler.drop(b.id);
+    expect(promoted).toHaveLength(1);
+    clock.tick(400);
+    expect(ready[1].items.map((i) => i.requestID)).toEqual(['q']);
+  });
+
+  test('queued requests keep arrival order', () => {
+    const { clock, ready, bundler } = setup();
+    const b = bundler.add(proto('a'))!;
+    clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
+    for (const id of ['q1', 'q2', 'q3']) bundler.add(basket(id));
+    bundler.resolve(b.id, { a: true });
+    clock.tick(400);
+    expect(ready[1].items.map((i) => i.requestID)).toEqual(['q1', 'q2', 'q3']);
+  });
+
+  test('more than the cap per site is refused with a clear error; other sites are unaffected', () => {
+    const { clock, bundler } = setup();
+    bundler.add(proto('a'));
+    clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
+    for (let i = 0; i < MAX_QUEUED_PER_SITE; i++) bundler.add(basket(`q${i}`));
+    expect(() => bundler.add(basket('one-too-many'))).toThrow(PermissionQueueFullError);
+    expect(() => bundler.add(basket('x'))).toThrow(/Too many permission requests/);
+    expect(bundler.queued('bmovies.app')).toHaveLength(MAX_QUEUED_PER_SITE);
+    expect(bundler.add(basket('other', 'other.example'))).toBeDefined();
+  });
+
+  test('a site that goes away loses its queued requests (removeRequest, clear)', () => {
+    const { clock, ready, bundler } = setup();
+    const b = bundler.add(proto('a'))!;
+    clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
+    bundler.add(basket('q1'));
+    bundler.add(basket('q2'));
+    bundler.removeRequest('q1');
+    expect(bundler.queued('bmovies.app').map((i) => i.requestID)).toEqual(['q2']);
+    // Tab closed: background removes every pending request of the site; nothing is shown afterwards.
+    bundler.removeRequest('a');
+    bundler.removeRequest('q2');
+    clock.tick(400);
+    expect(ready).toHaveLength(1);
+    expect(bundler.get(b.id)).toBeUndefined();
+    bundler.add(proto('c'));
+    clock.tick(400);
+    bundler.add(basket('q3'));
+    bundler.clear();
+    expect(bundler.queued('bmovies.app')).toHaveLength(0);
+    expect(bundler.list()).toHaveLength(0);
+  });
+
+  test('requests inside the merge window still share one sheet', () => {
+    const { bundler } = setup();
+    const b = bundler.add(proto('a'))!;
+    bundler.add(basket('b'));
+    expect(b.items.map((i) => i.requestID)).toEqual(['a', 'b']);
+  });
+});
+
+describe('the three answers of a careful sheet (owner, 24 Oct 2026)', () => {
+  const careful = () =>
+    buildSheetModel({
+      originator: 'evil.example',
+      items: [proto('key', 'evil.example', { privileged: true }), basket('bk', 'evil.example')],
+    });
+
+  test('I trust it, allow: ticked lines are granted and things may be stored', () => {
+    const a = sheetAnswer(careful(), 'allow', { key: true }, true);
+    expect(a.decisions).toEqual({ key: true, bk: true });
+    expect(a.block).toBe(false);
+    expect(a.mayStore).toBe(true);
+  });
+
+  test('Not now: everything declined, nothing stored, nothing blocked', () => {
+    const a = sheetAnswer(careful(), 'notNow', { key: true, bk: true }, true);
+    expect(Object.values(a.decisions).every((v) => v === false)).toBe(true);
+    expect(a.block).toBe(false);
+    expect(a.mayStore).toBe(false);
+  });
+
+  test('Block this site: everything declined and a block is asked for', () => {
+    const a = sheetAnswer(careful(), 'block', { key: true, bk: true }, true);
+    expect(Object.values(a.decisions).every((v) => v === false)).toBe(true);
+    expect(a.block).toBe(true);
+    expect(a.mayStore).toBe(false);
+  });
+
+  test('a block record blocks until removed; the block basket is a wallet-reserved name', () => {
+    expect(blockActive({ expiry: 0 })).toBe(true);
+    expect(blockActive(null)).toBe(false);
+    expect(blockActive({ expiry: 1 }, 5000)).toBe(false);
+    expect(BLOCK_SITE_BASKET.startsWith('bwalletx.')).toBe(true);
+  });
+});
+
+describe('the live sheet (owner, 24 Oct 2026)', () => {
+  test('an untouched open sheet takes a new line live, marked New and unticked', () => {
+    const { clock, updated, bundler } = setup();
+    const b = bundler.add(proto('sign', 'bmovies.app', { counterparty: 'anyone' }))!;
+    clock.tick(400);
+    expect(bundler.add(basket('late'))).toBe(b);
+    expect(updated).toHaveLength(1);
+    const line = buildSheetModel(b).lines.find((l) => l.requestID === 'late')!;
+    expect(line.isNew).toBe(true);
+    expect(line.checked).toBe(false);
+    expect(line.text).toMatch(/^New: /);
+  });
+
+  test('Allow alone never grants a New line; ticking it does', () => {
+    const { clock, bundler } = setup();
+    const b = bundler.add(proto('sign', 'bmovies.app', { counterparty: 'anyone' }))!;
+    clock.tick(400);
+    bundler.add(basket('late'));
+    const model = buildSheetModel(b);
+    expect(sheetDecisions(model, true, {}, false)).toEqual({ sign: true, late: false });
+    expect(sheetDecisions(model, true, { late: true }, false).late).toBe(true);
+  });
+
+  test('an approve bound to an older set of lines (hash mismatch) grants nothing', () => {
+    const { clock, bundler } = setup();
+    const b = bundler.add(proto('sign', 'bmovies.app', { counterparty: 'anyone' }))!;
+    clock.tick(400);
+    const before = buildSheetModel(b);
+    const seen = sheetHash(b.items); // what was on screen when the user tapped
+    bundler.add(basket('late')); // arrives before the tap reaches the background
+    const res = bundler.resolve(b.id, sheetDecisions(before, true, {}, false), seen)!;
+    expect(res.stale).toBe(true);
+    expect(res.granted).toHaveLength(0);
+    expect(res.denied.map((r) => r.requestID).sort()).toEqual(['late', 'sign']);
+  });
+
+  test('a missing hash grants nothing; a matching hash grants the ticked lines', () => {
+    const one = setup();
+    const b1 = one.bundler.add(proto('sign', 'bmovies.app', { counterparty: 'anyone' }))!;
+    one.clock.tick(400);
+    expect(one.bundler.resolve(b1.id, { sign: true }, '')!.granted).toHaveLength(0);
+    const two = setup();
+    const b2 = two.bundler.add(proto('sign', 'bmovies.app', { counterparty: 'anyone' }))!;
+    two.clock.tick(400);
+    two.bundler.add(basket('late'));
+    const res = two.bundler.resolve(b2.id, { sign: true, late: false }, sheetHash(b2.items))!;
+    expect(res.granted.map((r) => r.requestID)).toEqual(['sign']);
+    expect(res.denied.map((r) => r.requestID)).toEqual(['late']);
+  });
+
+  test('the hash depends on the set, not the order', () => {
+    expect(sheetHash([{ requestID: 'a' }, { requestID: 'b' }])).toBe(
+      sheetHash([{ requestID: 'b' }, { requestID: 'a' }]),
+    );
+    expect(sheetHash([{ requestID: 'a' }])).not.toBe(sheetHash([{ requestID: 'a' }, { requestID: 'b' }]));
+  });
+
+  test('after pointerdown (freeze) a new request queues for its own sheet', () => {
+    const { clock, ready, bundler } = setup();
+    const b = bundler.add(proto('a'))!;
+    clock.tick(400);
+    bundler.freeze(b.id);
+    expect(bundler.add(basket('late'))).toBeUndefined();
+    expect(b.items).toHaveLength(1);
+    bundler.resolve(b.id, { a: true }, sheetHash(b.items));
+    clock.tick(400);
+    expect(ready[1].items.map((i) => i.requestID)).toEqual(['late']);
+  });
+
+  test('live changes are capped; beyond the cap requests queue', () => {
+    const { clock, bundler } = setup();
+    const b = bundler.add(proto('a'))!;
+    clock.tick(400);
+    for (let i = 0; i < MAX_LIVE_CHANGES; i++) expect(bundler.add(basket(`l${i}`))).toBe(b);
+    expect(bundler.add(basket('over'))).toBeUndefined();
+    expect(bundler.queued('bmovies.app').map((i) => i.requestID)).toEqual(['over']);
+  });
+
+  test('a live spend is a New line, never the main payment', () => {
+    const { clock, bundler } = setup();
+    const b = bundler.add(proto('sign', 'bmovies.app', { counterparty: 'anyone' }))!;
+    clock.tick(400);
+    bundler.add(spend('pay', 5000));
     const model = buildSheetModel(b);
     expect(model.payment).toBeUndefined();
     expect(sheetDecisions(model, true, {}, false).pay).toBe(false);
   });
+});
 
-  test('requests inside the merge window are not marked late', () => {
-    const { bundler } = setup();
-    const b = bundler.add(proto('a'));
-    bundler.add(basket('b'));
-    expect(b.items.every((i) => !i.lateJoin)).toBe(true);
+describe('never approve a line the user cannot read (mixed careful batch, 24 Oct 2026)', () => {
+  const site = 'mixed.example';
+  const mixed = () =>
+    buildSheetModel({
+      originator: site,
+      items: [proto('key', site, { privileged: true }), basket('bk', site)],
+    });
+
+  test('a line under Details is never granted unless it was shown on the card', () => {
+    const m = mixed();
+    const hidden = { hidden: new Set(['bk']) };
+    // Allow without opening Details: the hidden line is left out of the answer, never granted.
+    const a = sheetAnswer(m, 'allow', { key: true }, false, hidden);
+    expect(a.decisions).toEqual({ key: true });
+    expect('bk' in a.decisions).toBe(false);
+    // Even a stray tick for it cannot grant it while it was never on screen.
+    expect(sheetDecisions(m, true, { key: true, bk: true }, false, hidden)).toEqual({ key: true });
+    // Details opened: now it was shown, and its tick decides.
+    expect(sheetDecisions(m, true, { key: true }, true, hidden)).toEqual({ key: true, bk: true });
+  });
+
+  test('the careful card draws every line on its face, so nothing is hidden', () => {
+    const m = mixed();
+    const v = sheetView(m, true);
+    expect([...v.faceTicks].sort()).toEqual(['bk', 'key']);
+    expect(v.hidden.size).toBe(0);
+    // The ordinary line is drawn ticked, so Allow grants it as drawn; unticked on the face, it is denied.
+    expect(sheetDecisions(m, true, { key: true }, false, v)).toEqual({ key: true, bk: true });
+    expect(sheetDecisions(m, true, { key: true, bk: false }, false, v)).toEqual({ key: true, bk: false });
+  });
+
+  test('a protocol line drawn unticked on the careful face is not granted by Allow', () => {
+    const m = buildSheetModel({
+      originator: site,
+      items: [proto('key', site, { privileged: true }), proto('h1', site, { counterparty: 'self' })],
+    });
+    expect(sheetDecisions(m, true, { key: true }, false, sheetView(m, true))).toEqual({ key: true, h1: false });
+  });
+
+  test('a careful line that never scrolled onto the screen is hidden, so Allow cannot grant it', () => {
+    const m = mixed();
+    const v = sheetView(m, true, new Set(['key']));
+    expect([...v.hidden]).toEqual(['bk']);
+    expect(sheetDecisions(m, true, { key: true }, false, v)).toEqual({ key: true });
+    // Once it has been on screen it is drawn, ticked, and granted as drawn.
+    const all = sheetView(m, true, new Set(['key', 'bk']));
+    expect(all.hidden.size).toBe(0);
+    expect(sheetDecisions(m, true, { key: true }, false, all)).toEqual({ key: true, bk: true });
+  });
+
+  test('the shown items are exactly what the answer may cover', () => {
+    const items = [proto('key', site, { privileged: true }), basket('bk', site)];
+    expect(shownItems(items, { hidden: new Set(['bk']) }).map((i) => i.requestID)).toEqual(['key']);
+    expect(shownItems(items, sheetView(mixed(), true))).toEqual(items);
+  });
+
+  test('the hash covers only the shown lines: a hidden line makes the answer stale, so nothing is granted', () => {
+    const { clock, bundler } = setup();
+    const b = bundler.add(proto('key', site, { privileged: true }))!;
+    bundler.add(basket('bk', site));
+    clock.tick(400);
+    const hidden = { hidden: new Set(['bk']) };
+    const seen = sheetHash(shownItems(b.items, hidden));
+    expect(seen).not.toBe(sheetHash(b.items));
+    const answer = sheetAnswer(buildSheetModel(b), 'allow', { key: true }, false, hidden);
+    const r = bundler.resolve(b.id, answer.decisions, seen)!;
+    expect(r.granted).toEqual([]);
+    expect(r.stale).toBe(true);
   });
 });
