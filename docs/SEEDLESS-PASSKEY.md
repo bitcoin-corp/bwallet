@@ -291,17 +291,21 @@ but paper never needs a phone or an account. Takes 2 minutes." Button: "Show my 
 
 ## rpId decision
 
-**rpId = `bwalletx.com`** (the registrable domain) for any page on `bwalletx.com` or `*.bwalletx.com`. Any
-other host (localhost, Vercel previews) uses its own hostname (`rpIdFor()` in `prf.ts`).
+**rpId = `web.bwalletx.com`** for `web.bwalletx.com`, `desktop.bwalletx.com` (an explicit list, `WALLET_RP_HOSTS`
+in `prf.ts`) and the native apps. Every other host, including `bwalletx.com` and other subdomains, uses its own
+hostname.
 
-- One passkey works on `web.bwalletx.com`, `desktop.bwalletx.com` and `bwalletx.com`. A subdomain-scoped rpId
-  (`web.bwalletx.com`) would strand backups if the web wallet ever moves host.
-- It also leaves room for the native apps: iOS/Android can use `bwalletx.com` passkeys if the apps declare the
-  domain (`apple-app-site-association` webcredentials, Android `assetlinks.json`).
+- Changed 24 Oct 2026 (b-Aware row 57). The first design used the registrable domain `bwalletx.com`. WebAuthn lets
+  any `*.bwalletx.com` page request an rpId of `bwalletx.com`, and the PRF input is a public constant, so any
+  subdomain (chat., auth., a forgotten deploy) could get the same PRF output and open the seed backup with one
+  Face ID tap. Mixing the origin into the PRF input does not help: the caller chooses that input. Only the rpId
+  scopes who can ask. No backups existed when this changed (passkey_seed_backups had 0 rows), so nothing moved.
+- `desktop.bwalletx.com` uses the same passkeys through Related Origin Requests:
+  `https://web.bwalletx.com/.well-known/webauthn` lists it (Chrome 128+, Safari 18+).
+- The apps claim `webcredentials:web.bwalletx.com` (iOS) and the `assetlinks.json` on `web.bwalletx.com`
+  (Android); both files are served from the wallet's `public/.well-known/`.
 - What breaks across origins: a passkey made on localhost/preview only works there (the blob records its rpId
-  and the restore screen says where to go). A passkey cannot be used from `bchatx.com` or any other domain unless
-  we publish `https://bwalletx.com/.well-known/webauthn` (WebAuthn Related Origin Requests, Chrome 128+, Safari
-  18+) listing those origins. Not needed for v1.
+  and the restore screen says where to go).
 - The browser blocks `rp.id = bwalletx.com` from any page that is not on bwalletx.com, so a phishing site can't
   ask for our PRF output.
 
