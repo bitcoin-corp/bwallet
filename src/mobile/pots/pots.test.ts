@@ -337,8 +337,14 @@ describe('store: pots, orders, pause/resume, pay-on-open', () => {
     const { checkAgentSpend } = await import('../agents/agentAccounts');
     let release!: () => void;
     const slow = new Promise<void>((r) => (release = r));
-    const paying = payDue({ bsvUsd: 50, resolve: async (p) => (await slow, p.address!), ...P(async () => 'tx1') }, NOW);
-    // An agent spend of $6 arrives while the pot is still resolving its payee.
+    let entered!: () => void;
+    const resolving = new Promise<void>((r) => (entered = r));
+    const paying = payDue(
+      { bsvUsd: 50, resolve: async (p) => (entered(), await slow, p.address!), ...P(async () => 'tx1') },
+      NOW,
+    );
+    // An agent spend of $6 arrives while the pot is still resolving its payee (inside the queued step).
+    await resolving;
     const agent = serialSpend(async () => checkAgentSpend('1Pot', 6, NOW));
     await Promise.resolve();
     release();
