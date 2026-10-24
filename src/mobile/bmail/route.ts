@@ -23,6 +23,20 @@ export type MailMeta = {
   replyCredit?: boolean;
 };
 
+/**
+ * Whether an incoming letter may ride on a reply-paid credit I prepaid: it cites a letter I sent to this sender with
+ * reply-paid postage, and that credit has not paid for another letter already. One credit, one reply (b-Aware report,
+ * 24 Oct 2026: one credit was replayable forever). `used` holds the ids of my letters whose credit is spent.
+ */
+export const replyCreditOk = (
+  env: { from: string; inReplyTo?: string; usesReplyCredit?: boolean },
+  sent: readonly { id: string; to: string; replyPaidSats: number }[],
+  used: ReadonlySet<string>,
+): boolean => {
+  if (!env.usesReplyCredit || !env.inReplyTo || used.has(env.inReplyTo)) return false;
+  return sent.some((s) => s.id === env.inReplyTo && s.to === env.from && s.replyPaidSats > 0);
+};
+
 export type Box = 'inbox' | 'requests';
 
 export const route = (m: MailMeta, o: { isFriend: (key: string) => boolean; priceSats: number }): Box => {

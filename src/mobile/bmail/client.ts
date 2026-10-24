@@ -20,6 +20,7 @@ import {
   type Sealed,
 } from './envelope';
 import type { Received, Sent } from './store';
+import { replyCreditOk } from './route';
 import {
   LetterTooLargeError,
   TOO_LARGE_CONFIRMING,
@@ -317,8 +318,9 @@ export const verifyPostage = async (
 /** Fetch new mail, verify postage, return items to store plus relay ids to acknowledge afterwards. */
 export const fetchMail = async (
   wallet: WalletInterface,
-  ctx: { me: string; sent: Sent[]; known: Set<string> },
+  ctx: { me: string; sent: Sent[]; known: Set<string>; creditsUsed?: Set<string> },
 ): Promise<{ items: Received[]; ack: string[] }> => {
+  const creditsUsed = new Set(ctx.creditsUsed ?? []);
   const client = mbox(wallet);
   const msgs = await client.listMessages({ messageBox: BMAIL_BOX, host: bmailHost() });
   const items: Received[] = [];
@@ -335,13 +337,15 @@ export const fetchMail = async (
       continue;
     }
     const v = await verifyPostage(wallet, env);
-    const mine = env.inReplyTo ? ctx.sent.find((s) => s.id === env.inReplyTo && s.to === env.from) : undefined;
-    const replyCredit = !!(env.usesReplyCredit && mine && mine.replyPaidSats > 0);
+    // One reply per credit: a credit already used by an earlier letter (stored, or earlier in this batch) is spent.
+    const replyCredit = replyCreditOk(env, ctx.sent, creditsUsed);
+    if (replyCredit && env.inReplyTo) creditsUsed.add(env.inReplyTo);
     items.push({
       id: env.id,
       from: env.from,
       at: Math.min(env.at, Date.now()),
-      verifiedSats: replyCredit ? Math.max(v.sats, mine?.replyPaidSats ?? 0) : v.sats,
+      // Only postage actually internalized counts as received money; a credit is not a payment to me.
+      verifiedSats: v.sats,
       replyCredit,
       env,
       relayId: m.messageId,
