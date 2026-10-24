@@ -240,9 +240,17 @@ const MOBILE_TEXT: Record<string, [string, string][]> = {
       "      markHandlePrompt(keys.identityAddress, 'create');",
       "      markHandlePrompt(keys.identityAddress, 'create');\n      if (newWallet) if (!password.startsWith('pk1.')) void saveWalletPassword(accountName, password);",
     ],
-    // No "Continue with X / Google" here any more (owner, 18 Oct 2026: bWalletX isn't an OAuth sign-in, so those
-    // buttons misled). Create = master password + optional photo + 12 words; accounts are linked after the wallet
-    // exists, in the "Claim your name" step (social/LinkAccountsStep.tsx) and Settings › Identity.
+    // "Link your X (Twitter)" is back beside Account name / Add a photo (owner, 24 Oct 2026, reversing the 18 Oct
+    // password-only screen). Optional, never a sign-in: fills the editable name + photo, and "Claim your name"
+    // then offers $handle if handle@bwalletx.com is free (social/xHandle.ts). Off in store builds (socialLoginEnabled).
+    [
+      "import { useNavigate } from 'react-router-dom';",
+      "import { useNavigate } from 'react-router-dom';\nimport { SocialSignIn } from '../../mobile/social/SocialSignIn';",
+    ],
+    [
+      '        <AccountNameField\n          theme={theme}',
+      "        <SocialSignIn xOnly onProfile={(p) => { if (p.name) setAccountName(p.name); if (p.avatar) setIconURL(p.avatar); }} onClear={(a) => setIconURL((v) => (a && v === a ? '' : v))} onRestore={newWallet ? () => navigate('/restore-wallet') : undefined} />\n        <AccountNameField\n          theme={theme}",
+    ],
     // Recovery phrase "Next": don't wait on the background wallet switch (a new wallet's first
     // storage connection can hang), so the button never silently does nothing.
     [

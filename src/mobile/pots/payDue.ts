@@ -9,7 +9,9 @@
  * same raw tx (idempotent: one txid) and marks its periods paid; it never signs a fresh tx for them.
  */
 import { appendAgentLog, checkAgentSpend } from '../agents/agentAccounts';
+import { serialSpend } from '../agents/spendQueue';
 import { SUBSCRIPTIONS_ENABLED } from '../storeBuild';
+import { isPaused } from '../config/killSwitch';
 import {
   MAX_CATCH_UP,
   advanced,
@@ -33,6 +35,11 @@ import {
 import { PayeeReviewError, type PayeeDestination } from './payeeBinding';
 
 export type PayDeps = {
+  /**
+   * The spending kill switch (config/killSwitch.ts). While it says paused, nothing is signed or broadcast; orders
+   * wait and pay on a later run (b-Aware report, 24 Oct 2026: pot payments bypassed the pause). Default: the switch.
+   */
+  spendingPaused?: () => Promise<boolean>;
   /** Dollars per BSV now (0 = unknown: USD orders wait). */
   bsvUsd: number;
   /**
@@ -100,6 +107,8 @@ const fail = (s: Subscription, reason: string, deps: PayDeps, lowFunds = false):
 };
 
 async function run(deps: PayDeps, now: number): Promise<PayOutcome[]> {
+  // The pause stops pot payments too: no new signature and no broadcast of an already-signed one.
+  if (await (deps.spendingPaused ?? (() => isPaused('spending')))().catch(() => true)) return [];
   const cap = deps.cap ?? MAX_CATCH_UP;
   const subsOn = deps.subsOn ?? SUBSCRIPTIONS_ENABLED;
   const out: PayOutcome[] = [];
@@ -173,66 +182,68 @@ async function run(deps: PayDeps, now: number): Promise<PayOutcome[]> {
       out.push(fail(s, 'Only a pot can pay. Pick a pot for this subscription.', deps));
       continue;
     }
-    const gate = checkAgentSpend(s.potId, usd, now);
-    if (!gate.ok) {
-      out.push(fail(s, gate.reason, deps));
-      continue;
-    }
-    let address: string;
-    try {
-      const d = await deps.resolve(s.payee);
-      const dest = typeof d === 'string' ? { address: d } : d;
-      address = dest.address;
-      // An order saved before pinning: pin the first key that verified (payeeBinding.ts).
-      if (s.payee.paymail && !s.payee.pinnedKey && dest.pubkey) {
-        const key = dest.pubkey;
-        s = patch(s.id, (cur) => ({ payee: { ...cur.payee, pinnedKey: cur.payee.pinnedKey ?? key } })) ?? s;
+    // Cap check, sign and log as one step, queued with agent spends so the two can't both pass the daily cap.
+    const r = await serialSpend(async (): Promise<PayOutcome | null> => {
+      let s = live(id);
+      if (!s) return null;
+      const gate = checkAgentSpend(s.potId, usd, now);
+      if (!gate.ok) {
+        return fail(s, gate.reason, deps);
       }
-    } catch (e) {
-      if (e instanceof PayeeReviewError) {
-        const reason = e.message;
-        patch(s.id, () => ({ lastError: reason, needsReview: { reason, at: now, servedKey: e.servedKey } }));
-        deps.notify?.(`Check who ${s.payee.name} is paid to`, reason);
-        out.push({ id: s.id, ok: false, reason });
-        continue;
+      let address: string;
+      try {
+        const d = await deps.resolve(s.payee);
+        const dest = typeof d === 'string' ? { address: d } : d;
+        address = dest.address;
+        // An order saved before pinning: pin the first key that verified (payeeBinding.ts).
+        if (s.payee.paymail && !s.payee.pinnedKey && dest.pubkey) {
+          const key = dest.pubkey;
+          s = patch(s.id, (cur) => ({ payee: { ...cur.payee, pinnedKey: cur.payee.pinnedKey ?? key } })) ?? s;
+        }
+      } catch (e) {
+        if (e instanceof PayeeReviewError) {
+          const reason = e.message;
+          patch(s.id, () => ({ lastError: reason, needsReview: { reason, at: now, servedKey: e.servedKey } }));
+          deps.notify?.(`Check who ${s.payee.name} is paid to`, reason);
+          return { id: s.id, ok: false, reason };
+        }
+        return fail(s, e instanceof Error ? e.message : String(e), deps);
       }
-      out.push(fail(s, e instanceof Error ? e.message : String(e), deps));
-      continue;
-    }
-    // Last look before anything is signed: a Pause or Cancel tapped while resolving stops it here.
-    const fresh = live(s.id);
-    if (!fresh || fresh.periodIndex !== s.periodIndex) continue;
-    let signed: { rawTx: string; txid: string };
-    try {
-      signed = pnee
-        ? await deps.signPnee!(
-            s.potId,
-            Array.from({ length: count }, () => ({ address, units: units! })),
-            s.memo,
-          )
-        : await deps.sign(
-            s.potId,
-            Array.from({ length: count }, () => ({ address, sats: sats! })),
-            s.memo,
-          );
-    } catch (e) {
-      const m = e instanceof Error ? e.message : String(e);
-      out.push(fail(s, m, deps, /not enough|insufficient/i.test(m)));
-      continue;
-    }
-    const p: PendingPayment = {
-      subId: s.id,
-      potId: s.potId,
-      periodIndex: s.periodIndex,
-      count,
-      dueTimes: plan.due,
-      ...signed,
-      usd,
-      at: now,
-      ...(pnee ? { unit: 'PNEE' as const } : { sats: sats! * count }),
-    };
-    savePending(p); // before the broadcast: from here on these periods are only ever paid by this tx
-    out.push(await settlePending(s, p, deps, now));
+      // Last look before anything is signed: a Pause or Cancel tapped while resolving stops it here.
+      const fresh = live(s.id);
+      if (!fresh || fresh.periodIndex !== s.periodIndex) return null;
+      let signed: { rawTx: string; txid: string };
+      try {
+        signed = pnee
+          ? await deps.signPnee!(
+              s.potId,
+              Array.from({ length: count }, () => ({ address, units: units! })),
+              s.memo,
+            )
+          : await deps.sign(
+              s.potId,
+              Array.from({ length: count }, () => ({ address, sats: sats! })),
+              s.memo,
+            );
+      } catch (e) {
+        const m = e instanceof Error ? e.message : String(e);
+        return fail(s, m, deps, /not enough|insufficient/i.test(m));
+      }
+      const p: PendingPayment = {
+        subId: s.id,
+        potId: s.potId,
+        periodIndex: s.periodIndex,
+        count,
+        dueTimes: plan.due,
+        ...signed,
+        usd,
+        at: now,
+        ...(pnee ? { unit: 'PNEE' as const } : { sats: sats! * count }),
+      };
+      savePending(p); // before the broadcast: from here on these periods are only ever paid by this tx
+      return settlePending(s, p, deps, now);
+    });
+    if (r) out.push(r);
   }
   return out;
 }

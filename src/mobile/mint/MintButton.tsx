@@ -475,7 +475,7 @@ export const MintSheet = ({
                   ? 'Tokenise a domain'
                   : step === 'card'
                     ? 'Greeting card'
-                    : step === 'ad'
+                    : step === 'ad' && GREETING_CARDS_ENABLED
                       ? 'Order a bAd'
                       : step === 'choose'
                         ? 'Mint'

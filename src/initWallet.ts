@@ -25,6 +25,8 @@ import { preserveOriginalErrors } from './services/permissionAbortGuard';
 import { guardReservedBaskets, revokeReservedBasketGrants } from './services/reservedBaskets';
 import { guardReservedProtocols, revokeReservedProtocolGrants } from './services/reservedProtocols';
 import { guardAllowance } from './services/allowanceGuard';
+import { ALLOWANCES_ENABLED } from './services/allowanceFlag';
+import { chromeEnvelopeBackend, EnvelopeStore, guardEnvelopes } from './services/envelopes';
 import { guardCrossSiteSigning } from './services/crossSiteSignGuard';
 import { normalizeOriginator } from '@1sat/wallet';
 import { guardSpending } from './mobile/config/killSwitch';
@@ -144,6 +146,8 @@ export interface AccountContext {
   remoteStorage?: StorageClient;
   /** The grant store the permissions manager reads (one-sheet connect writes the monthly allowance here). */
   permissionStore: IndexedDbPermissionStore;
+  /** Per-site envelopes (services/envelopes.ts): the only payments that go through without a sheet. */
+  envelopes: EnvelopeStore;
   setActiveStorage: (target: 'local' | string) => Promise<void>;
   addRemote: (url: string) => Promise<void>;
   /** Find and import token outputs the wallet owns on chain but has no record of (tokenRecovery.ts). */
@@ -381,6 +385,8 @@ export const initWallet = async (
   // Month-to-date app spend kept on this device, per account, so a remote storage server cannot under-report it
   // and let payments past a monthly allowance through (services/spendLedger.ts, b-Aware report 23 Oct 2026).
   const spendLedger = await openSpendLedger(accountId || 'no-account');
+  // Envelopes (owner, 24 Oct 2026): earmarks in this account's own storage, never coins moved (services/envelopes.ts).
+  const envelopes = new EnvelopeStore(chromeEnvelopeBackend(accountId || 'no-account'));
 
   // 4. Build per-asset permission modules (1sat / opns / bsv21 / lock).
   //    Shared toolkit; separate BRC-99 scheme ids. Base wallet is used for
@@ -407,17 +413,29 @@ export const initWallet = async (
       guardCrossSiteSigning(
         preserveOriginalErrors(
           withLocalSpendLedger(
-            // A monthly allowance asks for any one payment over its per-payment cap, or to a payee outside its
-            // optional allowlist (services/allowanceGuard.ts, payment-safety audit 24 Oct 2026 B2).
-            guardAllowance(
-              new LocalWalletPermissionsManager(
-                baseWallet,
-                ADMIN_ORIGINATOR,
-                { permissionModules: assetModules },
-                { store: permissionStore },
-              ),
-              { store: permissionStore, adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
-            ),
+            // Envelopes by default: a site's payment goes through without a sheet only when it fits that site's
+            // envelope; stored allowances grant nothing (services/envelopes.ts, owner 24 Oct 2026). With
+            // ALLOWANCES_ENABLED, the old monthly allowance with its per-payment cap and payee allowlist
+            // (services/allowanceGuard.ts, payment-safety audit 24 Oct 2026 B2).
+            ALLOWANCES_ENABLED
+              ? guardAllowance(
+                  new LocalWalletPermissionsManager(
+                    baseWallet,
+                    ADMIN_ORIGINATOR,
+                    { permissionModules: assetModules },
+                    { store: permissionStore },
+                  ),
+                  { store: permissionStore, adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
+                )
+              : guardEnvelopes(
+                  new LocalWalletPermissionsManager(
+                    baseWallet,
+                    ADMIN_ORIGINATOR,
+                    { permissionModules: assetModules },
+                    { store: permissionStore },
+                  ),
+                  { envelopes, adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
+                ),
             spendLedger,
           ),
         ),
@@ -959,6 +977,7 @@ export const initWallet = async (
     storage,
     remoteStorage,
     permissionStore,
+    envelopes,
     setActiveStorage,
     addRemote,
     recoverTokens,

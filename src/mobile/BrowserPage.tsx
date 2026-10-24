@@ -52,7 +52,7 @@ import { appIconFor, useUserApps } from './apps/userApps';
 import { useBackClose } from './backStack';
 import { moveItem } from './reorder';
 import { TopNav } from '../components/TopNav';
-import { ONE_SAT_MARKET_URL, featuredApps } from '../utils/constants';
+import { featuredApps } from '../utils/constants';
 import { UNOFFICIAL_NOTICE } from './brandText';
 import { openDappBrowser } from './dappBrowser';
 import {
@@ -148,7 +148,8 @@ const DEAD_HOSTS = new Set(['taleofshua.com']);
 
 // Third-party apps (Apps › Other apps). Our own live in ./bapps.ts.
 const apps = [
-  { name: '1Sat Market', link: ONE_SAT_MARKET_URL, icon: undefined as string | undefined },
+  // 1sat.market/market answers 307 with no Location (24 Oct 2026); the site root loads.
+  { name: '1Sat Market', link: 'https://1sat.market/', icon: undefined as string | undefined },
   { name: '1satsocial', link: 'https://1satsocial.online', icon: app_onesatsocialIcon },
   { name: 'Treechat', link: 'https://treechat.com', icon: app_treechatIcon },
   { name: 'Twetch', link: 'https://twetch.com', icon: app_twetchIcon },
@@ -250,7 +251,7 @@ const bappTile = (a: BApp): Tile => ({
   bapp: a,
 });
 
-// Featured first (bChat, bMovies, bMusic, bMint, bWriter), then the rest by group.
+// Featured first (bChatX, bMoviesX, bMusicX, bMintX, bWriterX), then the rest by group.
 // Store build: no exchange / swap tiles (storeBuild.ts STORE_HIDDEN_APPS, App Review 3.1.5(iii)).
 const BAPP_TILES = BAPP_GROUPS.flatMap((g) => bappsIn(g.id))
   .filter((a) => appsTileShown(a.name))
@@ -512,18 +513,18 @@ allowFrameUrls(ALL_TILES.filter((t) => !t.bapp?.noFrame && !t.url.startsWith('/'
 // Favourites: tile URLs, persisted once the user changes them; until then the default set.
 // The featured suite: our own bApps, then the ones with their original icons, then Treechat and Twetch.
 const DEFAULT_FAVOURITES = [
-  'bChat',
-  'bMovies',
+  'bChatX',
+  'bMoviesX',
   ...(TOKENBLASTER_ENABLED ? ['TokenBlaster'] : []),
-  'bMusic',
-  'bMint',
-  'bWriter',
+  'bMusicX',
+  'bMintX',
+  'bWriterX',
   'bSheets',
-  'bMail',
-  'bDrive',
-  'bCal',
+  'bMailX',
+  'bDriveX',
+  'bCalX',
   'bCode',
-  'bJobs',
+  'bJobsX',
   'bArt',
   'bPaint',
   'b3D',
@@ -1045,6 +1046,7 @@ const BrowserPage = ({
           key: t.key,
           name: t.name,
           verb: t.bapp?.verb,
+          url: t.url,
           icon: t.icon,
           demo: t.demo,
           standard: t.bapp ? builtinStandard(t.bapp) : undefined,
@@ -1056,6 +1058,7 @@ const BrowserPage = ({
           key: t.key,
           name: t.name,
           verb: t.desc,
+          url: t.url,
           icon: t.icon,
           // Third-party apps: no token, room or theme pack registered with us, no in-wallet BRC-100 check yet.
           standard: { token: null, room: null, theme: familySite(t.url)?.id ?? null, inWallet: false },

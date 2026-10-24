@@ -3,6 +3,8 @@ import { BadgeCheck, Loader2 } from 'lucide-react';
 import { socialLoginEnabled } from '../storeBuild';
 import { BWALLET_PAYMAIL_DOMAIN } from '../names/config';
 import { CAP, fill, getCapabilities } from '../names/names';
+import { paymailAvailable } from '../names/paymail';
+import { forgetXHandle, rememberXHandle, xAlias, xPrefill } from './xHandle';
 
 /** True when name@<our domain> already has an identity key (public lookup; nothing of this wallet is sent). */
 const nameHasWallet = async (alias: string): Promise<boolean> => {
@@ -68,7 +70,10 @@ export const SocialSignIn = ({
   onClear,
   owner = NEW_ACCOUNT,
   check = false,
+  xOnly = false,
 }: {
+  /** Create Account (owner, 24 Oct 2026): one optional "Link your X (Twitter)" button; fills name + photo. */
+  xOnly?: boolean;
   /** Restore: an optional check that the 12 words own the verified name (restoreGuard.ts), never a sign-in. */
   check?: boolean;
   onProfile: (p: { name: string; avatar: string }) => void;
@@ -99,10 +104,15 @@ export const SocialSignIn = ({
     if (filled.current === key) return;
     filled.current = key;
     filledAvatar.current = p.avatar || '';
-    onProfileRef.current({
-      name: p.provider === 'x' ? p.name.replace(/^@/, '') : p.display || p.name.split('@')[0],
-      avatar: p.avatar || '',
-    });
+    if (xOnly) rememberXHandle(xAlias(p));
+    onProfileRef.current(
+      xOnly && p.provider === 'x'
+        ? xPrefill(p)
+        : {
+            name: p.provider === 'x' ? p.name.replace(/^@/, '') : p.display || p.name.split('@')[0],
+            avatar: p.avatar || '',
+          },
+    );
   };
   useEffect(() => {
     fill(socialProfile(owner));
@@ -115,6 +125,7 @@ export const SocialSignIn = ({
       else if (filled.current) {
         filled.current = '';
         onClearRef.current?.(filledAvatar.current);
+        if (xOnly) forgetXHandle();
         filledAvatar.current = '';
       }
     });
@@ -123,6 +134,20 @@ export const SocialSignIn = ({
   // tried to get b0asex.x onto a phone that way and got an error). Say so and offer Restore (12 words).
   const alias = profile?.alias || '';
   const offerRestore = !!onRestore;
+  // Create: is handle@<our domain> free for "Claim your name" to offer next? (Public lookup, nothing claimed.)
+  const xa = xOnly ? xAlias(profile) : '';
+  const [xFree, setXFree] = useState<boolean | null>(null);
+  useEffect(() => {
+    setXFree(null);
+    if (!xa || !BWALLET_PAYMAIL_DOMAIN) return;
+    let live = true;
+    void paymailAvailable((u, i) => fetch(u, i), xa)
+      .then((free) => live && setXFree(free))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [xa]);
   useEffect(() => {
     setTaken('');
     if (!offerRestore || !alias || !BWALLET_PAYMAIL_DOMAIN) return;
@@ -148,7 +173,7 @@ export const SocialSignIn = ({
 
   if (profile)
     return (
-      <div className="w-[92%] mb-4">
+      <div className={xOnly ? 'w-[85%] mb-3' : 'w-[92%] mb-4'}>
         <div className="flex items-center gap-3 rounded-xl px-3 py-2.5" style={{ background: 'var(--bw-surface)' }}>
           {profile.avatar ? <img src={profile.avatar} alt="" className="w-8 h-8 rounded-full" /> : null}
           <div className="flex-1 min-w-0 text-left">
@@ -159,7 +184,11 @@ export const SocialSignIn = ({
             <div className="text-[11px]" style={{ color: '#98A2B3' }}>
               {check
                 ? `Verified · the 12 words must be the wallet that owns ${alias || 'this name'}`
-                : 'Verified · you choose your handle next'}
+                : xOnly && xa && xFree
+                  ? `Linked · $${xa} (${xa}@${BWALLET_PAYMAIL_DOMAIN}) is free; we'll offer it next`
+                  : xOnly && xa && xFree === false
+                    ? `Linked · ${xa}@${BWALLET_PAYMAIL_DOMAIN} is taken; you choose your name next`
+                    : 'Verified · you choose your handle next'}
             </div>
           </div>
           <button
@@ -193,6 +222,27 @@ export const SocialSignIn = ({
     );
 
   const desktop = inDesktopApp();
+  if (xOnly)
+    return (
+      <div className="w-[85%] mb-3">
+        <button
+          type="button"
+          onClick={() => void go('x')}
+          disabled={!!busy || desktop}
+          className="flex w-full items-center justify-center gap-2 h-11 rounded-xl text-sm font-semibold border-0"
+          style={{ background: 'var(--bw-surface)', color: '#fff', opacity: desktop ? 0.5 : 1 }}
+        >
+          {busy === 'x' ? <Loader2 size={16} className="animate-spin" /> : <XLogo />}
+          Link your X (Twitter)
+        </button>
+        <p className="text-[11px] mt-1.5 text-center" style={{ color: error ? '#FDA29B' : '#98A2B3' }}>
+          {error ||
+            (desktop
+              ? 'Link X on web or in the phone app for now.'
+              : 'Optional. Fills your name and photo, and offers your X handle as your $name.')}
+        </p>
+      </div>
+    );
   const btn = (p: SocialProvider, label: string, icon: JSX.Element) => (
     <button
       type="button"

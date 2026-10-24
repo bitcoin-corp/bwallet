@@ -24,6 +24,7 @@ import {
   defaultDisplayName,
 } from './paymail';
 import { clearSocial, socialProof } from '../social/socialLogin';
+import { checkXOffer, forgetXHandle, rememberedXHandle, xAlias, type XOffer } from '../social/xHandle';
 import { BWALLET_PAYMAIL_API, BWALLET_PAYMAIL_DOMAIN, SIBLING_PAYMAIL_DOMAINS } from './config';
 import {
   PERSONAL_FEE_ESTIMATE_SATS,
@@ -89,6 +90,8 @@ export const HandleFlow = ({
   onClaimed?: (paymail: string) => Promise<void> | void;
 }) => {
   useBackClose(true, onClose);
+  // The X handle kept from Create is for this sheet only: forget it when the sheet closes.
+  useEffect(() => () => forgetXHandle(), []);
   const { apiContext, chromeStorageService } = useServiceContext();
   const legacy = useLegacyKeys();
   const account = chromeStorageService.getCurrentAccountObject().account;
@@ -156,6 +159,20 @@ export const HandleFlow = ({
     if (a) setTimeout(() => setAlias(a), 0);
     return a || null;
   });
+  // Linked X on Create (owner, 24 Oct 2026): propose $handle only when handle@<domain> is free, else free
+  // alternatives. The user confirms with a tap; nothing is claimed automatically.
+  const [xHandle] = useState(() =>
+    suggest ? '' : xAlias(socialProof(identityAddress)?.profile) || rememberedXHandle(),
+  );
+  const [xProposal, setXProposal] = useState<XOffer>({ kind: 'none' });
+  useEffect(() => {
+    if (!enabled || !xHandle || paymail) return;
+    let live = true;
+    void checkXOffer(xHandle, (a) => paymailAvailable(f, a)).then((o) => live && setXProposal(o));
+    return () => {
+      live = false;
+    };
+  }, [enabled, xHandle, paymail]);
   // The token is named after the claimed handle (paymail alias, else OpNS name), else what's typed.
   const claimed = (paymail ? paymail.split('@')[0] : '') || getMyName(identityAddress);
   const tokenName = claimed || alias;
@@ -293,13 +310,13 @@ export const HandleFlow = ({
     }
   };
 
-  const claim = async (fee: { feeTxid?: string; feeTx?: string } = {}) => {
+  const claim = async (fee: { feeTxid?: string; feeTx?: string } = {}, name = alias) => {
     setBusy(true);
     setMsg('');
     try {
       // The sign-in only lends its photo and display name; the handle is the one typed here.
       const proof = socialProof(identityAddress);
-      const pm = await claimPaymail(f, apiContext.wallet, alias, {
+      const pm = await claimPaymail(f, apiContext.wallet, name, {
         ordAddress,
         name:
           cleanDisplayName(yourName) ||
@@ -313,6 +330,7 @@ export const HandleFlow = ({
         await adoptSocialAvatar(chromeStorageService, proof.profile.avatar);
         clearSocial();
       }
+      forgetXHandle();
       setPaymail(identityAddress, pm);
       setPm(pm);
       // bChat handle = paymail name, before any token room is opened under it. A sign-in that was
@@ -385,6 +403,69 @@ export const HandleFlow = ({
                 {nameFee ? '1¢ · instant' : 'Free · instant'}
               </span>
             </div>
+            {!paymail && xProposal.kind === 'take' && (
+              <div
+                className="rounded-xl p-3 flex flex-col gap-2"
+                style={{ background: '#0b0c0f', border: `1px solid ${GOLD}` }}
+              >
+                <p className="text-sm text-white m-0">
+                  <b>@{xProposal.alias}</b> is yours on X. Take <b style={{ color: GOLD }}>${xProposal.alias}</b> (
+                  {xProposal.alias}@{BWALLET_PAYMAIL_DOMAIN})?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setAlias(xProposal.alias);
+                      if (nameFee) setFeeConfirm(true);
+                      else void claim({}, xProposal.alias);
+                    }}
+                    className="flex-1 h-10 rounded-lg text-sm font-bold border-0 cursor-pointer disabled:opacity-40"
+                    style={{ background: GOLD, color: '#000' }}
+                  >
+                    {busy ? 'Claiming…' : `Take $${xProposal.alias}${nameFee ? ' · 1¢' : ''}`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => (setXProposal({ kind: 'none' }), setAlias(''))}
+                    className="h-10 px-3 rounded-lg text-sm border-0 cursor-pointer"
+                    style={{ background: BORDER, color: '#fff' }}
+                  >
+                    Pick another
+                  </button>
+                </div>
+              </div>
+            )}
+            {!paymail && xProposal.kind === 'taken' && (
+              <div
+                className="rounded-xl p-3 flex flex-col gap-2"
+                style={{ background: '#0b0c0f', border: `1px solid ${BORDER}` }}
+              >
+                <p className="text-xs m-0" style={{ color: GRAY }}>
+                  <b className="text-white">@{xProposal.alias}</b> is yours on X, but {xProposal.alias}@
+                  {BWALLET_PAYMAIL_DOMAIN} is taken.
+                  {xProposal.alternatives.length ? ' These are free:' : ' Type another name below.'}
+                </p>
+                {xProposal.alternatives.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {xProposal.alternatives.map((a) => (
+                      <button
+                        key={a}
+                        type="button"
+                        onClick={() => setAlias(a)}
+                        className="h-8 px-3 rounded-full text-xs font-semibold border-0 cursor-pointer"
+                        style={
+                          alias === a ? { background: GOLD, color: '#000' } : { background: BORDER, color: '#fff' }
+                        }
+                      >
+                        ${a}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div
               className="flex items-center gap-1 rounded-xl px-3 h-11"
               style={{ background: '#0b0c0f', border: `1px solid ${BORDER}` }}

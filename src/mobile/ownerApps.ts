@@ -15,12 +15,10 @@ import owner_gmehl_rocks from './brand/apps/radar/owner-gmehl-rocks.png';
 import owner_uwutv_space from './brand/apps/radar/owner-uwutv-space.png';
 import owner_twetch_rocks from './brand/apps/radar/owner-twetch-rocks.png';
 import owner_aigf_pro from './brand/apps/radar/owner-aigf-pro.png';
-import owner_openbooks_space from './brand/apps/radar/owner-openbooks-space.png';
 import owner_1satsocial_online from './brand/apps/radar/owner-1satsocial-online.png';
 import owner_zerodice_online from './brand/apps/radar/owner-zerodice-online.png';
 import owner_ninjapunkgirls_online from './brand/apps/radar/owner-ninjapunkgirls-online.png';
 import owner_tankscope_pro from './brand/apps/radar/owner-tankscope-pro.png';
-import owner_bmusic_space from './brand/apps/radar/owner-bmusic-space.png';
 import owner_vexvoid_com from './brand/apps/radar/owner-vexvoid-com.png';
 // ADD-APP:IMPORTS
 
@@ -90,14 +88,6 @@ const ALL_OWNER_APPS: RadarApp[] = [
     source: 'owner',
   },
   {
-    name: 'OpenBook',
-    url: 'https://openbooks.space',
-    desc: "Post an idea and it's yours: timestamped on-chain, and it mints you a token in the th",
-    group: 'social',
-    icon: owner_openbooks_space,
-    source: 'owner',
-  },
-  {
     name: '1satsocial',
     url: 'https://1satsocial.online',
     desc: 'Every BSV-21 token, BSV-20 tick and 1Sat Ordinals collection gets its own group chat. Only',
@@ -127,14 +117,6 @@ const ALL_OWNER_APPS: RadarApp[] = [
     desc: 'Field capture and customer reporting for route-based aquarium service businesses. Per-tank',
     group: 'tools',
     icon: owner_tankscope_pro,
-    source: 'owner',
-  },
-  {
-    name: 'bMusic',
-    url: 'https://bmusic.space',
-    desc: 'MINT · RECORD · REEL · RELEASE. Pump.fun for music. Mint an AI artist for $0.99, record a ',
-    group: 'media',
-    icon: owner_bmusic_space,
     source: 'owner',
   },
   // bWalletX only: not even as data in a store build (TOKENBLASTER_ENABLED; vite.config.mobile.ts swaps

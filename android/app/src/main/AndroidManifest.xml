@@ -80,8 +80,8 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
 
-        <!-- Passkeys for rpId bwalletx.com (PasskeysPlugin.java). The site side is
-             https://bwalletx.com/.well-known/assetlinks.json (get_login_creds for both app ids). -->
+        <!-- Passkeys for rpId web.bwalletx.com (PasskeysPlugin.java). The site side is
+             https://web.bwalletx.com/.well-known/assetlinks.json (get_login_creds for both app ids). -->
         <meta-data
             android:name="asset_statements"
             android:resource="@string/asset_statements" />

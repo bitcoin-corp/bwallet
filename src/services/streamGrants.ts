@@ -245,6 +245,19 @@ export const revokeGrant = (
   return { ...state, grants: state.grants.map((x) => (x.id === id ? { ...x, revokedAt: x.revokedAt ?? now } : x)) };
 };
 
+/** Revoke every grant a site holds (Forget site, Revoke all, unpair). Undefined when it held none. */
+export const revokeGrantsForOriginator = (
+  state: StreamState,
+  originator: string,
+  now: number,
+): StreamState | undefined => {
+  if (!state.grants.some((g) => g.originator === originator && !g.revokedAt)) return undefined;
+  return {
+    ...state,
+    grants: state.grants.map((g) => (g.originator === originator ? { ...g, revokedAt: g.revokedAt ?? now } : g)),
+  };
+};
+
 /** Drop revoked/expired grants older than a day so storage doesn't grow. */
 export const tidy = (state: StreamState, now: number): StreamState => ({
   ...state,

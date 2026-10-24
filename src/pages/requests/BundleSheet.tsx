@@ -27,6 +27,8 @@ import { ApprovalCard, Check, Chip, Cross, SiteTile } from '../../components/app
 import { CARD } from '../../components/approval/cardTheme';
 import { CarefulHero, ConnectHero, PayHero, SignInHero } from '../../components/approval/ApprovalHeroes';
 import { useSheetPrice } from '../../components/DollarAmount';
+import { EnvelopePresets } from '../../components/approval/EnvelopePresets';
+import { envelopeUsdText } from '../../services/envelopes';
 import { dollarsFirst, dollarsInline } from '../../utils/dollarsFirst';
 
 /**
@@ -42,7 +44,15 @@ export type BundlePayload = {
   mint?: MintSheet;
 };
 
-type Allowance = { usdPerBsv?: number; existingSats?: number; defaultUsd: number };
+type Allowance = {
+  usdPerBsv?: number;
+  existingSats?: number;
+  defaultUsd: number;
+  /** Monthly allowances are on (services/allowanceFlag.ts); off by default, envelopes instead. */
+  allowances?: boolean;
+  /** The site's envelope (services/envelopes.ts): offered on its pay sheet, with what it holds now. */
+  envelope?: { offer: boolean; balanceSats?: number; presetsUsd: readonly number[] };
+};
 
 const fmtUsd = (usd: number) => (usd < 1 ? `${Math.round(usd * 100)}¢` : `$${usd.toFixed(2)}`);
 
@@ -96,6 +106,8 @@ export const BundleSheet = (props: {
   const [allowance, setAllowance] = useState<Allowance | undefined>();
   const [allowanceUsd, setAllowanceUsd] = useState<number>(DEFAULT_ALLOWANCE_USD);
   const [allowanceOn, setAllowanceOn] = useState(true);
+  // Opt-in: a pay sheet pays this payment; putting money in the envelope is the user's own choice.
+  const [envelopeUsd, setEnvelopeUsd] = useState(0);
   const [remember, setRemember] = useState(true);
   // "Don't ask again": later sign-in, signing and basket requests from this site need no sheet.
   const canTrust = useMemo(() => sheetCanTrust(request), [request]);
@@ -129,6 +141,9 @@ export const BundleSheet = (props: {
   const mint = request.mint && model.payment && model.lines.every((l) => !l.risky) ? request.mint : undefined;
   // Pay in the moment (owner, 24 Oct 2026): these sheets never offer a monthly allowance.
   const showAllowance = false as boolean;
+  // "Put $X in <site>'s envelope" / "Top up the envelope": a payment from a micropayments site, or one with an envelope.
+  const envelope = !mint && model.payment && allowance?.usdPerBsv ? allowance.envelope : undefined;
+  const showEnvelope = !!envelope?.offer;
   // Dollars first (owner, 24 Oct 2026): the site's allowance rate when the background sent one, else the live price.
   const price = useSheetPrice(allowance?.usdPerBsv);
   const payAmount = model.payment ? dollarsFirst(model.payment.satoshis, price) : undefined;
@@ -154,6 +169,7 @@ export const BundleSheet = (props: {
         bundleID: request.bundleID,
         decisions: answer.decisions,
         allowanceUsd: answer.mayStore && showAllowance && allowanceOn ? allowanceUsd : 0,
+        envelopeUsd: answer.mayStore && showEnvelope ? envelopeUsd : 0,
         remember: answer.mayStore && remember,
         trustSite: !mint && answer.mayStore && remember && canTrust && trustSite,
         block: answer.block,
@@ -347,7 +363,8 @@ export const BundleSheet = (props: {
             style={{ width: 18, height: 18, accentColor: CARD.gold, flexShrink: 0, marginTop: 1 }}
           />
           <span>
-            Don&apos;t ask again on {request.originator} for sign-in and signing. Payments stay within the allowance;
+            Don&apos;t ask again on {request.originator} for sign-in and signing.{' '}
+            {allowance?.allowances ? 'Payments stay within the allowance;' : 'Payments still ask, or use its envelope;'}{' '}
             your personal details always ask.
           </span>
         </label>
@@ -491,8 +508,40 @@ export const BundleSheet = (props: {
           <Check size={18} />
           {allowanceSetsUsd > 0
             ? `Then up to ${fmtUsd(allowanceSetsUsd)} a month without asking`
-            : 'Every payment asks you first'}
+            : envelopeUsd > 0
+              ? `Then small payments come out of the envelope`
+              : 'Every payment asks you first'}
         </div>
+        {showEnvelope && envelope && (
+          <div className="flex flex-col" style={{ gap: 8 }} data-testid="envelope-offer">
+            <span style={{ fontSize: 15, fontWeight: 600 }}>
+              {envelope.balanceSats !== undefined ? (
+                <>
+                  Top up the envelope
+                  <span style={{ fontSize: 13, fontWeight: 400, color: CARD.muted }}>
+                    {' '}
+                    · {dollarsInline(envelope.balanceSats, price)} left, not enough for this
+                  </span>
+                </>
+              ) : (
+                <>
+                  {envelopeUsd > 0 ? `Also put ${envelopeUsdText(envelopeUsd)}` : 'Also put money'} in {gold(name)}
+                  &apos;s envelope?
+                </>
+              )}
+            </span>
+            <EnvelopePresets
+              presetsUsd={envelope.presetsUsd}
+              value={envelopeUsd}
+              onChange={setEnvelopeUsd}
+              allowNone
+              disabled={disabled}
+            />
+            <span style={{ fontSize: 12, color: CARD.muted }}>
+              Stays in your wallet. Small payments from {name} come out of it without asking; Coin return any time.
+            </span>
+          </div>
+        )}
       </>
     );
   } else if (kind === 'post') {
