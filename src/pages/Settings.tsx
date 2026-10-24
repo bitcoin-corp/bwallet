@@ -1,3 +1,4 @@
+import { manifestVersion, settingsBuildInfo } from '../utils/versionLabel';
 import { requestThemeSheet } from '../mobile/theme/themeNav';
 import { THEME_ORDERS_ENABLED } from '../mobile/storeBuild';
 import { AvatarTooBigError } from '../mobile/names/animatedAvatar';
@@ -305,9 +306,8 @@ const describeRepairBase = (record: ReconcileRecord, outcome: ReconcileOutcome):
 // Manifest version reflects what's actually loaded in the browser; the commit hash is
 // stamped by vite at build time, so a stale `build/` dir is immediately visible here.
 // Nothing time- or environment-dependent is injected, keeping builds reproducible.
-const manifestVersion =
-  typeof chrome !== 'undefined' && chrome.runtime?.getManifest ? chrome.runtime.getManifest().version : 'dev';
-const buildInfo = `v${manifestVersion} · ${__BUILD_COMMIT__}`;
+// "-dirty" is stripped for users; error reports keep it.
+const buildInfo = settingsBuildInfo(manifestVersion(), __BUILD_COMMIT__);
 
 export const Settings = () => {
   const { theme } = useTheme();

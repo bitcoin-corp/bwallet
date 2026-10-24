@@ -20,6 +20,24 @@ const gitCommit = (() => {
   }
 })();
 
+// The release commit is the last one that changed package.json's "version" line. Any other HEAD (a web
+// deploy between releases) is a hotfix build, labelled with its short commit; '' when HEAD is the release
+// or git is missing.
+const buildHotfix = (() => {
+  try {
+    const run = (cmd: string) =>
+      execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'] })
+        .toString()
+        .trim();
+    const head = run('git rev-parse --short=7 HEAD');
+    const release = run(`git log -1 -G'"version"' --format=%h --abbrev=7 -- package.json`);
+    if (!head || !release) return '';
+    return head.startsWith(release) || release.startsWith(head) ? '' : head;
+  } catch {
+    return '';
+  }
+})();
+
 // three's DRACOLoader (Market › 3D viewer, src/mobile/three3d/gltfLoader.ts) brings its decoder files in with
 // new URL(..., import.meta.url), and Vite emits them as soon as the module is transformed, even when the lazy
 // 3D chunk is dropped. A store build has no 3D viewer: drop the orphaned decoder files (about 1.3 MB) too.
@@ -106,5 +124,6 @@ export default defineConfig({
   define: {
     'process.env': {},
     __BUILD_COMMIT__: JSON.stringify(gitCommit),
+    __BUILD_HOTFIX__: JSON.stringify(buildHotfix),
   },
 });

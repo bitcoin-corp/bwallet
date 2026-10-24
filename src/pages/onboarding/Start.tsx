@@ -8,6 +8,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { YoursIcon } from '../../components/YoursIcon';
 import { ThemeBadge } from '../../components/ThemeBadge';
+import { VersionLabel } from '../../components/VersionLabel';
 import { getPlatform } from '../../platform';
 import { ObsidianBackdrop } from '../../mobile/ui/ObsidianBackdrop';
 import { SEEDLESS_ENABLED } from '../../mobile/passkey/prf';
@@ -65,6 +66,7 @@ export const Start = () => {
         <div className="flex flex-col items-center gap-3 mt-6">
           <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={0}>
             <YoursIcon width="5rem" />
+            <VersionLabel color={contrast} className="mt-2 text-center" />
           </motion.div>
 
           <motion.h1

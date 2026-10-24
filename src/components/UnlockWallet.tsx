@@ -8,6 +8,7 @@ import { sleep } from '../utils/sleep';
 import { Input } from './Input';
 import { useServiceContext } from '../hooks/useServiceContext';
 import { UnlockMark } from '../mobile/ui/UnlockMark';
+import { VersionLabel } from './VersionLabel';
 import { QuickUnlock } from './QuickUnlock';
 import { ObsidianBackdrop } from '../mobile/ui/ObsidianBackdrop';
 import { sendMessageAsync } from '../utils/chromeHelpers';
@@ -352,6 +353,7 @@ export const UnlockWallet = (props: UnlockWalletProps) => {
         className="mb-8"
       >
         <UnlockMark />
+        <VersionLabel color={contrast} className="mt-2 text-center" />
       </motion.div>
 
       {/* Title */}
