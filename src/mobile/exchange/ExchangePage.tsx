@@ -24,8 +24,10 @@ import { TradeView } from './TradeView';
 import { groupByTicker, normTicker, shortTokenId } from '../tokens/tokenIdentity';
 import { TokenIcon } from './TokenIcon';
 import { HiddenChip, TokenSwipeRow } from './TokenRowActions';
+import { AlbumBar } from '../albums/AlbumSheets';
+import { ALL_VIEW, filterView, liveView, viewCounts, type AlbumView } from '../albums/albums';
 import { arrangeRows, hiddenCount } from './rowPrefs';
-import { useTokenRowActions } from './useTokenRowActions';
+import { exchangeKey, useTokenRowActions } from './useTokenRowActions';
 import { Sparkline } from './PriceChart';
 import { chartSeries } from './chartSeries';
 import { OpnsMarket } from './OpnsMarket';
@@ -173,8 +175,11 @@ const Markets = ({
   };
   const [shown, setShown] = useState(40);
   const rowActions = useTokenRowActions();
-  const { prefs, held: heldIds } = rowActions;
+  const { prefs, held: heldIds, albums, updateAlbums } = rowActions;
   const [showHidden, setShowHidden] = useState(false);
+  // The user's folders (albums.ts), shared with the wallet's token list.
+  const [pickedFolder, setFolder] = useState<AlbumView>(ALL_VIEW);
+  const folder = liveView(albums, pickedFolder);
 
   const all = useMemo(() => board ?? [], [board]);
   const labels = useMemo(() => (registry ? all.map((r) => registry.labels(r.ref.id)) : []), [all, registry]);
@@ -197,8 +202,13 @@ const Markets = ({
     });
     // Pinned first (right swipe), then favourites, then the board's own order (trending, then most used).
     const byFav = [...hits.filter((r) => favs.includes(r.ref.id)), ...hits.filter((r) => !favs.includes(r.ref.id))];
-    return arrangeRows(byFav, (r) => r.ref.id, prefs, showHidden);
-  }, [all, labels, filter, q, onlyFavs, onlyMine, heldIds, favs, prefs, showHidden]);
+    const inFolder = folder.kind === 'album' ? filterView(byFav, (r) => exchangeKey(r.ref.id), albums, folder) : byFav;
+    return arrangeRows(inFolder, (r) => r.ref.id, prefs, showHidden);
+  }, [all, labels, filter, q, onlyFavs, onlyMine, heldIds, favs, prefs, showHidden, folder, albums]);
+  const folderCounts = useMemo(
+    () => ({ ...viewCounts(all, (r) => exchangeKey(r.ref.id), albums), hidden: 0 }),
+    [all, albums],
+  );
   const nHidden = useMemo(() => hiddenCount(all, (r) => r.ref.id, prefs), [all, prefs]);
   const visible = list.slice(0, shown);
   // Tickers more than one token uses: those rows show their short token id so copies can be told apart.
@@ -297,6 +307,16 @@ const Markets = ({
         />
       )}
       {!shares && <HiddenChip count={nHidden} on={showHidden} onToggle={() => setShowHidden((v) => !v)} />}
+      {!shares && albums.albums.length > 0 && (
+        <AlbumBar
+          state={albums}
+          update={updateAlbums}
+          view={folder.kind === 'hidden' ? ALL_VIEW : folder}
+          onView={setFolder}
+          counts={folderCounts}
+          word="folder"
+        />
+      )}
       {shares && SharesMarket ? (
         <Suspense fallback={null}>
           <SharesMarket />

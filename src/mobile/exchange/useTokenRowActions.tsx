@@ -1,7 +1,7 @@
 /** Hooks for Exchange token-row actions (TokenRowActions.tsx renders them). */
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Info, MessageCircle, Pin, PinOff, ShoppingCart, Tag } from 'lucide-react';
+import { Eye, EyeOff, FolderPlus, Info, MessageCircle, Pin, PinOff, ShoppingCart, Tag } from 'lucide-react';
 import type { SwipeAction } from '../swipe/SwipeRow';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { useBottomMenu } from '../../hooks/useBottomMenu';
@@ -12,6 +12,12 @@ import { useBackClose } from '../backStack';
 import { buyRoute, chatDecision, heldTokenIds, infoRoute, sellRoute, tokenActionIds } from './rowActions';
 import { loadRowPrefs, onRowPrefs, saveRowPrefs, toggleHidden, togglePinned, type RowPrefs } from './rowPrefs';
 import { HoldHint } from './TokenRowActions';
+import { useAlbums } from '../albums/useAlbums';
+import { AddToAlbumSheet } from '../albums/AlbumSheets';
+import { tokenKey, type ItemKey } from '../albums/albums';
+
+/** Exchange rows file under the same key as the wallet's token rows, so one folder holds both (albums.ts). */
+export const exchangeKey = (id: string): ItemKey => tokenKey(id.replace('.', '_'));
 
 /** Tray colours (theme tokens only), shared by every Exchange list. */
 export const TRAY = {
@@ -76,6 +82,10 @@ export const useTokenRowActions = () => {
   const [prefs, updatePrefs] = useRowPrefs();
   const [hint, setHint] = useState<HintTarget | null>(null);
   useBackClose(!!hint, () => setHint(null));
+  // Folders (24 Oct 2026): the row menu's "Add to folder" files a token you buy, sell or watch.
+  const [albums, updateAlbums] = useAlbums();
+  const [filing, setFiling] = useState<HintTarget | null>(null);
+  useBackClose(!!filing, () => setFiling(null));
 
   const openRoom = useCallback(
     (roomKey: string) => {
@@ -161,18 +171,38 @@ export const useTokenRowActions = () => {
     onPress: () => navigate(infoRoute(id)),
   });
 
-  /** Everything TokenSwipeRow needs for a token row; the menu lists Buy, Sell, Chat, Pin, Hide, Info. */
+  const folderAction = (id: string, title: string): SwipeAction => ({
+    id: 'folder',
+    label: 'Add to folder',
+    icon: <FolderPlus size={18} />,
+    ...TRAY.plain,
+    onPress: () => setFiling({ id, title }),
+  });
+
+  /** Everything TokenSwipeRow needs for a token row; the menu lists Buy, Sell, Chat, Pin, Hide, Folder, Info. */
   const rowFor = (id: string, title: string, left: SwipeAction[] = actionsFor(id, title)) => {
     const right = sideActionsFor(id);
     return {
       actions: left,
       rightActions: right,
-      menuActions: [...left, ...right, infoAction(id)],
+      menuActions: [...left, ...right, folderAction(id, title), infoAction(id)],
       pinned: prefs.pinned.includes(id),
     };
   };
 
-  const sheet = hint ? (
+  const folderSheet = filing ? (
+    <AddToAlbumSheet
+      state={albums}
+      update={updateAlbums}
+      keys={[exchangeKey(filing.id)]}
+      title={`Add ${filing.title} to folder`}
+      word="folder"
+      noHide
+      onClose={() => setFiling(null)}
+    />
+  ) : null;
+
+  const holdSheet = hint ? (
     <HoldHint
       title={hint.title}
       checking={held === null}
@@ -184,6 +214,26 @@ export const useTokenRowActions = () => {
       onClose={() => setHint(null)}
     />
   ) : null;
+  const sheet = (
+    <>
+      {holdSheet}
+      {folderSheet}
+    </>
+  );
 
-  return { actionsFor, sideActionsFor, infoAction, rowFor, chatAction, sheet, held, openRoom, prefs, updatePrefs };
+  return {
+    actionsFor,
+    sideActionsFor,
+    infoAction,
+    folderAction,
+    albums,
+    updateAlbums,
+    rowFor,
+    chatAction,
+    sheet,
+    held,
+    openRoom,
+    prefs,
+    updatePrefs,
+  };
 };

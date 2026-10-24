@@ -24,6 +24,9 @@ import { marketTradingEnabled } from '../mobile/storeBuild';
 import { sellRoute } from '../mobile/exchange/rowActions';
 import { UndoToastHost } from '../mobile/swipe/undo';
 import { arrange, useTokenRows } from '../mobile/wallet/tokenRows';
+import { useAlbums } from '../mobile/albums/useAlbums';
+import { AddToAlbumSheet, AlbumBar } from '../mobile/albums/AlbumSheets';
+import { ALL_VIEW, filterView, liveView, tokenKey, viewCounts, type AlbumView } from '../mobile/albums/albums';
 import { useListCoin } from '../mobile/wallet/useListCoin';
 import { rowMatchesCoin } from '../mobile/wallet/cardFilter';
 import { hasFocusHost, setFocusedToken } from '../mobile/wallet/cardFocus';
@@ -164,6 +167,12 @@ export const Bsv21TokensList = (props: Bsv21TokensListProps) => {
   const confirmedTokens = tokens.filter((t) => t.all.confirmed > 0n && rowMatchesCoin(t.id, coin));
   const pendingTokens = tokensProp.filter((d) => d.all.pending > 0n && rowMatchesCoin(d.id, coin));
   const rowsState = useTokenRows();
+  // Folders (albums.ts, 24 Oct 2026): swipe right › Folder files a token; the folder row narrows the list.
+  // Hiding a token stays Archive (Wallet › Hidden tokens).
+  const [albums, updateAlbums] = useAlbums();
+  const [pickedView, setView] = useState<AlbumView>(ALL_VIEW);
+  const folderView = liveView(albums, pickedView);
+  const [filing, setFiling] = useState<Bsv21Balance | null>(null);
   const usdOf = (t: Bsv21Balance) =>
     (priceData.find((p) => p.id === t.id)?.satPrice ?? 0) *
     (exchangeRate / BSV_DECIMAL_CONVERSION) *
@@ -191,7 +200,10 @@ export const Bsv21TokensList = (props: Bsv21TokensListProps) => {
 
   // Phone / web wallet: swipe actions, pinned group, archive, iPhone-style reorder (owner, 15 Oct 2026).
   if (!IS_EXTENSION && tokens.length > 0) {
-    const groups = arrange(confirmedTokens, (t) => t.id, rowsState.pinned, rowsState.archived);
+    const folderKey = (t: Bsv21Balance) => tokenKey(t.id);
+    const listed = confirmedTokens.filter((t) => !rowsState.archived.includes(t.id));
+    const inFolder = folderView.kind === 'album' ? filterView(listed, folderKey, albums, folderView) : listed;
+    const groups = arrange(inFolder, (t) => t.id, rowsState.pinned, rowsState.archived);
     const row = (t: Bsv21Balance) => (
       <TokenSwipe
         id={t.id}
@@ -202,6 +214,7 @@ export const Bsv21TokensList = (props: Bsv21TokensListProps) => {
         onChat={() => props.onChat?.(t)}
         onLock={() => props.onLock?.(t)}
         onSell={SELL_ENABLED && marketTradingEnabled() ? () => navigate(sellRoute(t.id)) : undefined}
+        onFolder={() => setFiling(t)}
       >
         <div
           style={{ display: 'flex', justifyContent: 'center', width: '100%' }}
@@ -220,6 +233,23 @@ export const Bsv21TokensList = (props: Bsv21TokensListProps) => {
     );
     return (
       <div className="flex flex-col items-center w-full">
+        {albums.albums.length > 0 && (
+          <div className="w-full px-4 pt-2">
+            <AlbumBar
+              state={albums}
+              update={updateAlbums}
+              view={folderView.kind === 'hidden' ? ALL_VIEW : folderView}
+              onView={setView}
+              counts={{ ...viewCounts(listed, folderKey, albums), hidden: 0 }}
+              word="folder"
+            />
+          </div>
+        )}
+        {folderView.kind === 'album' && !inFolder.length && (
+          <p className="w-full px-5 pt-3 text-xs" style={{ color: theme.color.global.gray }}>
+            Nothing in this folder yet. Swipe a token right and tap Folder.
+          </p>
+        )}
         {groups.pinned.length > 0 && (
           <>
             {label('Pinned')}
@@ -256,6 +286,17 @@ export const Bsv21TokensList = (props: Bsv21TokensListProps) => {
           </div>
         ))}
         {/* Archived rows live in Wallet › Hidden tokens (HiddenTokens.tsx). */}
+        {filing && (
+          <AddToAlbumSheet
+            state={albums}
+            update={updateAlbums}
+            keys={[tokenKey(filing.id)]}
+            title={`Add ${getTokenName(filing)} to folder`}
+            word="folder"
+            noHide
+            onClose={() => setFiling(null)}
+          />
+        )}
         <UndoToastHost />
       </div>
     );

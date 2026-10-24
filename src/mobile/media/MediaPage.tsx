@@ -1,3 +1,4 @@
+import { useWithoutHidden } from '../albums/useAlbums';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { invertOnLightClass } from './invertOnLight';
 import { useLocation, useNavigate, useNavigationType, useParams } from 'react-router-dom';
@@ -215,7 +216,8 @@ const MediaPage = () => {
   };
   const close = () => navigate(-1);
   useBackClose(true, close);
-  const { items, hasMore, loading, error, loadMore, reload } = useWalletMedia();
+  const { items: shownRaw, hasMore, loading, error, loadMore, reload } = useWalletMedia();
+  const items = useWithoutHidden(shownRaw);
   const releases = useReleases();
   const [filter, setFilter] = useState<Filter>('all');
   const [open, setOpen] = useState<MediaItem | null>(null);
