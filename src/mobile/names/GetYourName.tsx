@@ -36,7 +36,7 @@ import { opnsTreeFor } from './opnsTree';
 import { sweepDeadMints } from './opnsTxStatus';
 import { moneyNow } from '../money/money';
 import { buyOpnsListing } from './opnsBuy';
-import { PAID_FEATURES_ENABLED } from '../storeBuild';
+import { NRT_ENABLED, PAID_FEATURES_ENABLED } from '../storeBuild';
 
 /**
  * Settings → Identity → "Make your name payable" (rendered under the profile name).
@@ -93,7 +93,9 @@ export const GetYourName = ({
   const [aliasState, setAliasState] = useState<'idle' | 'checking' | 'free' | 'taken' | 'invalid'>('idle');
   // Personal token: minted with the name (same confirmation) unless already linked.
   const [link, setLink] = useState(getPersonalLink(identityAddress));
-  const [withToken, setWithToken] = useState(true);
+  // Names, Rooms and Tickets (24 Oct 2026): a name makes no token and no room unless the user ticks the box
+  // (it used to start ticked). With NRT_ENABLED the box is gone: tokens are made from You › Tickets.
+  const [withToken, setWithToken] = useState(false);
   const [supply, setSupply] = useState(DEFAULT_SUPPLY);
 
   useEffect(
@@ -615,7 +617,7 @@ export const GetYourName = ({
               <span className="text-[10px] uppercase tracking-widest" style={{ color: gray }}>
                 Names you own{owned.length > 1 && !myName ? ' — pick one' : ''}
               </span>
-              {!link && (
+              {!link && !NRT_ENABLED && (
                 <label className="text-[11px] flex items-center gap-2" style={{ color: gray }}>
                   <input type="checkbox" checked={withToken} onChange={(e) => setWithToken(e.target.checked)} />
                   Also mint my personal token ({supplyError ? 'fix supply below' : `${Number(supply).toLocaleString()}`}

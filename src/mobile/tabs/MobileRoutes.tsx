@@ -59,6 +59,8 @@ const BitSignImportPage = BUREAU_ENABLED ? lazy(() => import('../bureau/BitSignI
 const BMailPage = lazy(() => import('../bmail/BMailPage'));
 // The top bar's phone button: bPhone Calls in the content area (active calls stay full-screen via CallScreen).
 const CallsPage = lazy(() => import('../calls/CallsPage'));
+// You: Names, Rooms and Tickets as three separate things (you/YouPage.tsx).
+const YouPage = lazy(() => import('../you/YouPage'));
 // Phone layout (phone/, Settings › Testing switch): HOME, Games and People swipe screens. Apps stays /browser.
 const HomeScreen = lazy(() => import('../phone/HomeScreen'));
 const PeopleScreen = lazy(() => import('../phone/PeopleScreen'));
@@ -165,6 +167,7 @@ const MobileRoutes = () => (
         <Route path="store" element={<ThemeStorePage />} />
         {StockPage && <Route path="names/store" element={<StockPage />} />}
         <Route path="calls" element={<CallsPage />} />
+        <Route path="you" element={<YouPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="lock" element={<LockScreen />} />
         <Route path="lock/locks" element={<LockScreen />} />

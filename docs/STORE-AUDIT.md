@@ -402,3 +402,5 @@ grep -rlE "/api/bitsign/agent/(price|quote|turn)|Subscribe with|TokenBlaster|lau
 ```
 
 - **Home modules (18 Oct 2026):** the wallet home is a set of modules the user adds, removes and reorders (`src/mobile/home/`). Each module says whether it may show in a store build. The Store showcase (themes, emoji packs, the album, OpNS names, Spaces) is paid content and is a lazy chunk behind the inlined `THEME_STORE_PAID_ENABLED`, so the store bundle has none of it and the module is not offered. Card, Ask b, History, BSV price chart, Pots, Notifications and Music are allowed. The store grep also checks `From the Store|Open Store|tickets at the door`.
+
+- **Names, Rooms and Tickets (24 Oct 2026, `NRT_ENABLED`, off by default and never in a store build):** You (`/m/you`) is in every edition: Names (WalletNames) and rooms with no token (open rooms) sell nothing. Tickets (tokens or 1Sat collections a room accepts at the door, used up on entry) are token-gated access, so `you/TicketsPanel.tsx` is a lazy chunk behind the inlined flag. The store grep also checks `Make a new ticket token|Save tickets|used up on entry`.

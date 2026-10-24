@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { FileText, Github } from 'lucide-react';
+import { AtSign, FileText, Github } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../../hooks/useTheme';
 import { UNOFFICIAL_NOTICE } from '../brandText';
@@ -80,6 +80,18 @@ const SettingsHub = () => {
         {section === 'tools' && (
           // A little clearance below the Settings | Tools | About switch.
           <div className="w-full pt-6">
+            <div className="px-4 pb-3">
+              <button
+                onClick={() => navigate('/m/you')}
+                className="flex w-full items-center gap-3 rounded-xl bg-[var(--bw-surface)] px-4 py-3 text-left"
+              >
+                <AtSign size={18} color="#98A2B3" />
+                <div>
+                  <div className="text-sm font-semibold text-white">Names, rooms and tickets</div>
+                  <div className="text-[11px] text-[#98A2B3]">Three separate things, the same on every device</div>
+                </div>
+              </button>
+            </div>
             {BUREAU_ENABLED && (
               // One-time import of documents signed on bit-sign (retired quietly, 18 Oct 2026); not on bMail's screen.
               <div className="px-4 pb-3">

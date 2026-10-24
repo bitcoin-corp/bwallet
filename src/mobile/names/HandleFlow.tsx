@@ -37,7 +37,7 @@ import {
 import { getFundRecord, showOnWallet } from '../tokens/indexFund';
 import { FinishIndexing } from '../tokens/FinishIndexing';
 import { AvatarPicker } from './AvatarPicker';
-import { PAID_FEATURES_ENABLED } from '../storeBuild';
+import { NRT_ENABLED, PAID_FEATURES_ENABLED } from '../storeBuild';
 import { paymailAvatar } from './avatar';
 import { adoptSocialAvatar } from './socialAvatar';
 import { DEFAULT_SUPPLY, getPersonalLink, onPersonalChange, personalTicker, validateSupply } from './personalToken';
@@ -227,6 +227,11 @@ export const HandleFlow = ({
       // Its balance is local: show it on the Wallet tab now, not when an indexer catches up.
       void showOnWallet(chromeStorageService, l.tokenId);
       void askNotifyPermissionOnce();
+      // Names, Rooms and Tickets: a token opens no room by itself; attach it to a room in You › Rooms.
+      if (NRT_ENABLED) {
+        setTokenMsg(`$${l.ticker} minted. Add it as a ticket to any room from You › Rooms.`);
+        return;
+      }
       setTokenMsg(`$${l.ticker} minted. Opening your room…`);
       // Signatures only; a fresh token may not be indexed yet. Chat retries until it is.
       openPersonalRoom(apiContext, identityAddress, l)
