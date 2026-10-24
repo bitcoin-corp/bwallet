@@ -14,7 +14,7 @@ import { isPairedHost, pairedOrigin } from './originKey';
 export const PAIR_SESSIONS_KEY = 'bwallet.pair.sessions';
 const IDLE_MS = 24 * 60 * 60 * 1000;
 
-type StoredLike = { origin?: unknown; lastUsed?: unknown; agent?: { expiresAt?: unknown } };
+type StoredLike = { c?: unknown; origin?: unknown; lastUsed?: unknown; agent?: { expiresAt?: unknown } };
 
 const norm = (o: string): string => {
   try {
@@ -63,9 +63,10 @@ export const pairedGrantAllowed = (
   if (!isPairedOriginator(originator)) return true;
   const want = norm(originator as string);
   return sessions.some((s) => {
-    if (typeof s.origin !== 'string' || !isCurrent(s, now)) return false;
+    if (typeof s.origin !== 'string' || typeof s.c !== 'string' || !isCurrent(s, now)) return false;
     try {
-      return norm(pairedOrigin(s.origin)) === want;
+      // The session's own channel: another pairing claiming the same host has a different key (originKey.ts).
+      return norm(pairedOrigin(s.origin, s.c)) === want;
     } catch {
       return false;
     }

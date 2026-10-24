@@ -5,6 +5,8 @@ import {
   originatorForOrigin,
   isPairedHost,
   pairedOrigin,
+  legacyPairedOrigin,
+  channelLabel,
 } from './originKey';
 
 describe('originatorForOrigin (M3)', () => {
@@ -39,12 +41,23 @@ describe('originatorForOrigin (M3)', () => {
 
 describe('paired sessions (audit H1)', () => {
   test('run under their own key, never the site originator', () => {
-    const o = pairedOrigin('https://bchatx.com');
-    expect(o).toBe('https://bchatx.com.paired.invalid');
-    expect(originatorForOrigin(o).originator).toBe('bchatx.com.paired.invalid');
+    const CH = 'AAAAAAAAAAAAAAAAAAAAAA';
+    const o = pairedOrigin('https://bchatx.com', CH);
+    expect(o).toBe(`https://bchatx.com.c${'41'.repeat(22)}.paired.invalid`);
+    expect(originatorForOrigin(o).originator).toBe(`bchatx.com.c${'41'.repeat(22)}.paired.invalid`);
     expect(originatorForOrigin(o).originator).not.toBe(originatorForOrigin('https://bchatx.com').originator);
     expect(isPairedHost('bchatx.com.paired.invalid')).toBe(true);
     expect(isPairedHost('bchatx.com')).toBe(false);
-    expect(pairedOrigin('http://localhost:3000')).toBe('https://localhost.paired.invalid:3000');
+    expect(pairedOrigin('http://localhost:3000', CH)).toBe(`https://localhost.c${'41'.repeat(22)}.paired.invalid:3000`);
+    expect(legacyPairedOrigin('https://bchatx.com')).toBe('https://bchatx.com.paired.invalid');
+  });
+
+  test('b-Aware 24 Oct 2026: two pairings claiming the same origin never share a key', () => {
+    const a = pairedOrigin('https://bchatx.com', 'AAAAAAAAAAAAAAAAAAAAAA');
+    const b = pairedOrigin('https://bchatx.com', 'AAAAAAAAAAAAAAAAAAAAAB');
+    expect(a).not.toBe(b);
+    expect(isPairedHost(new URL(b).hostname)).toBe(true);
+    expect(channelLabel('_-_-_-_-_-_-_-_-_-_-_w')).toMatch(/^c[0-9a-f]{44}$/);
+    expect(() => pairedOrigin('https://bchatx.com', 'short')).toThrow();
   });
 });

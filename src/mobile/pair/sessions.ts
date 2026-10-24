@@ -22,7 +22,7 @@ import {
 } from '../../pair/protocol';
 import { inOrder } from '../../pair/in-order';
 import { handleSiteCall } from '../dappBrowser';
-import { pairedOrigin } from '../../services/originKey';
+import { legacyPairedOrigin, pairedOrigin } from '../../services/originKey';
 import { appNameFor } from '../storeBuild';
 import type { OneSatContext } from '@1sat/actions';
 import { fetchExchangeRate } from '../../utils/wallet';
@@ -57,6 +57,9 @@ const bsvUsd = async () => {
 const KEY = 'bwallet.pair.sessions';
 const REVOKE_QUEUE = 'bwallet.pair.revokeQueue';
 const SWEEP_FLAG = 'bwallet.pair.sweptBareHostGrants.v1';
+const SWEEP_HOST_KEY_FLAG = 'bwallet.pair.sweptHostPairedKeys.v1';
+/** A session's permission key: its host plus its own channel (originKey.ts pairedOrigin). */
+const keyOf = (s: { origin: string; c: string }) => pairedOrigin(s.origin, s.c);
 
 /**
  * Disconnect must withdraw what the pairing was given (b-Aware report, 23 Oct 2026): the paired key
@@ -129,6 +132,26 @@ const sweepBareHostGrants = () => {
     /* storage unavailable: try again next start */
   }
 };
+/**
+ * Before 24 Oct 2026 the paired key was "<host>.paired.invalid", shared by every pairing claiming that host. Revoke
+ * those once; current sessions keep working under their per-channel key and ask again.
+ */
+const sweepHostPairedKeys = () => {
+  try {
+    if (localStorage.getItem(SWEEP_HOST_KEY_FLAG)) return;
+    const keys = load().flatMap((s) => {
+      try {
+        return [legacyPairedOrigin(s.origin)];
+      } catch {
+        return [];
+      }
+    });
+    localStorage.setItem(SWEEP_HOST_KEY_FLAG, '1');
+    if (keys.length) void flushRevocations(keys);
+  } catch {
+    /* storage unavailable: try again next start */
+  }
+};
 const IDLE_MS = 24 * 60 * 60 * 1000;
 
 export type StoredSession = {
@@ -184,8 +207,8 @@ const isCurrent = (s: StoredSession, now = Date.now()) =>
  * never lost.
  */
 const dropLapsed = (dropped: StoredSession[], kept: StoredSession[]) => {
-  const inUse = new Set(kept.map((s) => pairedOrigin(s.origin)));
-  const origins = [...new Set(dropped.map((s) => pairedOrigin(s.origin)))].filter((o) => !inUse.has(o));
+  const inUse = new Set(kept.map(keyOf));
+  const origins = [...new Set(dropped.map(keyOf))].filter((o) => !inUse.has(o));
   if (origins.length) writeQueue([...readQueue(), ...origins]);
   for (const s of dropped) {
     replies.forget(s.c);
@@ -319,7 +342,7 @@ async function onRequest(l: Live, id: string, action: string, params: unknown) {
   if (l.stored.agent) return onAgentRequest(l, l.stored.agent, id, action, params);
   try {
     // The relay's origin is a claim, not proof (audit H1): run under the paired key, never the site's own grants.
-    const as = pairedOrigin(l.stored.origin);
+    const as = keyOf(l.stored); // this pairing's own key: never shared with another channel claiming the host
     const r = (await handleSiteCall(as, as + '/', action, params, true)) as {
       success?: boolean;
       data?: unknown;
@@ -415,7 +438,7 @@ export function forget(c: string, notify = true) {
   }
   replies.forget(c);
   save(load().filter((s) => s.c !== c));
-  if (stored) void flushRevocations([pairedOrigin(stored.origin)]);
+  if (stored) void flushRevocations([keyOf(stored)]);
 }
 
 /**
@@ -459,10 +482,9 @@ export function beginPairing(scanned: string): Promise<PendingPair> {
       };
       ws.send(JSON.stringify(hello));
       const { key, code } = await deriveSession(P, link.k, link.c);
-      // A new pairing starts with nothing: withdraw whatever an earlier, lapsed pairing for this host left under the
-      // paired key, unless this channel is being resumed or another current session for the host still uses it.
-      if (!load().some((s) => s.c === link.c || s.origin === f.verifiedOrigin))
-        await flushRevocations([pairedOrigin(f.verifiedOrigin)]);
+      // A new pairing starts with nothing. Its key names its own channel, so it never shares another pairing's grants
+      // (b-Aware 24 Oct 2026); still withdraw anything left under that key unless this channel is being resumed.
+      if (!load().some((s) => s.c === link.c)) await flushRevocations([pairedOrigin(f.verifiedOrigin, link.c)]);
       if (settled) return;
       settled = true;
       ws.onclose = null;
@@ -509,6 +531,7 @@ export function initPairing() {
   if (started) return;
   started = true;
   sweepBareHostGrants();
+  sweepHostPairedKeys();
   void flushRevocations();
   reconnectAll();
   document.addEventListener('visibilitychange', () => {

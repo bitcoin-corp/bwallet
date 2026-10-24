@@ -52,7 +52,7 @@ const SIGN_IN_LINES = [
 ];
 const HOST_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 
-/** Lower-case hostname with no port, no trailing dot and no ".paired.invalid" pairing suffix. */
+/** Lower-case hostname with no port, no trailing dot and no pairing suffix (".c<hex>.paired.invalid"). */
 export const bareHost = (value: string): string | null => {
   let v = value.trim().toLowerCase();
   if (!v) return null;
@@ -67,7 +67,7 @@ export const bareHost = (value: string): string | null => {
     .replace(/\/.*$/, '')
     .replace(/:\d+$/, '')
     .replace(/\.$/, '')
-    .replace(/\.paired\.invalid$/, '');
+    .replace(/(\.c[0-9a-f]{44})?\.paired\.invalid$/, '');
   return HOST_RE.test(v) ? v : null;
 };
 

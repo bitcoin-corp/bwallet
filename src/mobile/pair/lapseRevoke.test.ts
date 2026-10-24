@@ -44,13 +44,16 @@ g.localStorage = {
 g.document = { visibilityState: 'visible', addEventListener: () => undefined };
 
 const sessions = await import('./sessions');
+const { pairedOrigin } = await import('../../services/originKey');
 
 const settle = () => new Promise<void>((r) => setTimeout(r, 25));
 const HOST = 'https://pairtest.example';
-const PAIRED_KEY = 'pairtest.example.paired.invalid';
+/** The paired key of the most recent pairing (it names that pairing's channel, originKey.ts). */
+let PAIRED_KEY = '';
 const signIn = { data: [1], protocolID: [2, 'bwallet sign in'], keyID: 'n', counterparty: 'anyone' };
 
 const pair = async (channel: string) => {
+  PAIRED_KEY = pairedOrigin(HOST, channel).slice('https://'.length);
   const url = pairUrl({
     v: PAIR_VERSION,
     r: 'relay.bwallet.space',
@@ -229,11 +232,14 @@ describe('A lapsed pairing withdraws its grants (b-Aware report)', () => {
     clear();
     const { store, revoked } = useStore();
     await pair('KKKKKKKKKKKKKKKKKKKKKK');
+    const liveKey = PAIRED_KEY;
     await seedGrants(store);
     revoked.length = 0;
     await pair('LLLLLLLLLLLLLLLLLLLLLL');
     expect(sessions.pairedSites().map((s) => s.c)).toContain('KKKKKKKKKKKKKKKKKKKKKK');
-    expect(revoked).toEqual([]);
-    expect((await store.listGrants({ originator: PAIRED_KEY })).length).toBe(2);
+    expect(revoked).not.toContain(normalizeOriginator(liveKey));
+    expect((await store.listGrants({ originator: liveKey })).length).toBe(2);
+    // The new pairing has its own key and none of the live one's grants (b-Aware 24 Oct 2026).
+    expect((await store.listGrants({ originator: PAIRED_KEY })).length).toBe(0);
   });
 });
