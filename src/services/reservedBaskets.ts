@@ -8,6 +8,8 @@
  */
 /** Same value as permissionBundle.TRUST_SITE_BASKET (not imported: permissionBundle imports this file). */
 const TRUST_SITE_BASKET = 'bwalletx.trust-site';
+/** The "Block this site" record: kept in the same store so "Forget site" in Settings removes it (unblocks). */
+export const BLOCK_SITE_BASKET = 'bwalletx.block-site';
 
 const RESERVED = new Set(['default', '1sat', 'bsv21', 'lock', 'opns', 'fund', 'funding', 'vesting', TRUST_SITE_BASKET]);
 
@@ -27,7 +29,7 @@ type BasketGrantStore = {
 
 /**
  * Remove every stored grant an outside originator holds for a reserved basket (upgrade migration; safe to run on
- * every unlock). The site-trust record is kept: it is not a basket grant. Returns how many were removed.
+ * every unlock). The site-trust and block records are kept: they are not basket grants. Returns how many were removed.
  */
 export const revokeReservedBasketGrants = async (store: BasketGrantStore, adminOriginator: string) => {
   const grants = await store.listGrants({ type: 'basket' });
@@ -35,7 +37,7 @@ export const revokeReservedBasketGrants = async (store: BasketGrantStore, adminO
   for (const g of grants) {
     const k = g.key;
     if (k.type !== 'basket' || k.originator === adminOriginator) continue;
-    if (k.basket === TRUST_SITE_BASKET || !isReservedBasket(k.basket)) continue;
+    if (k.basket === TRUST_SITE_BASKET || k.basket === BLOCK_SITE_BASKET || !isReservedBasket(k.basket)) continue;
     await store.deleteGrant(k as never);
     removed++;
   }

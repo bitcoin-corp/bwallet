@@ -1,0 +1,22 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.bitcoincorp.bwallet.direct",
+      "sha256_cert_fingerprints": [
+        "3F:B1:06:9D:FC:51:A2:1F:3C:D4:08:E4:59:7E:01:DC:17:85:1C:FE:DD:AA:3D:74:61:43:99:D5:36:64:DC:B6"
+      ]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.bitcoincorp.bwallet",
+      "sha256_cert_fingerprints": [
+        "3F:B1:06:9D:FC:51:A2:1F:3C:D4:08:E4:59:7E:01:DC:17:85:1C:FE:DD:AA:3D:74:61:43:99:D5:36:64:DC:B6"
+      ]
+    }
+  }
+]

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  repeatFingerprints,
   QUEUED_MESSAGE,
   RepeatGuard,
   REPEAT_WINDOW_MS,
@@ -103,5 +104,27 @@ describe('queuedResult', () => {
     expect(queuedResult({ sendWithResults: [{ status: 'sending' }] }, txid)?.txid).toBe(txid);
     expect(queuedResult({ sendWithResults: [{ status: 'failed' }] }, txid)).toBeNull();
     expect(queuedResult({ sendWithResults: [{ status: 'sending' }] }, 'nope')).toBeNull();
+  });
+});
+
+describe('repeatFingerprints: chain options never switch the guard off (b-Aware row 55)', () => {
+  const ord = `0063036f7264${'ab'.repeat(40)}68`;
+  const outputs = [{ lockingScript: ord, satoshis: 1, outputDescription: 'mint' }];
+  test.each([
+    ['sendWith', { sendWith: ['00'.repeat(32)] }],
+    ['noSendChange', { noSendChange: ['00'.repeat(32) + '.0'] }],
+    ['knownTxids', { knownTxids: ['00'.repeat(32)] }],
+  ])('a repeat carrying %s is still refused', async (_n, options) => {
+    const g = new RepeatGuard();
+    const first = await repeatFingerprints({ outputs });
+    g.record(first.recordedFingerprint, { origin: 'https://a.com' });
+    const again = await repeatFingerprints({ outputs, options: options as never });
+    expect(again.fingerprint).toBe(first.fingerprint);
+    expect(g.check(again.fingerprint)).not.toBeNull();
+  });
+  test('a noSend step is checked but not recorded', async () => {
+    const r = await repeatFingerprints({ outputs, options: { noSend: true } });
+    expect(r.fingerprint).not.toBeNull();
+    expect(r.recordedFingerprint).toBeNull();
   });
 });
