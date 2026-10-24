@@ -249,6 +249,29 @@ function validAlias(alias) {
   return null;
 }
 
+/**
+ * The owner's standing signature "this identity key receives ordinals at ordAddress" (action 'ord'; fields
+ * ordAddress, identityKey, timestamp). No time window: it is served later so payers can check it.
+ * Returns the proof to store, or false if it doesn't verify.
+ */
+async function checkOrdProof(identityKey, ordAddress, proof) {
+  const ts = String((proof && proof.timestamp) || '');
+  const sig = String((proof && proof.signature) || '');
+  if (!/^\d{1,16}$/.test(ts) || !/^[0-9a-f]{16,200}$/i.test(sig)) return false;
+  try {
+    const { valid } = await new ProtoWallet('anyone').verifySignature({
+      data: Utils.toArray(signedMessage('ord', { ordAddress: String(ordAddress), identityKey, timestamp: ts }), 'utf8'),
+      signature: Utils.toArray(sig, 'hex'),
+      protocolID: SIGN_PROTOCOL,
+      keyID: SIGN_KEY_ID,
+      counterparty: identityKey,
+    });
+    return valid ? { ordAddress: String(ordAddress), timestamp: ts, signature: sig } : false;
+  } catch {
+    return false;
+  }
+}
+
 /** Canonical message the wallet signs. Field order is fixed; values are stringified. */
 function signedMessage(action, fields) {
   const keys = Object.keys(fields).sort();
@@ -713,7 +736,11 @@ function makeHandlers({
       const [s, row] = await publicAlias(handle);
       if (s !== 200) return [s, row];
       if (!row.ord_address) return [404, { error: 'no-ord-address' }];
-      return [200, { address: row.ord_address }];
+      // The owner's signature tying this ordinal address to their identity key, when they sent one. Only a proof
+      // for the address served now is returned; the paying wallet checks it against the key it already trusts.
+      const p = row.ord_proof;
+      const proof = p && p.ordAddress === row.ord_address ? { timestamp: p.timestamp, signature: p.signature } : null;
+      return [200, { address: row.ord_address, ...(proof ? { ordProof: proof } : {}) }];
     },
 
     p2pDestination: async ({ handle }, body) => {
@@ -734,7 +761,17 @@ function makeHandlers({
         outputs: [out],
         status: 'pending',
       });
-      return [200, { outputs: [{ script: out.script, satoshis }], reference }];
+      // The derivation inputs go back with the script (b_feedback 67) so the paying wallet can re-derive the
+      // script from the payee's identity key and refuse a script we didn't derive. Old clients ignore them.
+      const { derivationPrefix, derivationSuffix } = out;
+      const output = {
+        script: out.script,
+        satoshis,
+        derivationPrefix,
+        derivationSuffix,
+        senderIdentityKey: ANYONE_PUB,
+      };
+      return [200, { outputs: [output], reference }];
     },
 
     receive: async ({ handle }, body) => {
@@ -835,6 +872,9 @@ function makeHandlers({
       const sigErr = await verifySigned(body, 'register', now());
       if (sigErr) return [401, { error: sigErr }];
       const identityKey = String(body.identityKey).toLowerCase();
+      const ordProof =
+        f.ordAddress && body.ordProof ? await checkOrdProof(identityKey, f.ordAddress, body.ordProof) : null;
+      if (ordProof === false) return [400, { error: 'Bad ordAddress proof' }];
       const taken = await store.getAlias(alias);
       if (bad === RESERVED_MSG && !(taken && String(taken.identity_key).toLowerCase() === identityKey))
         return [400, { error: bad }];
@@ -930,6 +970,8 @@ function makeHandlers({
           defaultDisplayName(alias),
         avatar: String(f.avatar || '').slice(0, 512) || (ownsIt ? taken.avatar : null) || null,
       });
+      // Before migrations/20261024_paymail_ord_proof.sql runs there is no column: the name still registers, unproven.
+      if (ordProof && store.setOrdProof) await store.setOrdProof(alias, ordProof).catch(() => {});
       // A name they typed is the wallet's name on every one of its paymails.
       if (cleanDisplayName(f.name) && store.setDisplayNameByKey)
         await store.setDisplayNameByKey(identityKey, row.display_name);

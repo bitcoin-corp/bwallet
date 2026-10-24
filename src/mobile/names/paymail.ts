@@ -57,6 +57,16 @@ export const signRequest = async (
   return { identityKey, timestamp, fields, signature: Utils.toHex(signature) };
 };
 
+/** "This identity key receives ordinals at ordAddress", signed by the key (action 'ord'; names.ts checkOrdProof). */
+export const signOrdProof = async (
+  wallet: Pick<WalletInterface, 'getPublicKey' | 'createSignature'>,
+  ordAddress: string,
+  now = Date.now(),
+) => {
+  const { timestamp, signature } = await signRequest(wallet, 'ord', { ordAddress }, now);
+  return { timestamp: String(timestamp), signature };
+};
+
 const api = (path: string) => `${BWALLET_PAYMAIL_API}/api/paymail/${path}`;
 
 const postJson = async (f: Fetch, url: string, body: unknown) => {
@@ -92,9 +102,12 @@ export const claimPaymail = async (
   if (extra.avatar) fields.avatar = extra.avatar.slice(0, 512);
   if (extra.feeTxid) fields.feeTxid = extra.feeTxid;
   const signed = await signRequest(wallet, 'register', fields);
+  // A standing signature tying the ordinal address to this key (b_feedback 67): payers check it before a token send.
+  const ordProof = extra.ordAddress ? await signOrdProof(wallet, extra.ordAddress) : undefined;
   // A verified social name (b0asex.x) carries the Continue with X / Google proof (src/mobile/social).
   const j = await postJson(f, api('register'), {
     ...signed,
+    ...(ordProof ? { ordProof } : {}),
     ...(extra.social ? { social: extra.social } : {}),
     ...(extra.feeTx ? { feeTx: extra.feeTx } : {}),
   });
