@@ -470,6 +470,8 @@ export type Listing = {
   outpoint: string;
   priceSats: number;
   amount: string | null; // raw token units (BSV-21)
+  /** BSV-21: this listing's price per whole token, in sats (decimals applied). */
+  perTokenSats?: number;
   label: string;
   origin: string | null; // art (collections)
   seller: string;
@@ -602,6 +604,7 @@ async function loadMarket(room: RoomRef, limit: number): Promise<RoomMarket> {
         outpoint: r.outpoint.replace('.', '_'),
         priceSats: r.data!.ordlock!.price!,
         amount: r.data!.bsv21!.amt!,
+        perTokenSats: r.data!.ordlock!.price! / (Number(r.data!.bsv21!.amt!) / 10 ** dec),
         label: `${formatAmount(BigInt(r.data!.bsv21!.amt!), dec)} $${meta?.sym ?? ''}`,
         origin: null,
         seller: r.data!.ordlock!.seller?.AddressString ?? '',

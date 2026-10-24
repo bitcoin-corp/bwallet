@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { parseActions, pickListing } from './agentTrade';
+import { listingPriceUsd, parseActions, pickListing } from './agentTrade';
 
 describe('agent action blocks', () => {
   test('blocks are pulled out of the reply; bad ones are counted, not run', () => {
@@ -30,5 +30,11 @@ describe('agent action blocks', () => {
     // 1e8 sats = $50
     expect(pickListing([l(4e6), l(2e6), l(1e6, false)], 2, 50)?.priceSats).toBe(2e6);
     expect(pickListing([l(5e6)], 2, 50)).toBeNull();
+  });
+
+  test('the price checked is the picked listing’s, not the floor (b-Aware, 24 Oct 2026)', () => {
+    expect(listingPriceUsd({ perTokenSats: 2e6 }, 50)).toBe(1);
+    expect(listingPriceUsd({}, 50)).toBeUndefined();
+    expect(listingPriceUsd({ perTokenSats: Infinity }, 50)).toBeUndefined();
   });
 });
