@@ -30,6 +30,14 @@ export const PINNED_PROTOCOLS: readonly PinnedProtocol[] = [
     description:
       'bMintX wants to lock your imported posts with your own keys before they go on chain. Only your 12 words can open them; nothing is made public unless you choose.',
   },
+  {
+    // bvideox.com mint step (24 Oct 2026): each video's record is encrypted with these keys (counterparty self).
+    protocolID: [2, 'bvideox records'],
+    origins: ['bvideox.com', 'www.bvideox.com'],
+    label: 'Your video records (bVideoX)',
+    description:
+      'bVideoX wants to lock your video records with your own keys before they go on chain. Only your 12 words can open them; nothing is made public unless you choose.',
+  },
 ];
 
 const key = (p: Protocol) => `${p[0]}:${p[1].trim().toLowerCase()}`;
@@ -43,8 +51,11 @@ export const pinnedProtocol = (protocolID: unknown): PinnedProtocol | undefined 
   return p ? BY_KEY.get(key(p)) : undefined;
 };
 
-/** Advertised in getVersion's result so a site can check the wallet pins its protocol (bmintx.com checks it). */
-export const PINNED_PROTOCOLS_VERSION = 1;
+/**
+ * Advertised in getVersion's result so a site can check the wallet pins its protocol. Bumped whenever a protocol is
+ * added: 1 = bmintx archive (bmintx.com checks >= 1), 2 = + bvideox records (bvideox.com checks >= 2).
+ */
+export const PINNED_PROTOCOLS_VERSION = 2;
 
 export const PINNED_REFUSAL = 'This protocol belongs to another site';
 

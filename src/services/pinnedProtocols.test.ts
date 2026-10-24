@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { pinnedAllowed, pinnedProtocolRefusal, PINNED_REFUSAL } from './pinnedProtocols';
+import { pinnedAllowed, pinnedProtocolRefusal, PINNED_REFUSAL, PINNED_PROTOCOLS_VERSION } from './pinnedProtocols';
 import { guardReservedProtocols } from './reservedProtocols';
 import { knownProtocol } from '../utils/protocols';
 
 const ARCHIVE = [2, 'bmintx archive'] as [number, string];
+const VIDEO = [2, 'bvideox records'] as [number, string];
 const ADMIN = 'admin.bwalletx';
 
 describe('pinned protocols', () => {
@@ -49,5 +50,22 @@ describe('pinned protocols', () => {
   });
   test('the sheet shows plain words for it', () => {
     expect(knownProtocol(ARCHIVE)?.label).toBe('Your private archive (bMintX)');
+  });
+  test('bvideox records are pinned to bvideox.com, and the two pins do not cross', () => {
+    expect(
+      pinnedProtocolRefusal('encrypt', { protocolID: VIDEO, keyID: 'k', counterparty: 'self' }, 'bvideox.com'),
+    ).toBeNull();
+    expect(pinnedProtocolRefusal('decrypt', { protocolID: VIDEO, keyID: 'k' }, 'www.bvideox.com')).toBeNull();
+    for (const o of ['bmintx.com', 'evil.com', 'bvideox.com.evil.com', undefined])
+      expect(pinnedProtocolRefusal('decrypt', { protocolID: VIDEO, keyID: 'k' }, o)).toContain(PINNED_REFUSAL);
+    expect(pinnedProtocolRefusal('decrypt', { protocolID: ARCHIVE, keyID: 'k' }, 'bvideox.com')).toContain(
+      PINNED_REFUSAL,
+    );
+    expect(pinnedAllowed(VIDEO, 'evil.com')).toBe(false);
+    expect(pinnedAllowed(VIDEO, 'bvideox.com')).toBe(true);
+    expect(knownProtocol(VIDEO)?.label).toBe('Your video records (bVideoX)');
+  });
+  test('the advertised version covers bvideox records (bvideox.com checks >= 2)', () => {
+    expect(PINNED_PROTOCOLS_VERSION).toBeGreaterThanOrEqual(2);
   });
 });
