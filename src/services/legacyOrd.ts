@@ -160,5 +160,10 @@ export const takeInLegacyOrd = async (ctx: {
 }): Promise<{ added: number; failed: number }> => {
   const address = watchedLegacyOrdAddress();
   if (!address || !ctx.services) return { added: 0, failed: 0 };
-  return syncLegacyOrd({ wallet: ctx.wallet as ListWallet, services: ctx.services, chain: ctx.chain ?? 'main', address });
+  return syncLegacyOrd({
+    wallet: ctx.wallet as ListWallet,
+    services: ctx.services,
+    chain: ctx.chain ?? 'main',
+    address,
+  });
 };
