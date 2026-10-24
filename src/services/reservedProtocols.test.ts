@@ -172,9 +172,9 @@ describe('reserved protocols (audit C1)', () => {
     const m = guardReservedProtocols(base, ADMIN) as Record<string, (...a: unknown[]) => Promise<unknown>>;
     await expect(m.listActions({ labels: [] }, 'evil.example')).rejects.toThrow(HISTORY_REFUSAL);
     await expect(m.listActions({}, 'evil.example')).rejects.toThrow(HISTORY_REFUSAL);
-    await expect(
-      m.listActions({ labels: ['action time from 2026-01-01T00:00:00Z'] }, 'evil.example'),
-    ).rejects.toThrow(HISTORY_REFUSAL);
+    await expect(m.listActions({ labels: ['action time from 2026-01-01T00:00:00Z'] }, 'evil.example')).rejects.toThrow(
+      HISTORY_REFUSAL,
+    );
     await m.listActions({ labels: ['my app'] }, 'good.example');
     await m.listActions({ labels: [] }, ADMIN);
     expect(base.calls.filter((c) => c === 'listActions')).toHaveLength(2);
