@@ -5,6 +5,8 @@ import {
   RULE_WARNING,
   addSignatures,
   defaultRule,
+  describeProposalMoves,
+  proposalMoveProblem,
   exportProposal,
   feeFor,
   finalize,
@@ -280,5 +282,40 @@ describe('Exchange never lists them', () => {
     expect(isPartnerLocked(partnerLockScript({ tokenId: TOKEN, amt: 1n, holder: pub(ann) }, k2of3))).toBe(true);
     expect(isPartnerLocked(BSV21.transfer(TOKEN, 1n).lock(new P2PKH().lock(ann.toAddress())))).toBe(false);
     expect(isPartnerLocked(buildListingScript(TOKEN, 1n, ann.toAddress(), ann.toAddress(), 100))).toBe(false);
+  });
+});
+
+describe('approval shows what the transaction really moves (b-Aware)', () => {
+  test('decodes the real holdings, ignoring the summary', async () => {
+    const p = await make(plan(k2of3, { summary: 'Send 1 share to $ben' }));
+    const d = describeProposalMoves(p);
+    expect(d.moves.map((m) => [m.holder, m.amt])).toEqual([
+      [pub(ben), 1000n],
+      [pub(ann), 2000n],
+    ]);
+    expect(d.sharesIn).toBe(3000n);
+    expect(proposalMoveProblem(d)).toBeNull();
+  });
+  test('an output outside the partnership is refused', async () => {
+    const p = await make(plan(k2of3));
+    const tx = proposalTx(p);
+    tx.addOutput({
+      lockingScript: BSV21.transfer(TOKEN, 5n).lock(new P2PKH().lock(stranger.toAddress())),
+      satoshis: 1,
+    });
+    const bad = { ...p, txEF: tx.toHexEF() };
+    const d = describeProposalMoves(bad);
+    expect(d.unexpected.length).toBe(1);
+    expect(proposalMoveProblem(d)).toContain('outside the partnership');
+  });
+  test('unbalanced shares are refused', () => {
+    expect(
+      proposalMoveProblem({
+        moves: [{ holder: 'a', amt: 1n, tokenId: 't', m: 1, pubKeys: [] }],
+        unexpected: [],
+        sharesIn: 2n,
+        sharesOut: 1n,
+      }),
+    ).toContain("don't balance");
   });
 });

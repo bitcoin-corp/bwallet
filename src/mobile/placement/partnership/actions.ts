@@ -30,6 +30,8 @@ import {
   type Keyset,
   type MovePlan,
   type PartnerProposal,
+  describeProposalMoves,
+  proposalMoveProblem,
 } from './partnerLock';
 import { guardedSendBsv21 } from '../../../services/tokenSpendGuard';
 
@@ -110,6 +112,9 @@ export async function proposeMove(ctx: OneSatContext, plan: MovePlan): Promise<P
 
 /** "Signature needed" sheet: sign every locked input this partner can sign. Returns the updated proposal. */
 export async function signProposal(ctx: OneSatContext, p: PartnerProposal): Promise<PartnerProposal> {
+  // Sign only what the transaction itself does, never on the strength of the proposer's summary (b-Aware report).
+  const problem = proposalMoveProblem(describeProposalMoves(p));
+  if (problem) throw new Error(problem);
   const myKey = await partnerKey(ctx, p.partnershipId);
   const mine = inputsFor(p, myKey);
   if (!mine.length) throw new Error('Your key is not on this partnership lock');

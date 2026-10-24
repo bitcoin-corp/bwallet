@@ -290,3 +290,46 @@ export function findMyHoldings<T extends { lockingScript: Script }>(
     return lock && lock.holder === k ? [{ ...o, lock }] : [];
   });
 }
+
+export type ProposalMoves = {
+  /** The holdings the transaction really creates, decoded from its outputs (not the proposer's summary). */
+  moves: { holder: string; amt: bigint; tokenId: string; m: number; pubKeys: string[] }[];
+  /** Outputs that are not partner locks. propose() never makes any, so any here is a reason to refuse. */
+  unexpected: { index: number; satoshis: number }[];
+  /** Shares in vs out across the partner-locked inputs and outputs. */
+  sharesIn: bigint;
+  sharesOut: bigint;
+};
+
+/**
+ * What a proposal's transaction actually does, read from its own outputs. The approval card shows this, and
+ * signing is refused when `proposalMoveProblem` returns a reason: the summary is only the proposer's note.
+ */
+export function describeProposalMoves(p: Pick<PartnerProposal, 'txEF' | 'locked'>): ProposalMoves {
+  const tx = Transaction.fromHexEF(p.txEF);
+  const moves: ProposalMoves['moves'] = [];
+  const unexpected: ProposalMoves['unexpected'] = [];
+  tx.outputs.forEach((o, index) => {
+    const parsed = parsePartnerLock(o.lockingScript);
+    if (parsed) moves.push({ ...parsed });
+    else unexpected.push({ index, satoshis: o.satoshis ?? 0 });
+  });
+  let sharesIn = 0n;
+  for (const l of p.locked) {
+    const i = tx.inputs[l.index];
+    const src = i?.sourceTransaction?.outputs[i.sourceOutputIndex];
+    const parsed = src ? parsePartnerLock(src.lockingScript) : null;
+    if (parsed) sharesIn += parsed.amt;
+  }
+  const sharesOut = moves.reduce((t, m) => t + m.amt, 0n);
+  return { moves, unexpected, sharesIn, sharesOut };
+}
+
+/** Why a partner must not sign this proposal, or null when its outputs are only balanced partner locks. */
+export function proposalMoveProblem(d: ProposalMoves): string | null {
+  if (d.unexpected.length) return 'This move pays something outside the partnership. Not signed.';
+  if (!d.moves.length) return 'This move creates no holdings. Not signed.';
+  if (d.sharesIn !== d.sharesOut) return `Shares don't balance (${d.sharesIn} in, ${d.sharesOut} out). Not signed.`;
+  if (new Set(d.moves.map((m) => m.tokenId)).size > 1) return 'This move mixes tokens. Not signed.';
+  return null;
+}
