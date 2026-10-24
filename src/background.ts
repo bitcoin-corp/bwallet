@@ -4108,14 +4108,6 @@ if (!(
       if (chromeStorageService.getUsbSecurity()?.enabled) {
         throw new Error('Turn off USB key security before restoring a backup');
       }
-      // Any handles and re-key bookkeeping from a previous enrolment on this
-      // profile are meaningless for restored, password-only keys.
-      await chromeStorageService.remove(['usbSecurity', 'keyEpoch', 'keyRecovery', 'keyRekey']);
-      await new Promise<void>((resolve) => {
-        const req = indexedDB.deleteDatabase(USB_HANDLE_DB_NAME);
-        req.onsuccess = req.onerror = req.onblocked = () => resolve();
-      });
-
       const manifest = await WalletBackupService.restoreFromExtractedData(
         chromeStorageService,
         {
@@ -4129,6 +4121,16 @@ if (!(
         (event) => {
           console.log('[MasterRestore]', event.message);
           restoreProgress(event.message);
+        },
+        // Any handles and re-key bookkeeping from a previous enrolment on this
+        // profile are meaningless for restored, password-only keys. Cleared only
+        // once the restore is known to go ahead, so a refused restore leaves them.
+        async () => {
+          await chromeStorageService.remove(['usbSecurity', 'keyEpoch', 'keyRecovery', 'keyRekey']);
+          await new Promise<void>((resolve) => {
+            const req = indexedDB.deleteDatabase(USB_HANDLE_DB_NAME);
+            req.onsuccess = req.onerror = req.onblocked = () => resolve();
+          });
         },
       );
 
