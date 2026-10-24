@@ -75,6 +75,13 @@ function supabaseStore(env = process.env, f = fetch) {
           body: JSON.stringify({ ...row, updated_at: new Date().toISOString() }),
         })
       )[0],
+    // migrations/20261024_paymail_ord_proof.sql: the owner's signature over their ordinal address.
+    setOrdProof: (alias, proof) =>
+      req(`bwallet_paymail_aliases?alias=eq.${q(alias)}`, {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ ord_proof: proof }),
+      }),
     renameAlias: (from, to) =>
       req(`bwallet_paymail_aliases?alias=eq.${q(from)}`, {
         method: 'PATCH',
