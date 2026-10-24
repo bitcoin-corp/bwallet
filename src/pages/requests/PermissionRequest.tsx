@@ -11,6 +11,8 @@ import { knownProtocol, protocolLabel, securityLevelLabel } from '../../utils/pr
 import type { PermissionRequest as PermissionRequestType } from '@bsv/wallet-toolbox-client';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { confirmUsbForApproval } from '../../services/usbPresence';
+import { DollarAmount, useSheetPrice } from '../../components/DollarAmount';
+import { dollarsFirst } from '../../utils/dollarsFirst';
 
 export type PermissionRequestProps = {
   request: PermissionRequestType & { requestID: string };
@@ -50,16 +52,11 @@ const getPermissionDescription = (request: PermissionRequestType): string => {
   }
 };
 
-const formatSatoshis = (sats: number): string => {
-  if (sats >= 100000000) {
-    return `${(sats / 100000000).toFixed(8)} BSV`;
-  }
-  return `${sats.toLocaleString()} satoshis`;
-};
-
 export const PermissionRequestPage = (props: PermissionRequestProps) => {
   const { request, onResponse } = props;
   const { theme } = useTheme();
+  // Dollars first, sats small underneath (owner, 24 Oct 2026). Display only.
+  const price = useSheetPrice();
   const { handleSelect, hideMenu } = useBottomMenu();
   const { addSnackbar } = useSnackbar();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -229,9 +226,14 @@ export const PermissionRequestPage = (props: PermissionRequestProps) => {
             <span className="text-xs font-semibold w-20 flex-shrink-0" style={{ color: theme.color.global.gray }}>
               Amount
             </span>
-            <span className="text-xs font-semibold" style={{ color: '#A1FF8B' }}>
-              {formatSatoshis(request.spending?.satoshis || 0)}
-            </span>
+            <DollarAmount
+              sats={request.spending?.satoshis || 0}
+              price={price}
+              size={24}
+              align="left"
+              color="#A1FF8B"
+              mutedColor={theme.color.global.gray}
+            />
           </div>
           <Show when={!!request.spending?.lineItems?.length}>
             {request.spending?.lineItems?.map((item, i) => (
@@ -247,7 +249,8 @@ export const PermissionRequestPage = (props: PermissionRequestProps) => {
                   {item.type}
                 </span>
                 <span className="text-xs break-all" style={{ color: theme.color.global.contrast }}>
-                  {item.description} ({formatSatoshis(item.satoshis)})
+                  {item.description} ({dollarsFirst(item.satoshis, price).main} ·{' '}
+                  {dollarsFirst(item.satoshis, price).sub})
                 </span>
               </div>
             ))}

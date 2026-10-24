@@ -419,10 +419,14 @@ export const TicketMint = ({
           // SendConfirmation truncates labels over 16 characters: keep them short.
           { address: `$${form.ticker.trim()}`.slice(0, 16), amount: `${form.supply.trim() || '0'} tickets` },
           ...(icon ? [{ address: 'Icon', amount: formatBytes(icon.file.size) }] : []),
-          { address: 'Network fee', amount: `${money(cost.networkSats, exchangeRate)}` },
-          ...(cost.feeSats > 0 ? [{ address: 'Mint fee (1%)', amount: `${money(cost.feeSats, exchangeRate)}` }] : []),
+          { address: 'Network fee', amount: `${money(cost.networkSats, exchangeRate)}`, sats: cost.networkSats },
+          ...(cost.feeSats > 0
+            ? [{ address: 'Mint fee (1%)', amount: `${money(cost.feeSats, exchangeRate)}`, sats: cost.feeSats }]
+            : []),
         ]}
         total={moneyWithSats(cost.totalSats, exchangeRate)}
+        totalSats={cost.totalSats}
+        usdPerBsv={exchangeRate}
         isProcessing={!!busy}
         onConfirm={() => void mint()}
         onCancel={() => !busy && setConfirming(false)}

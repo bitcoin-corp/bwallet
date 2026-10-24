@@ -149,10 +149,11 @@ export const PayHero = ({ amount, sub, badge = 'PAY' }: { amount: string; sub?: 
     <div
       className="relative"
       style={{
-        fontSize: amount.length > 6 ? 'min(84px, 10vh)' : 'min(112px, 13vh)',
+        // "Price loading…" / "3,412 sats" (no price yet) are words, not the dollar figure: smaller.
+        fontSize: amount.length > 10 ? 'min(44px, 6vh)' : amount.length > 6 ? 'min(84px, 10vh)' : 'min(112px, 13vh)',
+        letterSpacing: amount.length > 10 ? -1 : -5,
         lineHeight: 1,
         fontWeight: 800,
-        letterSpacing: -5,
         color: CARD.gold,
         textShadow: '0 0 40px rgba(245,197,66,0.45)',
       }}

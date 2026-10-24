@@ -22,6 +22,8 @@ import { approvalKindForSheet, privateTitleLabel, siteName } from '../../service
 import { ApprovalCard, Check, Chip, Cross, SiteTile } from '../../components/approval/ApprovalCard';
 import { CARD } from '../../components/approval/cardTheme';
 import { CarefulHero, ConnectHero, PayHero, SignInHero } from '../../components/approval/ApprovalHeroes';
+import { useSheetPrice } from '../../components/DollarAmount';
+import { dollarsFirst, dollarsInline } from '../../utils/dollarsFirst';
 
 /**
  * One sheet per action (docs/ONE-SHEET-PERMISSIONS.md §3c): everything a site asks for in one action,
@@ -39,7 +41,6 @@ export type BundlePayload = {
 type Allowance = { usdPerBsv?: number; existingSats?: number; defaultUsd: number };
 
 const fmtUsd = (usd: number) => (usd < 1 ? `${Math.round(usd * 100)}¢` : `$${usd.toFixed(2)}`);
-const fmtSats = (sats: number) => (sats >= 1e8 ? `${(sats / 1e8).toFixed(8)} BSV` : `${sats.toLocaleString()} sats`);
 
 export const BundleSheet = (props: {
   request: BundlePayload;
@@ -105,8 +106,9 @@ export const BundleSheet = (props: {
   // A mint sheet is for this one mint: never an allowance or "don't ask again" (the background enforces it too).
   const mint = request.mint && model.payment && model.lines.every((l) => !l.risky) ? request.mint : undefined;
   const showAllowance = !mint && !!allowance?.usdPerBsv && allowance.existingSats === undefined;
-  const payUsd =
-    model.payment && allowance?.usdPerBsv ? (model.payment.satoshis / 1e8) * allowance.usdPerBsv : undefined;
+  // Dollars first (owner, 24 Oct 2026): the site's allowance rate when the background sent one, else the live price.
+  const price = useSheetPrice(allowance?.usdPerBsv);
+  const payAmount = model.payment ? dollarsFirst(model.payment.satoshis, price) : undefined;
 
   const send = async (approve: boolean) => {
     setBusy(true);
@@ -140,7 +142,7 @@ export const BundleSheet = (props: {
   const kind = approvalKindForSheet(model, { existingAllowanceSats: allowance?.existingSats });
   const name = siteName(request.originator);
   const many = model.lines.length + (model.payment ? 1 : 0) > 1;
-  const payLabel = payUsd !== undefined ? fmtUsd(payUsd) : model.payment ? fmtSats(model.payment.satoshis) : '';
+  const payLabel = model.payment ? dollarsInline(model.payment.satoshis, price) : '';
   const allowanceSetsUsd = showAllowance && allowanceOn && allowanceUsd > 0 ? allowanceUsd : 0;
   const existingUsd =
     allowance?.existingSats !== undefined && allowance.usdPerBsv
@@ -297,13 +299,10 @@ export const BundleSheet = (props: {
   let siteSub: string | undefined;
   const gold = (t: string) => <span style={{ color: CARD.gold }}>{t}</span>;
 
-  const satsText = (sats: number) =>
-    allowance?.usdPerBsv ? fmtUsd((sats / 1e8) * allowance.usdPerBsv) : fmtSats(sats);
+  const satsText = (sats: number) => dollarsInline(sats, price);
   if (mint && kind !== 'careful') {
     // One button, one approval (owner, 24 Oct 2026): what will happen, then the price, then the button.
-    hero = (
-      <PayHero amount={payLabel} sub={model.payment ? `${model.payment.satoshis.toLocaleString()} sats` : undefined} />
-    );
+    hero = <PayHero amount={payAmount?.main ?? ''} sub={payAmount?.sub} />;
     siteSub = 'One approval for all of it';
     title = <>{gold(mint.title)}</>;
     body = (
@@ -378,12 +377,7 @@ export const BundleSheet = (props: {
       </div>
     );
   } else if (kind === 'pay') {
-    hero = (
-      <PayHero
-        amount={payLabel}
-        sub={payUsd !== undefined && model.payment ? `${model.payment.satoshis.toLocaleString()} sats` : undefined}
-      />
-    );
+    hero = <PayHero amount={payAmount?.main ?? ''} sub={payAmount?.sub} />;
     siteSub = model.payment?.description || 'Asks you to pay';
     title = <>Pay {gold(name)}</>;
     body = (
@@ -427,11 +421,19 @@ export const BundleSheet = (props: {
         </div>
         <div className="flex items-center gap-2" style={{ fontSize: 14 }} data-testid="post-cost">
           <Check size={18} />
-          {model.payment
-            ? `This post costs ${payLabel}${payUsd !== undefined ? ` (${model.payment.satoshis.toLocaleString()} sats)` : ''}`
-            : allowanceSetsUsd > 0
-              ? `Posts cost a little each, up to ${fmtUsd(allowanceSetsUsd)} a month without asking`
-              : 'Each paid post asks you first'}
+          {payAmount ? (
+            <span className="flex flex-col">
+              <span>
+                This post costs{' '}
+                <span style={{ fontSize: 20, fontWeight: 800, color: CARD.gold }}>{payAmount.main}</span>
+              </span>
+              <span style={{ fontSize: 12, color: CARD.muted }}>{payAmount.sub}</span>
+            </span>
+          ) : allowanceSetsUsd > 0 ? (
+            `Posts cost a little each, up to ${fmtUsd(allowanceSetsUsd)} a month without asking`
+          ) : (
+            'Each paid post asks you first'
+          )}
         </div>
       </>
     );

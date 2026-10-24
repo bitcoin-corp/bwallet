@@ -175,6 +175,7 @@ export const BsvWallet = () => {
     icon?: string;
     lineItems: SendLineItem[];
     total: string;
+    totalSats?: number;
     onConfirm: () => void;
   } | null>(null);
   // Get identityAddress from chrome storage (selected account)
@@ -1082,6 +1083,7 @@ export const BsvWallet = () => {
     const lineItems: SendLineItem[] = addressOrder.map((addr) => ({
       address: addr,
       amount: `${formatNumberWithCommasAndDecimals(consolidated.get(addr)! / BSV_DECIMAL_CONVERSION, 8)} BSV`,
+      sats: consolidated.get(addr)!,
       // Payee safety (15 Oct 2026): name, bAvatar, key fingerprint, first payment, look-alike warning.
       payee: payeeNote(identityAddress, addr, pendingMeta(addr)),
     }));
@@ -1090,6 +1092,7 @@ export const BsvWallet = () => {
       icon: bsvCoin,
       lineItems,
       total: `${formatNumberWithCommasAndDecimals(totalSats / BSV_DECIMAL_CONVERSION, 8)} BSV`,
+      totalSats,
       onConfirm: async () => {
         setSendConfirmation(null);
         setIsProcessing(true);
@@ -2371,6 +2374,8 @@ export const BsvWallet = () => {
         icon={sendConfirmation?.icon}
         lineItems={sendConfirmation?.lineItems ?? []}
         total={sendConfirmation?.total}
+        totalSats={sendConfirmation?.totalSats}
+        usdPerBsv={exchangeRate}
         isProcessing={isProcessing}
         onConfirm={() => sendConfirmation?.onConfirm()}
         onCancel={() => setSendConfirmation(null)}

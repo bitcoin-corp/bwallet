@@ -6,12 +6,15 @@ import { Button } from './Button';
 import { Show } from './Show';
 import { PageLoader } from './PageLoader';
 import { lineItemLabel } from './sendLineItemLabel';
+import { DollarAmount, useSheetPrice } from './DollarAmount';
 
 export type SendLineItem = {
   address: string;
   amount: string; // pre-formatted display string (e.g. "0.005 BSV", "$1.50 MNEE", "100 TOKEN")
   /** Who this is (name, bAvatar, key fingerprint) plus first-payment / look-alike notes. */
   payee?: PayeeNote;
+  /** BSV amount in sats: shown dollars first ("4¢") with the sats small underneath, instead of `amount`. */
+  sats?: number;
 };
 
 const GOLD = '#d4af37';
@@ -34,13 +37,30 @@ export type SendConfirmationProps = {
   icon?: string; // token/asset icon URL
   lineItems: SendLineItem[];
   total?: string; // pre-formatted total (e.g. "0.01 BSV")
+  /** Total in sats: shown dollars first with the sats underneath, instead of `total`. */
+  totalSats?: number;
+  /** USD per BSV the screen already has; fetched when missing. Display only. */
+  usdPerBsv?: number;
   isProcessing?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
 
 export const SendConfirmation = (props: SendConfirmationProps) => {
-  const { show, theme, icon, lineItems, total, isProcessing = false, onConfirm, onCancel } = props;
+  const {
+    show,
+    theme,
+    icon,
+    lineItems,
+    total,
+    totalSats,
+    usdPerBsv,
+    isProcessing = false,
+    onConfirm,
+    onCancel,
+  } = props;
+  // Dollars first, sats small underneath (owner, 24 Oct 2026).
+  const price = useSheetPrice(usdPerBsv);
 
   const contrast = theme.color.global.contrast;
   const gray = theme.color.global.gray;
@@ -154,9 +174,15 @@ export const SendConfirmation = (props: SendConfirmationProps) => {
                             )}
                           </span>
                         </span>
-                        <span className="font-semibold shrink-0 text-right" style={{ color: contrast }}>
-                          {item.amount}
-                        </span>
+                        {item.sats !== undefined ? (
+                          <span className="shrink-0">
+                            <DollarAmount sats={item.sats} price={price} size={20} color={contrast} mutedColor={gray} />
+                          </span>
+                        ) : (
+                          <span className="font-semibold shrink-0 text-right" style={{ color: contrast }}>
+                            {item.amount}
+                          </span>
+                        )}
                       </div>
                       {item.payee?.lookalike && (
                         <div
@@ -200,17 +226,21 @@ export const SendConfirmation = (props: SendConfirmationProps) => {
                 </div>
 
                 {/* Total */}
-                <Show when={!!total}>
+                <Show when={!!total || totalSats !== undefined}>
                   <div
                     className="flex justify-between items-center w-full px-3 py-2 mb-6 rounded-lg text-sm font-bold"
                     style={{ borderTop: `1px solid ${gray}33` }}
                   >
                     <span style={{ color: gray }}>Total</span>
-                    <span style={{ color: contrast }}>{total}</span>
+                    {totalSats !== undefined ? (
+                      <DollarAmount sats={totalSats} price={price} size={32} color={contrast} mutedColor={gray} />
+                    ) : (
+                      <span style={{ color: contrast }}>{total}</span>
+                    )}
                   </div>
                 </Show>
 
-                <Show when={!total}>
+                <Show when={!total && totalSats === undefined}>
                   <div className="mb-6" />
                 </Show>
 

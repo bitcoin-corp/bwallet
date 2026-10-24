@@ -3,7 +3,8 @@ import { Play } from 'lucide-react';
 import { Button } from '../../components/Button';
 import { useTheme } from '../../hooks/useTheme';
 import type { StreamGrantPrompt } from '../../promptProtocol';
-import { satsToUsdText, usdToSats } from '../../services/streamGrants';
+import { usdToSats } from '../../services/streamGrants';
+import { dollarsFirst, priceFrom, PRICE_UNAVAILABLE } from '../../utils/dollarsFirst';
 import { sendMessage } from '../../utils/chromeHelpers';
 
 export type StreamGrantRequestProps = {
@@ -39,19 +40,25 @@ export const StreamGrantRequestPage = ({ request, onResponse }: StreamGrantReque
   const gray = theme.color.global.gray;
   const contrast = theme.color.global.contrast;
   const until = new Date(request.expiresAt).toLocaleString();
-  const headline = satsToUsdText(maxSats, rate) ?? `${maxSats.toLocaleString()} sats`;
+  // Dollars first, sats small underneath (owner, 24 Oct 2026). The rate is the one the background priced the cap
+  // with; without it the sats lead and say the dollar price is unavailable. Display only.
+  const amount = dollarsFirst(maxSats, priceFrom(rate, true));
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-full px-6 text-center gap-3">
       <Play size={36} style={{ color: contrast }} />
       <h2 className="m-0 text-lg font-semibold" style={{ color: contrast }}>
-        Allow {request.originator} to stream up to {headline}/hour while you watch
+        Allow {request.originator} to stream while you watch, up to
       </h2>
-      {rate && (
-        <p className="m-0 text-xs" style={{ color: gray }}>
-          {maxSats.toLocaleString()} sats an hour at most
-        </p>
-      )}
+      <div className="flex flex-col items-center" data-testid="dollar-amount">
+        <span style={{ fontSize: rate ? 40 : 24, fontWeight: 800, lineHeight: 1.1, color: contrast }}>
+          {amount.main}
+          <span style={{ fontSize: 16, fontWeight: 600 }}> an hour</span>
+        </span>
+        <span className="text-xs" style={{ color: gray }}>
+          {amount.sub}
+        </span>
+      </div>
       {request.description && (
         <p className="m-0 text-xs" style={{ color: gray, maxWidth: '18rem' }}>
           {request.description}
@@ -85,7 +92,11 @@ export const StreamGrantRequestPage = ({ request, onResponse }: StreamGrantReque
         {!rate && 'sats'}
       </label>
       <p className="m-0 text-xs" style={{ color: gray }}>
-        {cap ? `${satsToUsdText(cap, rate) ?? ''} ${cap.toLocaleString()} sats/hour` : 'Enter a cap above zero'}
+        {cap
+          ? rate
+            ? `${dollarsFirst(cap, priceFrom(rate, true)).main} an hour · ${cap.toLocaleString()} sats`
+            : `${cap.toLocaleString()} sats an hour ${PRICE_UNAVAILABLE}`
+          : 'Enter a cap above zero'}
         {cap === maxSats ? ' (the most this site asked for)' : ''}
       </p>
       <div className="flex flex-col gap-2 w-full mt-2" style={{ maxWidth: '18rem' }}>
