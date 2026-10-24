@@ -67,7 +67,8 @@ export type Sealed = {
    */
   ordinal?: SealedOrdinal;
 };
-export type SealedOrdinal = { txid: string; deliveries: unknown[] };
+/** `tags`: the NFT's own ordinal tags (type:, origin:, …) so it lists properly in the recipient's NFTs. */
+export type SealedOrdinal = { txid: string; deliveries: unknown[]; name?: string; tags?: string[] };
 const ordinalOk = (o: unknown): o is SealedOrdinal =>
   !!o &&
   typeof o === 'object' &&

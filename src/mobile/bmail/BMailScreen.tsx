@@ -91,6 +91,11 @@ import { APP_NAME } from '../storeBuild';
 import { isNative } from '../native';
 import { sendMessageAsync } from '../../utils/chromeHelpers';
 import { useServiceContext } from '../../hooks/useServiceContext';
+import type { WalletInterface } from '@bsv/sdk';
+import type { Sealed, SealedOrdinal } from './envelope';
+import { deliveriesFor, internalizeSealedOrdinal, keepReceipt, receiptAccepted } from './ordinalReceipt';
+import { loadInbox } from '../airdrops/inbox';
+import { notifyMinted } from '../mint/mint';
 import { accountNamesFor } from '../names/accountNames';
 import { shareText } from '../chat/shareLink';
 
@@ -506,7 +511,7 @@ const Reader = ({
   r: Received;
   label: string;
   rate: number;
-  open: (r: Received) => Promise<{ subject: string; body: string }>;
+  open: (r: Received) => Promise<Sealed>;
   creditUsed: boolean;
   onReply: (d: Draft) => void;
   /** Links are clickable only from a trusted sender (links.ts). */
@@ -565,6 +570,7 @@ const Reader = ({
               ),
             )}
           </div>
+          {mail.ordinal && <ReceivedNft r={r} ordinal={mail.ordinal} />}
           {!trusted && mailSegments(mail.body, false).some((x) => x.link) && (
             <div className="flex items-center gap-2 text-[11px]" style={{ color: MUTED }}>
               <span className="flex-1">Links from senders you haven&apos;t trusted are shown as text only.</span>
@@ -1874,6 +1880,78 @@ export const BMailScreen = ({ onClose, initialTab = 'inbox' }: { onClose: () => 
           </>
         )}
       </div>
+    </div>
+  );
+};
+
+/**
+ * An NFT that came with this letter (send to a public key). From a trusted sender it goes straight into
+ * Wallet › NFTs; otherwise it waits in Quarantine (airdrops rules) until Keep. Nothing is spent either way.
+ */
+const ReceivedNft = ({ r, ordinal }: { r: Received; ordinal: SealedOrdinal }) => {
+  const { chromeStorageService, apiContext } = useServiceContext();
+  const account = chromeStorageService.getCurrentAccountObject().account?.addresses?.identityAddress ?? '';
+  const valid = deliveriesFor(ordinal, r.env.to, r.from).length > 0;
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'hidden'>('idle');
+  const [err, setErr] = useState('');
+  const accepted = receiptAccepted(loadInbox(account), ordinal.txid, r.from);
+  const receive = async (keep: boolean) => {
+    setState('busy');
+    setErr('');
+    try {
+      if (keep) keepReceipt(account, ordinal.txid);
+      await internalizeSealedOrdinal(apiContext.wallet as unknown as WalletInterface, ordinal, r.from, r.env.to, {
+        getBeef: async (txid) => Array.from(await apiContext.services!.beef.getBeef(txid)),
+      });
+      setState('done');
+      notifyMinted();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setState('idle');
+    }
+  };
+  useEffect(() => {
+    if (valid && accepted && state === 'idle' && !err) void receive(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valid, accepted]);
+  if (!valid)
+    return <div className="text-[11px] text-[#F97066]">This letter mentions an NFT that isn&apos;t for you.</div>;
+  if (state === 'hidden') return null;
+  return (
+    <div data-testid="received-nft" className="flex flex-col gap-2 rounded-lg border border-white/10 p-3">
+      <div className="text-sm font-semibold text-white">{ordinal.name || 'An NFT'} came with this letter</div>
+      {state === 'done' ? (
+        <div className="text-xs text-[#A1FF8B]">It&apos;s in Wallet › NFTs.</div>
+      ) : accepted ? (
+        <div className="text-xs" style={{ color: MUTED }}>
+          {state === 'busy' ? 'Adding it to your NFTs…' : 'Adding it to your NFTs.'}
+        </div>
+      ) : (
+        <>
+          <div className="text-xs" style={{ color: MUTED }}>
+            In Quarantine: you haven&apos;t trusted this sender, so it stays out of your NFTs until you Keep it.
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={state === 'busy'}
+              onClick={() => void receive(true)}
+              className="min-h-[44px] flex-1 rounded-lg text-xs font-semibold text-black disabled:opacity-50"
+              style={{ background: GOLD }}
+            >
+              {state === 'busy' ? 'Keeping…' : 'Keep'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setState('hidden')}
+              className="min-h-[44px] flex-1 rounded-lg text-xs font-semibold bg-[#2b2f36] text-white"
+            >
+              Hide
+            </button>
+          </div>
+        </>
+      )}
+      {err && <div className="text-[11px] text-[#F97066]">{err}</div>}
     </div>
   );
 };

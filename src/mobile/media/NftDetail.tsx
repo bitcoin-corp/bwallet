@@ -14,6 +14,7 @@ import { getErrorMessage } from '../../utils/tools';
 import { NameInput } from '../names/NameInput';
 import type { WalletInterface } from '@bsv/sdk';
 import { sendMail } from '../bmail/client';
+import { receiptTags } from '../bmail/ordinalReceipt';
 import {
   defaultKeyMode,
   encryptNoteForKey,
@@ -236,7 +237,12 @@ export const NftDetail = ({
               sealed: {
                 subject: `An NFT for you: ${item.name}`.slice(0, 120),
                 body: memo || `${item.name} is on its way to your wallet.`,
-                ordinal: { txid: res.txid, deliveries: res.deliveries ?? [] },
+                ordinal: {
+                  txid: res.txid,
+                  deliveries: res.deliveries ?? [],
+                  name: item.name,
+                  tags: receiptTags(item.output.tags),
+                },
               },
               sats: 0,
               replyPaidSats: 0,
