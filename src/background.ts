@@ -1,4 +1,15 @@
 /* global chrome */
+import {
+  RECONNECT_ID_PREFIX,
+  RECONNECT_STATE_KEY,
+  isReconnectRequestId,
+  needsReconnect,
+  noteCall,
+  noteDisconnect,
+  noteReconnected,
+  parseReconnectState,
+  type ReconnectState,
+} from './services/reconnectGate';
 import { siteThemeFor } from './mobile/theme/connectTheme';
 import type { AccentId } from './mobile/theme/accents';
 import { revokeOriginatorInAccounts } from './services/accountPermissionStore';
@@ -995,6 +1006,56 @@ const permissionBundler = new PermissionBundler<BundledRequest & BundleRequest>(
 });
 let notifyPromptUpdated: (kind: PromptKind, requestID: string) => void = () => undefined;
 
+// Re-ask on reconnect (services/reconnectGate.ts): after a site's Disconnect, or a day of silence, its next
+// identity-key request opens the reconnect sheet instead of being answered silently.
+let reconnectWrites: Promise<unknown> = Promise.resolve();
+const updateReconnectState = <T>(fn: (s: ReconnectState) => { state?: ReconnectState; result: T }): Promise<T> => {
+  const run = reconnectWrites.then(async () => {
+    const got = await chrome.storage.local.get(RECONNECT_STATE_KEY).catch(() => ({}) as Record<string, unknown>);
+    const out = fn(parseReconnectState((got as Record<string, unknown>)[RECONNECT_STATE_KEY]));
+    if (out.state) await chrome.storage.local.set({ [RECONNECT_STATE_KEY]: out.state }).catch(() => undefined);
+    return out.result;
+  });
+  reconnectWrites = run.catch(() => undefined);
+  return run;
+};
+/** Records a site's call; true when it is an identity-key request that must ask first. */
+const reconnectGate = (originator: string, action: string, params: unknown): Promise<boolean> => {
+  const identity =
+    action === CWIEventName.GET_PUBLIC_KEY && (params as { identityKey?: unknown } | undefined)?.identityKey === true;
+  const now = Date.now();
+  return updateReconnectState((s) => ({
+    state: noteCall(s, originator, now),
+    result: identity && needsReconnect(s, originator, now),
+  })).catch(() => false);
+};
+const IDENTITY_SHEET_LINE = 'identity key retrieval';
+let reconnectCounter = 0;
+/** Shows "Reconnect to <site>?" (the connect sheet); resolves on Reconnect, rejects on Not now. */
+const askReconnect = (originator: string): Promise<void> =>
+  new Promise<void>((resolve, reject) => {
+    const requestID = `${RECONNECT_ID_PREFIX}${Date.now().toString(36)}-${(reconnectCounter++).toString(36)}`;
+    const request = {
+      requestID,
+      type: 'protocol',
+      originator,
+      // Display only: the sheet reads it as the identity-key line. No key is derived from it.
+      protocolID: [1, IDENTITY_SHEET_LINE],
+      counterparty: 'self',
+      reconnect: true,
+      reason: 'Reconnect after disconnect',
+    } as unknown as BundledRequest & BundleRequest;
+    pendingPermissionRequests.set(requestID, {
+      request,
+      resolve: () => {
+        void updateReconnectState((s) => ({ state: noteReconnected(s, originator, Date.now()), result: null }));
+        resolve();
+      },
+      reject,
+    });
+    permissionBundler.add(request);
+  });
+
 // Pending wallet initialization waiters (for ensureWallet when service worker wakes without passKey)
 const pendingWalletWaiters: {
   resolve: (wallet: WalletInterface) => void;
@@ -1877,6 +1938,14 @@ if (isInServiceWorker) {
       }
       return false;
     }
+    // A site's own Disconnect (content.ts): the origin comes from Chrome, never from the page.
+    if (message?.action === 'bwxSiteDisconnect') {
+      if (sender.id === chrome.runtime.id && sender.frameId === 0 && sender.origin) {
+        const { originator } = originatorForOrigin(sender.origin);
+        if (originator) void updateReconnectState((s) => ({ state: noteDisconnect(s, originator, Date.now()), result: null }));
+      }
+      return false;
+    }
     // Subscribe requests are answered by the wallet page (src/mobile/pots/siteSubscribe.ts), never by a wallet method.
     // SUBSCRIPTIONS_ENABLED written out (literal env) so the minifier drops it from a store bundle.
 if (!(
@@ -2584,6 +2653,7 @@ if (!(
         });
     };
 
+    let gateAsk: Promise<boolean> | undefined;
     ensureWallet(isFromExtension)
       .then(() => {
         console.log('[background] ensureWallet resolved for action:', message.action);
@@ -2591,6 +2661,7 @@ if (!(
         if (!isFromExtension && typeof message.originator === 'string' && message.originator !== ADMIN_ORIGINATOR) {
           const origin = message.originator;
           void updateConnectionLog((l) => recordCall(l, origin, String(message.action)));
+          gateAsk = reconnectGate(origin, String(message.action), message.params);
         }
         switch (message.action) {
           // CWI (BRC-100) handlers - direct passthrough to wallet
@@ -2611,7 +2682,19 @@ if (!(
             runDappRequest(processCWIGetHeaderForHeight(message, sendResponse));
             return true;
           case CWIEventName.GET_PUBLIC_KEY:
-            runDappRequest(trackProtocolCall(() => processCWIGetPublicKey(message, sendResponse)));
+            runDappRequest(
+              (gateAsk ?? Promise.resolve(false)).then(async (ask) => {
+                if (ask) {
+                  try {
+                    await askReconnect(message.originator);
+                  } catch {
+                    sendResponse({ type: CWIEventName.GET_PUBLIC_KEY, success: false, error: 'User denied reconnect' });
+                    return;
+                  }
+                }
+                return trackProtocolCall(() => processCWIGetPublicKey(message, sendResponse));
+              }),
+            );
             return true;
           case CWIEventName.LIST_ACTIONS:
             runDappRequest(processCWIListActions(message, sendResponse));
@@ -3393,6 +3476,13 @@ if (!(
     pendingPermissionRequests.delete(response.requestID);
     permissionBundler.removeRequest(response.requestID);
 
+    if (isReconnectRequestId(response.requestID)) {
+      if (response.granted) pending.resolve();
+      else pending.reject(new Error('Permission denied by user'));
+      closeDappPopupIfNoUi();
+      return true;
+    }
+
     // A paired originator is granted only while its pairing is current (checked at approve time).
     if (response.granted && !pairedGrantAllowed(pending.request.originator)) {
       accountContext?.wallet.denyPermission(response.requestID).catch(console.error);
@@ -3873,6 +3963,7 @@ if (!(
           const pending = pendingPermissionRequests.get(r.requestID);
           pendingPermissionRequests.delete(r.requestID);
           if (!pending) return;
+          if (isReconnectRequestId(r.requestID)) return pending.resolve();
           try {
             if (!wallet) throw new Error('Wallet is locked');
             await wallet.grantPermission({ requestID: r.requestID, expiry });
@@ -3885,6 +3976,7 @@ if (!(
           const pending = pendingPermissionRequests.get(r.requestID);
           pendingPermissionRequests.delete(r.requestID);
           if (!pending) return;
+          if (isReconnectRequestId(r.requestID)) return pending.reject(new Error('Permission denied by user'));
           try {
             await wallet?.denyPermission(r.requestID);
           } finally {
@@ -5510,7 +5602,7 @@ if (!(
   // closed the side panel while a prompt was showing in it.
   denyAllPendingPrompts = () => {
       for (const [requestID, pending] of pendingPermissionRequests) {
-        accountContext?.wallet.denyPermission(requestID).catch(console.error);
+        if (!isReconnectRequestId(requestID)) accountContext?.wallet.denyPermission(requestID).catch(console.error);
         pending.reject(new Error('User dismissed the request'));
       }
       pendingPermissionRequests.clear();

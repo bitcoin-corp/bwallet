@@ -195,23 +195,26 @@ export const BundleSheet = (props: {
     allowance?.existingSats !== undefined && allowance.usdPerBsv
       ? (allowance.existingSats / 1e8) * allowance.usdPerBsv
       : undefined;
-  const primary = mint
-    ? `${mint.title.split(' ')[0]} · ${payLabel}`
-    : kind === 'post'
-      ? model.payment
-        ? `Allow & pay ${payLabel}`
-        : 'Allow posting'
-      : kind === 'private'
-        ? 'Allow'
-        : kind === 'signin'
-          ? 'Sign in'
-          : kind === 'pay'
-            ? model.mode === 'connectAndPay'
-              ? `Connect & pay ${payLabel}`
-              : `Pay ${payLabel}`
-            : many
-              ? 'Allow all'
-              : 'Connect';
+  const reconnect = request.items.some((r) => r.reconnect);
+  const primary = reconnect
+    ? 'Reconnect'
+    : mint
+      ? `${mint.title.split(' ')[0]} · ${payLabel}`
+      : kind === 'post'
+        ? model.payment
+          ? `Allow & pay ${payLabel}`
+          : 'Allow posting'
+        : kind === 'private'
+          ? 'Allow'
+          : kind === 'signin'
+            ? 'Sign in'
+            : kind === 'pay'
+              ? model.mode === 'connectAndPay'
+                ? `Connect & pay ${payLabel}`
+                : `Pay ${payLabel}`
+              : many
+                ? 'Allow all'
+                : 'Connect';
   const nextAllowance = () => {
     const i = ALLOWANCE_CHOICES_USD.indexOf(allowanceUsd as (typeof ALLOWANCE_CHOICES_USD)[number]);
     const next = ALLOWANCE_CHOICES_USD[(i + 1) % ALLOWANCE_CHOICES_USD.length];
@@ -589,6 +592,22 @@ export const BundleSheet = (props: {
         <Chip>
           <Check />
           Only you can read them
+        </Chip>
+        <Chip>
+          <Check />
+          No money moves
+        </Chip>
+      </div>
+    );
+  } else if (reconnect && kind === 'signin') {
+    hero = <ConnectHero site={request.originator} />;
+    siteSub = 'You disconnected this site';
+    title = <>Reconnect to {gold(name)}?</>;
+    body = (
+      <div className="flex flex-wrap" style={{ gap: 8, marginTop: 4 }}>
+        <Chip>
+          <Check />
+          Shares your public key
         </Chip>
         <Chip>
           <Check />

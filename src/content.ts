@@ -55,6 +55,8 @@ const sendSiteTheme = () => {
   const v = document.querySelector('meta[name="bwalletx-theme"]')?.getAttribute('content')?.trim() || null;
   const theme = v && v.length <= 32 ? v : null;
   if (theme === sentTheme) return;
+  // The meta going away is @bwalletx/connect's disconnect: the next connect re-asks (services/reconnectGate.ts).
+  if (sentTheme && !theme) sendDisconnect();
   sentTheme = theme;
   try {
     chrome.runtime.sendMessage({ action: 'bwxSiteTheme', theme })?.catch(() => undefined);
@@ -62,6 +64,19 @@ const sendSiteTheme = () => {
     /* extension reloaded */
   }
 };
+function sendDisconnect() {
+  try {
+    chrome.runtime.sendMessage({ action: 'bwxSiteDisconnect' })?.catch(() => undefined);
+  } catch {
+    /* extension reloaded */
+  }
+}
+// A site's own Disconnect button: window.postMessage({ type: 'bwallet:disconnect' }, location.origin). Top frame
+// only; the background takes the origin from Chrome. It only makes the next identity-key request ask first.
+window.addEventListener('message', (e: MessageEvent) => {
+  if (e.source !== window || window.top !== window) return;
+  if ((e.data as { type?: unknown } | null)?.type === 'bwallet:disconnect') sendDisconnect();
+});
 function siteThemeConnected() {
   if (themeWatch || window.top !== window) return;
   themeWatch = new MutationObserver(sendSiteTheme);
