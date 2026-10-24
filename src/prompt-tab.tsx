@@ -26,6 +26,7 @@ import type { OneSatPromptStorageEntry } from './services/oneSatPrompt';
 import { sendMessageAsync } from './utils/chromeHelpers';
 import type { PromptKind, StreamGrantPrompt, UsbCheckRequest } from './promptProtocol';
 import { StreamGrantRequestPage } from './pages/requests/StreamGrantRequest';
+import { EnvelopeRequestPage } from './pages/requests/EnvelopeRequest';
 import { SiteThemeFrame } from './mobile/theme/SiteThemeFrame';
 import './index.css';
 
@@ -362,9 +363,17 @@ const PromptApp = () => {
               onResponse={() => void advance()}
             />
           )}
-          {screen.kind === 'streamGrant' && (
-            <StreamGrantRequestPage key={screen.requestID} request={screen.payload} onResponse={() => void advance()} />
-          )}
+          {screen.kind === 'streamGrant' &&
+            // Envelopes (services/envelopes.ts): same request and answer, "Put $X in <site>'s envelope" words.
+            (screen.payload.envelope ? (
+              <EnvelopeRequestPage key={screen.requestID} request={screen.payload} onResponse={() => void advance()} />
+            ) : (
+              <StreamGrantRequestPage
+                key={screen.requestID}
+                request={screen.payload}
+                onResponse={() => void advance()}
+              />
+            ))}
           {screen.kind === 'usbCheck' && (
             <UsbCheckRequestPage key={screen.requestID} request={screen.payload} onResponse={() => void advance()} />
           )}

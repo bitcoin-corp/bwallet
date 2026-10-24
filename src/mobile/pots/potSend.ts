@@ -7,6 +7,7 @@ import { parseRecipient, resolveRecipient } from '../names/names';
 import { payeeDestination, type PayeeDestination } from './payeeBinding';
 import { isPayingPot, type Payee } from './pots';
 import { PNEE_TOKEN_ID } from '../notes/pnee';
+import { assertNotPaused } from '../config/killSwitch';
 import { pickPneeInputs, pneeOverlayFee, type PneeCandidate } from './pneePot';
 
 /**
@@ -72,6 +73,8 @@ export const signFromPot = async (
   outputs: PotPayment[],
   memo?: string,
 ): Promise<{ rawTx: string; txid: string }> => {
+  // The spending pause covers pots: they sign with their own key, outside the wallet's guarded createAction.
+  await assertNotPaused('spending');
   // Pot only, never the main balance (owner, 18 Oct 2026): refuse any id that isn't a registered pot.
   if (!isPayingPot(potId)) throw new Error('Only a pot can pay');
   const acct = potAccount(store, potId);
@@ -188,6 +191,7 @@ export const signPneeFromPot = async (
   memo?: string,
 ): Promise<{ rawTx: string; txid: string }> => {
   if (!PNEE_TOKEN_ID) throw new Error('PNEEs aren’t available');
+  await assertNotPaused('spending');
   const acct = potAccount(store, potId);
   if (!acct?.encryptedKeys) throw new Error('This pot isn’t on this device');
   const passKey = await store.getPassKey();

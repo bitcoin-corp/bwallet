@@ -10,6 +10,7 @@
  */
 import { appendAgentLog, checkAgentSpend } from '../agents/agentAccounts';
 import { SUBSCRIPTIONS_ENABLED } from '../storeBuild';
+import { isPaused } from '../config/killSwitch';
 import {
   MAX_CATCH_UP,
   advanced,
@@ -33,6 +34,11 @@ import {
 import { PayeeReviewError, type PayeeDestination } from './payeeBinding';
 
 export type PayDeps = {
+  /**
+   * The spending kill switch (config/killSwitch.ts). While it says paused, nothing is signed or broadcast; orders
+   * wait and pay on a later run (b-Aware report, 24 Oct 2026: pot payments bypassed the pause). Default: the switch.
+   */
+  spendingPaused?: () => Promise<boolean>;
   /** Dollars per BSV now (0 = unknown: USD orders wait). */
   bsvUsd: number;
   /**
@@ -100,6 +106,8 @@ const fail = (s: Subscription, reason: string, deps: PayDeps, lowFunds = false):
 };
 
 async function run(deps: PayDeps, now: number): Promise<PayOutcome[]> {
+  // The pause stops pot payments too: no new signature and no broadcast of an already-signed one.
+  if (await (deps.spendingPaused ?? (() => isPaused('spending')))().catch(() => true)) return [];
   const cap = deps.cap ?? MAX_CATCH_UP;
   const subsOn = deps.subsOn ?? SUBSCRIPTIONS_ENABLED;
   const out: PayOutcome[] = [];
