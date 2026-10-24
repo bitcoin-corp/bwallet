@@ -12,6 +12,8 @@ import {
   passCovers,
   publicGrant,
   recordSpend,
+  reserveStream,
+  settleHold,
   revokeGrant,
   revokeGrantsForOriginator,
   spentLastHour,
@@ -246,5 +248,71 @@ describe('Forget site / Revoke all / unpair end streaming grants (b-Aware rows 5
     expect(decide(r, q({ originator: 'other.site' })).approve).toBe(true);
     expect(revokeGrantsForOriginator(r, 'bmovies.online', T0)).toBeUndefined();
     expect(revokeGrantsForOriginator(emptyStreamState(), 'x', T0)).toBeUndefined();
+  });
+});
+
+describe('concurrent calls share one budget (b-Aware report, streaming cap)', () => {
+  // The background's serialised stream-state queue, over an async store, as in background.ts updateStreamState.
+  const store = (initial: StreamState) => {
+    let saved = JSON.stringify(initial);
+    let chain: Promise<unknown> = Promise.resolve();
+    const read = async () => JSON.parse(saved) as StreamState;
+    const update = <T>(fn: (s: StreamState) => { state?: StreamState; result: T }): Promise<T> => {
+      const run = chain.then(async () => {
+        const out = fn(await read());
+        if (out.state) {
+          await Promise.resolve();
+          saved = JSON.stringify(out.state);
+        }
+        return out.result;
+      });
+      chain = run.catch(() => undefined);
+      return run;
+    };
+    return { read, update };
+  };
+  const CAP = 100_000;
+  const call = (s: ReturnType<typeof store>, holdId: string, sats: number, ok: boolean) =>
+    s
+      .update((st) => {
+        const r = reserveStream(st, { ...q({ sats }), holdId });
+        return { state: r.state, result: r.decision };
+      })
+      .then(async (d) => {
+        if (!d.approve) return false;
+        await Promise.resolve(); // the signer runs
+        await s.update((st) => ({
+          state: settleHold(st, d.grant.id, holdId, ok ? { at: T0, sats, txid: holdId } : null),
+          result: undefined,
+        }));
+        return true;
+      });
+
+  test('five concurrent 90k calls against a 100k cap: at most one approved, spend within the cap', async () => {
+    const s = store(withGrant(grant({ capSatsPerHour: CAP })));
+    const approved = await Promise.all([1, 2, 3, 4, 5].map((n) => call(s, `h${n}`, 90_000, true)));
+    expect(approved.filter(Boolean).length).toBe(1);
+    const g = (await s.read()).grants[0];
+    expect(spentLastHour(g, T0 + 1000)).toBeLessThanOrEqual(CAP);
+    expect(spentLastHour(g, T0 + 1000)).toBe(90_000);
+    expect(g.spends.some((x) => x.hold)).toBe(false);
+  });
+
+  test('sequential control: calls one after another approve until the cap', async () => {
+    const s = store(withGrant(grant({ capSatsPerHour: CAP })));
+    const results: boolean[] = [];
+    for (let n = 0; n < 5; n++) results.push(await call(s, `h${n}`, 30_000, true));
+    expect(results).toEqual([true, true, true, false, false]);
+    expect(spentLastHour((await s.read()).grants[0], T0 + 1000)).toBe(90_000);
+  });
+
+  test('a failed call gives its hold back; a hold counts until settled', async () => {
+    const s = store(withGrant(grant({ capSatsPerHour: CAP })));
+    expect(await call(s, 'fail', 90_000, false)).toBe(true);
+    expect(spentLastHour((await s.read()).grants[0], T0 + 1000)).toBe(0);
+    const held = reserveStream(withGrant(grant({ capSatsPerHour: CAP })), { ...q({ sats: 50_000 }), holdId: 'x' });
+    expect(held.decision.approve && held.decision.budget).toBe(52_000);
+    expect(budgetLeft(held.state!, held.state!.grants[0], T0 + 1000)).toBe(48_000);
+    expect(held.state!.grants[0].totalSats).toBe(0);
   });
 });

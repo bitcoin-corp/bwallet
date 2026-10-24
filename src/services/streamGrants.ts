@@ -45,7 +45,8 @@ export const MAX_GRANT_MS = 24 * HOUR_MS;
 /** With no expiry in the request: four hours. */
 export const DEFAULT_GRANT_MS = 4 * HOUR_MS;
 
-export type StreamSpend = { at: number; sats: number; txid?: string };
+/** `hold`: a reservation for a call still running (see reserveStream); it counts against the budget like a spend. */
+export type StreamSpend = { at: number; sats: number; txid?: string; hold?: string };
 
 export interface StreamGrant {
   id: string;
@@ -229,6 +230,48 @@ export const recordSpend = (state: StreamState, grantId: string, spend: StreamSp
     g.id === grantId ? prune({ ...g, spends: [...g.spends, spend], totalSats: g.totalSats + spend.sats }, spend.at) : g,
   ),
 });
+
+/**
+ * decide() and, when it approves, hold the call's most (its outputs plus fee headroom, never more than the budget)
+ * against the grant in the same state, so a second call decided on the new state sees the first one's spend.
+ * background.ts runs this inside its serialised storage queue: concurrent calls can never share one budget.
+ * The approved decision's `budget` is what was held (the pass's maxSats).
+ */
+export const reserveStream = (
+  state: StreamState,
+  q: Parameters<typeof decide>[1] & { holdId: string },
+): { decision: StreamDecision; state?: StreamState } => {
+  const decision = decide(state, q);
+  if (!decision.approve) return { decision };
+  const sats = Math.min(decision.budget, q.sats + FEE_HEADROOM_SATS);
+  const hold: StreamSpend = { at: q.now, sats, hold: q.holdId };
+  return {
+    decision: { ...decision, budget: sats },
+    state: {
+      ...state,
+      grants: state.grants.map((g) => (g.id === decision.grant.id ? { ...g, spends: [...g.spends, hold] } : g)),
+    },
+  };
+};
+
+/**
+ * Replace a hold with what the call really spent (`spend`), or drop it when nothing went out (`null`), so the
+ * hold and the spend are never both counted. Unknown holds are a no-op apart from recording `spend`.
+ */
+export const settleHold = (
+  state: StreamState,
+  grantId: string,
+  holdId: string,
+  spend: StreamSpend | null,
+): StreamState => {
+  const released: StreamState = {
+    ...state,
+    grants: state.grants.map((g) =>
+      g.id === grantId ? { ...g, spends: g.spends.filter((s) => s.hold !== holdId) } : g,
+    ),
+  };
+  return spend ? recordSpend(released, grantId, spend) : released;
+};
 
 /**
  * Revoke a grant. With `originator`, only that site's grant (what a page may revoke); without, any (the

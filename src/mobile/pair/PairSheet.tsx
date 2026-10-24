@@ -118,6 +118,7 @@ export default function PairSheet({ onClose, initial }: { onClose: () => void; i
         {stage.k === 'confirm' && stage.p.cli && (
           <CliPairConfirm
             code={stage.p.code}
+            origin={stage.p.origin}
             onCancel={close}
             onConnect={(g) => {
               stage.p.confirm(g);

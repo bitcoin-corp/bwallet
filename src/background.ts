@@ -10,7 +10,6 @@ import { originatorForOrigin } from './services/originKey';
 import { pairedGrantAllowed, takePendingFor } from './services/pairedPromptGuard';
 import {
   addGrant,
-  decide as decideStream,
   isSpendingAuthAction,
   newGrantId,
   outputSats,
@@ -20,7 +19,8 @@ import {
   parseStreamState,
   passCovers,
   publicGrant,
-  recordSpend,
+  reserveStream,
+  settleHold,
   revokeGrant,
   revokeGrantsForOriginator,
   SPENDING_AUTH_REQUEST,
@@ -1048,7 +1048,17 @@ const mintIntents = new Map<string, MintIntent & { spendSeen?: boolean }>();
 const mintBundles = new Map<string, MintSheet>();
 
 /** One in-flight stream-approved createAction per originator (see StreamPass). */
-const streamPasses = new Map<string, StreamPass & { done: Promise<void>; finish: () => void }>();
+type StreamPassRun = StreamPass & { holdId: string; settled?: boolean; done: Promise<void>; finish: () => void };
+const streamPasses = new Map<string, StreamPassRun>();
+/** Swap a pass's budget hold for what it really spent (or drop it with null). Once per pass. */
+const settleStreamPass = (pass: StreamPassRun, spend: { at: number; sats: number; txid?: string } | null) => {
+  if (pass.settled) return Promise.resolve();
+  pass.settled = true;
+  return updateStreamState((st) => ({
+    state: settleHold(st, pass.grantId, pass.holdId, spend),
+    result: undefined,
+  })).catch((e: unknown) => console.warn('[createAction] stream hold not settled:', e));
+};
 /** Sites waiting on the "Allow <site> to stream up to $X/hour" sheet. */
 const pendingStreamGrantRequests = new Map<
   string,
@@ -4887,7 +4897,7 @@ if (!(
     sendResponse: CallbackResponse,
   ) => {
     let fundingSnap: FundingSnapshot | undefined;
-    let streamPass: (StreamPass & { done: Promise<void>; finish: () => void }) | undefined;
+    let streamPass: StreamPassRun | undefined;
     let spentHeal: HealReport | null | undefined;
     let releasePayeeMark: (() => void) | undefined;
     let releaseMicropay: (() => void) | undefined;
@@ -4935,29 +4945,52 @@ if (!(
       // Streaming grants are allowances: with envelopes (the default) they approve nothing (allowanceFlag.ts).
       if (streamKey && ALLOWANCES_ENABLED) {
         // One stream-approved call per site at a time, so its pass can never answer a different call's spend.
-        for (let busy = streamPasses.get(streamKey); busy; busy = streamPasses.get(streamKey)) await busy.done;
-        const decision = decideStream(await readStreamState(), {
+        // The busy check, decide() and the budget hold all run in one step of the serialised stream-state queue
+        // (b-Aware report, streaming cap): concurrent calls each see the holds of those decided before them.
+        const holdId = newGrantId();
+        const query = {
           originator: streamKey,
           // The label, or options.spendingAuthorization.protocolID (the form bmovies-app sends); both name the protocol.
           labels: [...(message.params.labels ?? []), ...streamProtocolOption(message.params)],
           sats: outputSats(message.params.outputs),
-          now: Date.now(),
           outputs: message.params.outputs,
-        });
-        if (decision.approve) {
-          let finish = () => undefined as void;
-          const done = new Promise<void>((r) => (finish = r));
-          streamPass = {
-            grantId: decision.grant.id,
-            originator: streamKey,
-            label: decision.grant.label,
-            maxSats: decision.budget,
-            done,
-            finish,
-          };
-          streamPasses.set(streamKey, streamPass);
-          console.log('[createAction] streaming grant covers this call; budget left', decision.budget);
+          holdId,
+        };
+        for (;;) {
+          let claimed: StreamPassRun | undefined;
+          const claim = await updateStreamState<{ busy?: StreamPassRun; pass?: StreamPassRun }>((st) => {
+            const busy = streamPasses.get(streamKey);
+            if (busy) return { result: { busy } };
+            const r = reserveStream(st, { ...query, now: Date.now() });
+            if (!r.decision.approve) return { result: {} };
+            let finish = () => undefined as void;
+            const done = new Promise<void>((res) => (finish = res));
+            claimed = {
+              grantId: r.decision.grant.id,
+              originator: streamKey,
+              label: r.decision.grant.label,
+              maxSats: r.decision.budget,
+              holdId,
+              done,
+              finish,
+            };
+            streamPasses.set(streamKey, claimed);
+            return { state: r.state, result: { pass: claimed } };
+          }).catch((e: unknown) => {
+            // The hold was not stored: nothing is approved, and the pass set above is withdrawn.
+            if (claimed && streamPasses.get(streamKey) === claimed) streamPasses.delete(streamKey);
+            claimed?.finish();
+            console.warn('[createAction] stream budget not reserved:', e);
+            return {} as { busy?: StreamPassRun; pass?: StreamPassRun };
+          });
+          if (claim.busy) {
+            await claim.busy.done;
+            continue;
+          }
+          streamPass = claim.pass;
+          break;
         }
+        if (streamPass) console.log('[createAction] streaming grant covers this call; held', streamPass.maxSats);
       }
       // A pinned site's mint (services/pinnedMint.ts): read before spendingAuthorization is stripped. One per site.
       if (streamKey) {
@@ -5043,6 +5076,13 @@ if (!(
         // Queued to retry is not a failure: the wallet will send it. Say so, and guard against paying again.
         if (queuedSend(err)) {
           const queued = queuedResult(err);
+          // It will go out: its spend stays counted against the stream budget.
+          if (streamPass)
+            await settleStreamPass(streamPass, {
+              at: Date.now(),
+              sats: streamPass.charged ?? outputSats(message.params.outputs),
+              txid: queued?.txid,
+            });
           await withRepeatGuard((g) => g.record(recordedFingerprint, { origin: message.originator, txid: queued?.txid }));
           // With its txid, answer like a send (BRC-100 callers read txid) and say it's pending; else the old message.
           if (!queued) throw new Error(QUEUED_MESSAGE);
@@ -5053,12 +5093,8 @@ if (!(
       }
       console.log('[createAction] Success');
       if (streamPass) {
-        const pass = streamPass;
-        const sats = pass.charged ?? outputSats(message.params.outputs);
-        await updateStreamState((st) => ({
-          state: recordSpend(st, pass.grantId, { at: Date.now(), sats, txid: result.txid }),
-          result: undefined,
-        })).catch((e: unknown) => console.warn('[createAction] stream spend not recorded:', e));
+        const sats = streamPass.charged ?? outputSats(message.params.outputs);
+        await settleStreamPass(streamPass, { at: Date.now(), sats, txid: result.txid });
       }
       const ref = result.signableTransaction?.reference;
       if (bigRefBytes.size > 200) bigRefBytes.clear();
@@ -5143,6 +5179,8 @@ if (!(
       releaseMicropay?.();
       if (ownMintIntent && mintIntents.get(ownMintIntent.origin) === ownMintIntent) mintIntents.delete(ownMintIntent.origin);
       if (streamPass) {
+        // Nothing went out (the call failed or was refused): give the held budget back before the next call runs.
+        await settleStreamPass(streamPass, null);
         if (streamPasses.get(streamPass.originator) === streamPass) streamPasses.delete(streamPass.originator);
         streamPass.finish();
       }
