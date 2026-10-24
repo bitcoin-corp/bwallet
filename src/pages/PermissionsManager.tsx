@@ -6,6 +6,9 @@ import { Show } from '../components/Show';
 import { SpeedBump } from '../components/SpeedBump';
 import { useTheme } from '../hooks/useTheme';
 import { useSnackbar } from '../hooks/useSnackbar';
+import { ALLOWANCES_ENABLED } from '../services/allowanceFlag';
+import type { Envelope } from '../services/envelopes';
+import { BLOCK_SITE_BASKET } from '../services/reservedBaskets';
 
 /** Permission token as returned by WPM — passed through as-is from background */
 interface PermissionToken {
@@ -84,6 +87,14 @@ const typeColor = (type: PermissionToken['type']): string => {
   }
 };
 
+/** The badge on a permission row. A "Block this site" record is not access: it reads Blocked, in red. */
+export const permissionBadge = (
+  perm: Pick<PermissionToken, 'type' | 'basketName'>,
+): { label: string; color: string } =>
+  perm.type === 'basket' && perm.basketName === BLOCK_SITE_BASKET
+    ? { label: 'Blocked', color: '#d9463e' }
+    : { label: typeLabel(perm.type), color: typeColor(perm.type) };
+
 const friendlyProtocolName = (name?: string): string => {
   if (!name) return 'Unknown protocol';
   const map: Record<string, string> = {
@@ -107,6 +118,7 @@ const friendlyBasketName = (name?: string): string => {
     'admin spending-authorization': 'Spending authorizations (admin)',
     'admin certificate-access': 'Certificate access (admin)',
     'bwalletx.trust-site': 'Sign-in and signing without asking',
+    [BLOCK_SITE_BASKET]: 'Every request from this site is refused. Revoke All Access to unblock it.',
   };
   return map[name] ?? name;
 };
@@ -116,7 +128,7 @@ const formatSatoshis = (sats: number): string => {
   return `${sats.toLocaleString()} sats`;
 };
 
-const formatPermissionDetail = (perm: PermissionToken, spent?: number): string => {
+export const formatPermissionDetail = (perm: PermissionToken, spent?: number): string => {
   switch (perm.type) {
     case 'protocol': {
       const name = friendlyProtocolName(perm.protocol);
@@ -124,9 +136,12 @@ const formatPermissionDetail = (perm: PermissionToken, spent?: number): string =
       return `${name}${level}`;
     }
     case 'basket':
-      if (perm.basketName === 'bwalletx.trust-site') return friendlyBasketName(perm.basketName);
+      if (perm.basketName === 'bwalletx.trust-site' || perm.basketName === BLOCK_SITE_BASKET)
+        return friendlyBasketName(perm.basketName);
       return `Can access: ${friendlyBasketName(perm.basketName)}`;
     case 'spending': {
+      // Envelopes by default: an old stored allowance grants nothing (services/allowanceFlag.ts).
+      if (!ALLOWANCES_ENABLED) return 'Old monthly allowance: no longer used. Payments ask, or come from the envelope';
       const limit =
         perm.authorizedAmount != null ? `Up to ${formatSatoshis(perm.authorizedAmount)}` : 'Unlimited spending';
       if (spent != null) {
@@ -186,6 +201,24 @@ export const PermissionsManager = ({ onBack: _onBack }: PermissionsManagerProps)
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Each site's envelope (services/envelopes.ts), with Coin return inside its card.
+  const [envelopes, setEnvelopes] = useState<{ list: Envelope[]; usdPerBsv?: number }>({ list: [] });
+  const loadEnvelopes = useCallback(async () => {
+    const r = await chrome.runtime.sendMessage({ action: 'ENVELOPES_LIST' }).catch(() => null);
+    if (r?.success) setEnvelopes({ list: r.data?.envelopes ?? [], usdPerBsv: r.data?.usdPerBsv });
+  }, []);
+  useEffect(() => {
+    void loadEnvelopes();
+  }, [loadEnvelopes]);
+  const envelopeFor = (domain: string) =>
+    envelopes.list.find((e) => e.originator === domain || e.originator === extractDomain(domain));
+  const coinReturn = async (originator: string) => {
+    const r = await chrome.runtime.sendMessage({ action: 'ENVELOPE_COIN_RETURN', originator }).catch(() => null);
+    if (r?.success) addSnackbar('Envelope closed. What was left stays in your wallet', 'success');
+    else addSnackbar(r?.error || 'Could not close the envelope', 'error');
+    await loadEnvelopes();
+  };
 
   // One entry per originator that holds permission grants.
   const entries: DomainEntry[] = useMemo(
@@ -274,6 +307,9 @@ export const PermissionsManager = ({ onBack: _onBack }: PermissionsManagerProps)
       });
       if (response.success) {
         setGroups((prev) => prev.filter((g) => g.originator !== domain));
+        // Revoking everything also closes its envelope.
+        const env = envelopeFor(domain);
+        if (env) await coinReturn(env.originator);
       } else {
         addSnackbar(response.error || 'Revoke failed', 'error');
         return;
@@ -396,9 +432,9 @@ export const PermissionsManager = ({ onBack: _onBack }: PermissionsManagerProps)
                         >
                           <span
                             className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold text-white shrink-0 mt-0.5"
-                            style={{ backgroundColor: typeColor(perm.type) }}
+                            style={{ backgroundColor: permissionBadge(perm).color }}
                           >
-                            {typeLabel(perm.type)}
+                            {permissionBadge(perm).label}
                           </span>
                           <span
                             className="text-xs flex-1 leading-snug break-words"
@@ -426,6 +462,32 @@ export const PermissionsManager = ({ onBack: _onBack }: PermissionsManagerProps)
                         No granular permissions granted yet.
                       </div>
                     )}
+
+                    {(() => {
+                      const env = envelopeFor(entry.domain);
+                      if (!env) return null;
+                      const left = envelopes.usdPerBsv
+                        ? `$${((env.balanceSats / 1e8) * envelopes.usdPerBsv).toFixed(2)}`
+                        : formatSatoshis(env.balanceSats);
+                      return (
+                        <div
+                          className="flex items-center gap-2 px-3 py-2.5"
+                          style={{ borderTop: `1px solid ${gray}12` }}
+                          data-testid="permissions-envelope"
+                        >
+                          <span className="text-[11px] flex-1" style={{ color: contrast }}>
+                            Envelope: {left} left
+                          </span>
+                          <button
+                            onClick={() => void coinReturn(env.originator)}
+                            className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer bg-transparent"
+                            style={{ color: contrast, borderColor: `${gray}40` }}
+                          >
+                            Coin return
+                          </button>
+                        </div>
+                      );
+                    })()}
 
                     {/* Revoke All — nested inside the dropdown */}
                     <div className="px-3 py-2.5" style={{ borderTop: `1px solid ${gray}12` }}>
