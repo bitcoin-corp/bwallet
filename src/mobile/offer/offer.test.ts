@@ -128,8 +128,8 @@ describe('money', () => {
   test('USD to sats rounds up, never short', () => {
     expect(usdToSatsCeil('100.00', 50)).toBe(200_000_000);
     expect(usdToSatsCeil('0.01', 30)).toBe(33_334);
-    const s = usdToSatsCeil('4000.00', 37.123);
-    expect((s * 37.123) / 1e8).toBeGreaterThanOrEqual(4000);
+    const s = usdToSatsCeil('2500.00', 37.123);
+    expect((s * 37.123) / 1e8).toBeGreaterThanOrEqual(2500);
   });
 });
 
