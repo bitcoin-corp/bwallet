@@ -141,8 +141,8 @@ const BCORP_TEXT: Swaps = {
     ],
     ['error: error instanceof Error ? error.message : String(error),', 'error: describeWalletError(error),'],
     [
-      'data: { version: `yours-wallet-${chrome.runtime.getManifest().version}` },',
-      "data: { version: `${'sidePanel' in chrome ? 'bwalletx' : 'bwallet-mobile'}-${chrome.runtime.getManifest().version}` },",
+      'data: { version: `yours-wallet-${chrome.runtime.getManifest().version}`, pinnedProtocols: PINNED_PROTOCOLS_VERSION },',
+      "data: { version: `${'sidePanel' in chrome ? 'bwalletx' : 'bwallet-mobile'}-${chrome.runtime.getManifest().version}`, pinnedProtocols: PINNED_PROTOCOLS_VERSION },",
     ],
   ],
   'src/components/UpgradeNotification.tsx': [['Welcome to Yours Wallet 5.0', 'Welcome to bWallet']],
