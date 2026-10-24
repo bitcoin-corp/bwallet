@@ -406,9 +406,10 @@ export const AirdropsList = ({ onLeave }: { onLeave: () => void }) => {
           onDismiss={() => setKept((x) => x.filter((y) => y.item.key !== k.item.key))}
         />
       ))}
-      {!visible.length && (
+      {/* Empty: bMail's "Quarantine is empty" note covers it (counted with the letters). */}
+      {!visible.length && loading && (
         <p className="text-xs text-center py-4 m-0" style={{ color: MUTED }}>
-          {loading ? 'Checking your history…' : 'No unstamped items.'}
+          Checking your history…
         </p>
       )}
       {visible.map((i) => {

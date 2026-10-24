@@ -13,6 +13,8 @@ import { VideoPoster } from '../media/VideoPoster';
 import { loadVideoBlobUrl, useVideoPoster } from '../media/videoCover';
 import { accountNamesFor } from '../names/accountNames';
 import { lookupPaymail } from '../names/paymail';
+import { OpnsNameCard } from '../names/OpnsNameCard';
+import { isOpnsType } from '../names/opnsName';
 import type { AirdropItem } from './inbox';
 import { clipText, contentOutpoint, kindLabel, nftUrls, viewKind, type ViewKind } from './nftView';
 import { deviceSender, senderLabel, type DeviceAccount } from './sender';
@@ -161,7 +163,9 @@ export const NftThumb = ({ item, onOpen, size = 48 }: { item: AirdropItem; onOpe
       className="rounded-lg bg-[#2b2f36] shrink-0 overflow-hidden flex flex-col items-center justify-center text-[10px] leading-tight"
       style={{ ...box, color: MUTED }}
     >
-      {v?.kind === 'video' ? (
+      {v && isOpnsType(v.type) ? (
+        <OpnsNameCard url={nftUrls(item).content} compact />
+      ) : v?.kind === 'video' ? (
         <VideoPoster outpoint={contentOutpoint(item)} title={nftTitle(item)} compact={size < 72} />
       ) : thumb && !bad ? (
         <img src={thumb} alt="" loading="lazy" onError={() => setBad(true)} className="w-full h-full object-cover" />
@@ -205,7 +209,8 @@ export const NftViewer = ({ item, onClose }: { item: AirdropItem; onClose: () =>
   const v = useViewKind(item);
   const { content } = nftUrls(item);
   const [failed, setFailed] = useState(false);
-  const kind = v?.kind;
+  const isName = !!v && isOpnsType(v.type);
+  const kind = isName ? undefined : v?.kind;
   const poster = useVideoPoster(kind === 'video' ? contentOutpoint(item) : null);
   const videoSrc = useVideoSrc(item, v?.type, kind === 'video');
   return createPortal(
@@ -216,7 +221,7 @@ export const NftViewer = ({ item, onClose }: { item: AirdropItem; onClose: () =>
       <div className="flex items-center justify-between gap-2 px-4 py-3">
         <div className="min-w-0 flex flex-col">
           <span className="text-sm font-semibold text-white overflow-hidden text-ellipsis whitespace-nowrap">
-            {v ? kindLabel(v.kind) : 'NFT'} from {who.label}
+            {isName ? 'Name' : v ? kindLabel(v.kind) : 'NFT'} from {who.label}
           </span>
           <span className="text-[10px]" style={{ color: '#667085' }}>
             {new Date(item.time).toLocaleString()}
@@ -232,6 +237,7 @@ export const NftViewer = ({ item, onClose }: { item: AirdropItem; onClose: () =>
             Loading…
           </p>
         )}
+        {isName && <OpnsNameCard url={content} from={who.label} />}
         {content && !failed && kind === 'video' && videoSrc === undefined && (
           <div className="w-48 h-48 rounded-xl overflow-hidden">
             <VideoPoster outpoint={contentOutpoint(item)} title={nftTitle(item)} />
@@ -255,7 +261,7 @@ export const NftViewer = ({ item, onClose }: { item: AirdropItem; onClose: () =>
           <img src={content} alt="" onError={() => setFailed(true)} className="max-w-full max-h-full object-contain" />
         )}
         {content && !failed && kind === 'text' && <TextBody url={content} />}
-        {v && (kind === 'other' || failed || !content) && (
+        {v && !isName && (kind === 'other' || failed || !content) && (
           <div className="flex flex-col items-center gap-2 text-center px-6" style={{ color: MUTED }}>
             <KindIcon kind={kind} size={32} />
             <p className="text-sm m-0">

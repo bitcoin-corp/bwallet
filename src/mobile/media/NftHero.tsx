@@ -7,6 +7,8 @@
  * Inscribed HTML only runs in sandbox="" (no scripts, no same-origin).
  */
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { OpnsNameCard } from '../names/OpnsNameCard';
+import { isOpnsType } from '../names/opnsName';
 import {
   Check,
   Copy,
@@ -308,6 +310,12 @@ export const NftHero = ({ m, pending, poster }: { m: MediaItem; pending: boolean
   if (src === null)
     return (
       <GoldArt icon={<Sparkles size={40} color={GOLD} />} label="Preview appears once it’s on chain" sub={m.name} />
+    );
+  if (isOpnsType(m.type))
+    return (
+      <div className="w-full bg-[#0b0c0f]" style={{ height: '40vh' }}>
+        <OpnsNameCard url={src} fallback={m.name} />
+      </div>
     );
   if (kind === 'video') return <VideoView src={src} poster={poster ?? autoPoster} />;
   if (kind === 'audio') return <AudioView src={src} name={m.name} />;

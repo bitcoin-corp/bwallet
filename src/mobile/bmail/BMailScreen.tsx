@@ -38,6 +38,7 @@ import { listShortcut } from '../swipe/listKeys';
 import { useBackClose } from '../backStack';
 import { isFriend as isCallFriend } from '../calls/friends';
 import { AirdropsList } from '../airdrops/AirdropsInbox';
+import { quarantineIsEmpty, quarantineTotal } from './quarantineCount';
 import { airdropPointer } from '../airdrops/inbox';
 import { useAirdrops } from '../airdrops/useAirdrops';
 import { fetchPeerBPhone } from '../calls/bphone';
@@ -935,7 +936,7 @@ export const BMailScreen = ({ onClose, initialTab = 'inbox' }: { onClose: () => 
   const m = useBMail();
   const drops = useAirdrops();
   const dropsLine = airdropPointer(drops.visible);
-  const quarantineCount = m.boxes.quarantine.length + drops.visible.length;
+  const quarantineCount = quarantineTotal(m.boxes.quarantine.length, drops.visible.length);
   const [tab, setTab] = useState<Tab>(initialTab);
   const [reading, setReading] = useState<Received | null>(null);
   const [example, setExample] = useState<ExampleMail | null>(null);
@@ -1825,7 +1826,7 @@ export const BMailScreen = ({ onClose, initialTab = 'inbox' }: { onClose: () => 
                   accepted. Mail stays sealed until you open it. Quarantined tokens are not in your balance and are
                   never spent with your own coins. Nothing here is burned or moved.
                 </p>
-                {!m.boxes.quarantine.length && (
+                {quarantineIsEmpty(m.boxes.quarantine.length, drops.visible.length) && (
                   <Empty
                     title="Quarantine is empty"
                     text="Swipe a letter right and tap Quarantine (or use … › Spam or Block): that letter and their future mail land here, sealed. Tokens and NFTs from senders you haven't accepted wait here too, out of your balance."

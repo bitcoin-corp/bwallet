@@ -5,6 +5,8 @@
  * without scripts or same-origin; audio never plays until pressed.
  */
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { OpnsNameCard } from '../names/OpnsNameCard';
+import { isOpnsType } from '../names/opnsName';
 import { useAlbums } from '../albums/useAlbums';
 import { AddToAlbumSheet, AlbumBar, HIDE_NOTE } from '../albums/AlbumSheets';
 import {
@@ -174,6 +176,7 @@ const Preview = ({ m, type, large }: { m: MediaItem; type: NftType; large?: bool
     ) : (
       <GoldCard icon={<Box size={26} color={GOLD} />} label="3D" title={m.name} />
     );
+  if (isOpnsType(m.type)) return <OpnsNameCard url={m.url} fallback={m.name} compact={!large} />;
   if (type === 'html') return <HtmlFrame url={m.url} title={m.name} interactive={large} />;
   if (type === 'text') return <TextCard url={m.url} title={m.name} />;
   return <GoldCard icon={<Sparkles size={26} color={GOLD} />} label={bad ? 'Image' : 'NFT'} title={m.name} />;

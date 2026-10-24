@@ -1,4 +1,6 @@
 import { useWithoutHidden } from '../albums/useAlbums';
+import { OpnsNameCard } from '../names/OpnsNameCard';
+import { isOpnsType } from '../names/opnsName';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileQuestion, Music, Play, RefreshCw, Send } from 'lucide-react';
@@ -135,7 +137,8 @@ export const MediaSection = () => {
             <img src={item.url} alt={item.name} loading="lazy" className="w-full h-full object-cover" />
           )}
           {item.kind === 'video' && <VideoPoster outpoint={item.origin || item.output.outpoint} title={item.name} />}
-          {(item.kind === 'music' || item.kind === 'other') && (
+          {isOpnsType(item.type) && <OpnsNameCard url={item.url} fallback={item.name} compact />}
+          {(item.kind === 'music' || (item.kind === 'other' && !isOpnsType(item.type))) && (
             <div className="w-full h-full flex items-center justify-center">
               {item.kind === 'music' ? (
                 <Music size={28} style={{ color: '#A1FF8B' }} />
