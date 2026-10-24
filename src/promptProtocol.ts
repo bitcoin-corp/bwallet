@@ -29,6 +29,11 @@ export interface StreamGrantPrompt {
   expiresAt: number;
   description?: string;
   usdPerBsv?: number;
+  /**
+   * Envelopes (services/envelopes.ts, ALLOWANCES_ENABLED off): this sheet is "Put $X in <site>'s envelope" and the
+   * answer is the sats to put in, not an hourly cap. `balanceSats` is what the envelope already holds.
+   */
+  envelope?: { balanceSats: number };
 }
 
 export interface PromptRef {

@@ -33,6 +33,13 @@ import {
   type StreamState,
 } from './services/streamGrants';
 import type { StreamGrantPrompt } from './promptProtocol';
+import { ALLOWANCES_ENABLED } from './services/allowanceFlag';
+import {
+  DEFAULT_ENVELOPE_USD,
+  ENVELOPE_PRESETS_USD,
+  isMicropaymentSite,
+  markMicropayments,
+} from './services/envelopes';
 import {
   ADDRESS_RESYNC_ALARM,
   ADDRESS_RESYNC_PERIOD_MINUTES,
@@ -1883,6 +1890,15 @@ if (!(
       void handleSpendingAuth(String(message.action), derived.originator, message.params, sendResponse);
       return true;
     }
+    // Settings › Envelopes and Coin return. Extension pages only.
+    if (typeof message?.action === 'string' && message.action.startsWith('ENVELOPE')) {
+      if (!isFromExtension) {
+        sendResponse({ type: message.action, success: false, error: 'Unauthorized' });
+        return true;
+      }
+      void handleEnvelopesInternal(message as { action: string } & Record<string, unknown>, sendResponse);
+      return true;
+    }
     // The wallet's own Streaming permissions screen and the grant sheet. Extension pages only.
     if (typeof message?.action === 'string' && message.action.startsWith('STREAM_GRANT')) {
       if (!isFromExtension) {
@@ -2030,6 +2046,7 @@ if (!(
               allowanceUsd?: number;
               allowancePerPaymentUsd?: number;
               allowancePayees?: string[];
+              envelopeUsd?: number;
               remember?: boolean;
               trustSite?: boolean;
             },
@@ -3361,6 +3378,7 @@ if (!(
     const reply = (r: { success: boolean; data?: unknown; error?: string }) => sendResponse({ type: action, ...r });
     const now = Date.now();
     const key = normalizeOriginator(originator);
+    if (!ALLOWANCES_ENABLED) return handleEnvelopeAuth(action, key, params, reply);
     try {
       if (action === SPENDING_AUTH_STATUS) {
         const state = await readStreamState();
@@ -3447,6 +3465,104 @@ if (!(
     }
   };
 
+  /**
+   * requestSpendingAuthorization with envelopes (the default, services/envelopes.ts). The site asks; the user sees
+   * "Put $X in <site>'s envelope" and picks the amount. Status reports the balance. Revoke is Coin return: a site
+   * may always give the user's earmark back, never take or raise it.
+   */
+  const handleEnvelopeAuth = async (
+    action: string,
+    site: string,
+    params: unknown,
+    reply: (r: { success: boolean; data?: unknown; error?: string }) => void,
+  ): Promise<void> => {
+    try {
+      const store = accountContext?.envelopes;
+      if (!store) return reply({ success: false, error: 'Wallet is locked' });
+      const shape = (balanceSats: number) => ({
+        version: SPENDING_AUTH_VERSION,
+        envelope: true,
+        grantId: `envelope:${site}`,
+        balanceSats,
+        remainingSats: balanceSats,
+        active: balanceSats > 0,
+      });
+      if (action === SPENDING_AUTH_STATUS) {
+        const env = await store.get(site);
+        return reply({ success: true, data: { ...shape(env?.balanceSats ?? 0), grants: env ? [shape(env.balanceSats)] : [] } });
+      }
+      if (action === SPENDING_AUTH_REVOKE) {
+        const returned = await store.close(site);
+        return reply({ success: true, data: { revoked: true, grantId: `envelope:${site}`, returnedSats: returned } });
+      }
+      if (action !== SPENDING_AUTH_REQUEST) return reply({ success: false, error: 'Unknown call' });
+      const p = (params && typeof params === 'object' ? params : {}) as Record<string, unknown>;
+      const description = typeof p.description === 'string' ? p.description.trim().slice(0, 140) || undefined : undefined;
+      const pid = p.protocolID;
+      const protocolName = Array.isArray(pid) && typeof pid[1] === 'string' ? pid[1].slice(0, 60) : '';
+      const usdPerBsv = await cachedUsdPerBsv().catch(() => undefined);
+      const env = await store.get(site);
+      const requestID = `envelope-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const prompt: StreamGrantPrompt = {
+        requestID,
+        originator: site,
+        protocolName,
+        // The sheet's default fill; the user picks the amount (presets), the site does not set it.
+        capSatsPerHour: usdPerBsv ? allowanceSats(DEFAULT_ENVELOPE_USD, usdPerBsv) : 0,
+        ceilingSatsPerHour: 0,
+        expiresAt: 0,
+        description,
+        usdPerBsv,
+        envelope: { balanceSats: env?.balanceSats ?? 0 },
+      };
+      const answer = await new Promise<number | null>((resolve) => {
+        const timer = setTimeout(() => {
+          if (pendingStreamGrantRequests.delete(requestID)) resolve(null);
+        }, STREAM_GRANT_TIMEOUT_MS);
+        pendingStreamGrantRequests.set(requestID, {
+          request: prompt,
+          resolve: (v) => {
+            clearTimeout(timer);
+            resolve(v);
+          },
+        });
+        showPromptUi('streamGrant', requestID);
+      });
+      if (answer === null) return reply({ success: false, error: 'Declined' });
+      const balance = await store.fill(site, Math.floor(answer));
+      reply({ success: true, data: shape(balance) });
+    } catch (e) {
+      reply({ success: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  /** Settings › Envelopes and a connected app's Coin return (extension pages only, never a site). */
+  const handleEnvelopesInternal = async (
+    message: { action: string } & Record<string, unknown>,
+    sendResponse: CallbackResponse,
+  ): Promise<void> => {
+    const reply = (r: { success: boolean; data?: unknown; error?: string }) => sendResponse({ type: message.action, ...r });
+    try {
+      const store = accountContext?.envelopes;
+      if (!store) return reply({ success: false, error: 'Wallet is locked' });
+      switch (message.action) {
+        case 'ENVELOPES_LIST':
+          return reply({
+            success: true,
+            data: { envelopes: await store.list(), usdPerBsv: await cachedUsdPerBsv().catch(() => undefined) },
+          });
+        case 'ENVELOPE_COIN_RETURN': {
+          const site = normalizeOriginator(String(message.originator ?? ''));
+          return reply({ success: true, data: { returnedSats: await store.close(site) } });
+        }
+        default:
+          return reply({ success: false, error: 'Unknown call' });
+      }
+    } catch (e) {
+      reply({ success: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
   /** The grant sheet's answer and the Streaming permissions screen (extension pages only). */
   const handleStreamGrantInternal = async (
     message: { action: string } & Record<string, unknown>,
@@ -3520,12 +3636,24 @@ if (!(
     const usdPerBsv = await cachedUsdPerBsv();
     let existingSats: number | undefined;
     const store = accountContext?.permissionStore;
-    if (store && originator) {
+    // Envelopes by default: an old stored allowance is not shown and grants nothing (services/allowanceFlag.ts).
+    if (ALLOWANCES_ENABLED && store && originator) {
       const grant = await store.findGrant({ type: 'spending', originator: normalizeOriginator(originator) });
       const live = grant && (grant.expiry === 0 || grant.expiry * 1000 > Date.now());
       if (live && grant.authorizedAmount != null) existingSats = grant.authorizedAmount;
     }
-    return { usdPerBsv, existingSats, defaultUsd: DEFAULT_ALLOWANCE_USD };
+    let envelope: { offer: boolean; balanceSats?: number; presetsUsd: readonly number[] } | undefined;
+    if (!ALLOWANCES_ENABLED && originator) {
+      const site = normalizeOriginator(originator);
+      const env = await accountContext?.envelopes.get(site).catch(() => undefined);
+      envelope = {
+        // A pay sheet offers the envelope for a micropayments site, or to top up one the site already has.
+        offer: !!env || isMicropaymentSite(site),
+        balanceSats: env?.balanceSats,
+        presetsUsd: ENVELOPE_PRESETS_USD,
+      };
+    }
+    return { usdPerBsv, existingSats, defaultUsd: DEFAULT_ALLOWANCE_USD, allowances: ALLOWANCES_ENABLED, envelope };
   };
 
   /**
@@ -3542,15 +3670,26 @@ if (!(
       allowancePerPaymentUsd?: number;
       /** Optional: the only output locking scripts (hex) the allowance pays without asking. */
       allowancePayees?: string[];
+      /** "Put $X in <site>'s envelope" / "Top up the envelope", ticked on a pay sheet (services/envelopes.ts). */
+      envelopeUsd?: number;
       remember?: boolean;
       trustSite?: boolean;
     },
     sendResponse: CallbackResponse,
   ) => {
     const bundle = permissionBundler.get(response.bundleID);
+    // Envelopes by default: no sheet sets a monthly allowance (services/allowanceFlag.ts).
+    if (!ALLOWANCES_ENABLED) response = { ...response, allowanceUsd: 0, allowancePerPaymentUsd: 0, allowancePayees: undefined };
     // A mint sheet answers this one mint: never a monthly allowance or "don't ask again" (services/pinnedMint.ts).
     if (mintBundles.delete(response.bundleID)) {
-      response = { ...response, allowanceUsd: 0, allowancePerPaymentUsd: 0, allowancePayees: undefined, trustSite: false };
+      response = {
+        ...response,
+        allowanceUsd: 0,
+        allowancePerPaymentUsd: 0,
+        allowancePayees: undefined,
+        envelopeUsd: 0,
+        trustSite: false,
+      };
     }
     const result = permissionBundler.resolve(response.bundleID, response.decisions ?? {});
     if (!bundle || !result) {
@@ -3595,6 +3734,14 @@ if (!(
             ...(payees ? { payees } : {}),
           } as Parameters<typeof accountContext.permissionStore.putGrant>[0]);
         }
+      }
+      // The envelope: only on a sheet carrying a payment the user approved. The money stays in the wallet; this is
+      // an earmark the site may spend from without a sheet, released by Coin return (services/envelopes.ts).
+      const envUsd = Number(response.envelopeUsd ?? 0);
+      const paid = result.granted.some((r) => (r as BundleRequest).type === 'spending');
+      if (!ALLOWANCES_ENABLED && envUsd > 0 && Number.isFinite(envUsd) && paid && accountContext?.envelopes) {
+        const sats = allowanceSats(envUsd, await cachedUsdPerBsv());
+        if (sats > 0) await accountContext.envelopes.fill(normalizeOriginator(bundle.originator), sats);
       }
       // "Don't ask again": routine requests from this site are granted without a sheet from now on.
       if (response.trustSite && remember && result.granted.length > 0 && accountContext?.permissionStore) {
@@ -3642,6 +3789,14 @@ if (!(
     return true;
   };
 
+  /** Envelopes by default: a connect sheet never stores a monthly allowance, whatever it sent (allowanceFlag.ts). */
+  const withoutGroupedAllowance = (granted: Partial<GroupedPermissions>): Partial<GroupedPermissions> => {
+    if (ALLOWANCES_ENABLED || !granted.spendingAuthorization) return granted;
+    const { spendingAuthorization: _drop, ...rest } = granted;
+    void _drop;
+    return rest;
+  };
+
   const processGroupedPermissionResponse = (response: {
     requestID: string;
     granted: Partial<GroupedPermissions> | null;
@@ -3667,12 +3822,14 @@ if (!(
         .grantGroupedPermission({
           requestID: response.requestID,
           // Reserved wallet-internal protocols are never granted to a site, whatever the sheet sent (audit C1).
-          granted: response.granted.protocolPermissions
-            ? {
-                ...response.granted,
-                protocolPermissions: withoutReservedProtocols(response.granted.protocolPermissions),
-              }
-            : response.granted,
+          granted: withoutGroupedAllowance(
+            response.granted.protocolPermissions
+              ? {
+                  ...response.granted,
+                  protocolPermissions: withoutReservedProtocols(response.granted.protocolPermissions),
+                }
+              : response.granted,
+          ),
           expiry: withDefaultExpiry(response.expiry),
         })
         .then(() => {
@@ -4608,13 +4765,19 @@ if (!(
     let streamPass: (StreamPass & { done: Promise<void>; finish: () => void }) | undefined;
     let spentHeal: HealReport | null | undefined;
     let releasePayeeMark: (() => void) | undefined;
+    let releaseMicropay: (() => void) | undefined;
     let ownMintIntent: MintIntent | undefined;
     try {
       const w = await ensureWallet();
       await ensureUsbSeen('build and sign a transaction', message.originator);
       // A monthly allowance with a payee allowlist covers only payments to those payees; this call asks otherwise
       // (services/allowanceGuard.ts, payment-safety audit 24 Oct 2026 B2).
-      if (message.originator && message.originator !== ADMIN_ORIGINATOR && accountContext?.permissionStore) {
+      if (
+        ALLOWANCES_ENABLED &&
+        message.originator &&
+        message.originator !== ADMIN_ORIGINATOR &&
+        accountContext?.permissionStore
+      ) {
         const site = normalizeOriginator(message.originator);
         const allowance = (await accountContext.permissionStore
           .findGrant({ type: 'spending', originator: site })
@@ -4641,7 +4804,11 @@ if (!(
       // Streaming grant (services/streamGrants.ts): a call from a site holding a live grant, carrying its protocol
       // label and inside the rolling hour's budget, has its spend answered without a sheet. Anything else prompts.
       const streamKey = !isAdmin && message.originator ? normalizeOriginator(message.originator) : undefined;
-      if (streamKey) {
+      // A call naming a streaming protocol is a micropayment: its pay sheet offers the site an envelope.
+      if (streamKey && !ALLOWANCES_ENABLED && streamProtocolOption(message.params).length)
+        releaseMicropay = markMicropayments(streamKey);
+      // Streaming grants are allowances: with envelopes (the default) they approve nothing (allowanceFlag.ts).
+      if (streamKey && ALLOWANCES_ENABLED) {
         // One stream-approved call per site at a time, so its pass can never answer a different call's spend.
         for (let busy = streamPasses.get(streamKey); busy; busy = streamPasses.get(streamKey)) await busy.done;
         const decision = decideStream(await readStreamState(), {
@@ -4843,6 +5010,7 @@ if (!(
       });
     } finally {
       releasePayeeMark?.();
+      releaseMicropay?.();
       if (ownMintIntent && mintIntents.get(ownMintIntent.origin) === ownMintIntent) mintIntents.delete(ownMintIntent.origin);
       if (streamPass) {
         if (streamPasses.get(streamPass.originator) === streamPass) streamPasses.delete(streamPass.originator);
