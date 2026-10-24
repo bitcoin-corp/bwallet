@@ -329,6 +329,23 @@ describe('store: pots, orders, pause/resume, pay-on-open', () => {
     expect(getSub(s2.id)?.paidCount).toBe(6);
   });
 
+  test('an agent spend during a slow payment waits for it, so the two cannot both pass the cap', async () => {
+    // b-Aware report, 24 Oct 2026: the pot payer and the agent path checked the same cap side by side.
+    setup(); // $30 due today, pot cap $33
+    const { serialSpend } = await import('../agents/spendQueue');
+    const { checkAgentSpend } = await import('../agents/agentAccounts');
+    let release!: () => void;
+    const slow = new Promise<void>((r) => (release = r));
+    const paying = payDue({ bsvUsd: 50, resolve: async (p) => (await slow, p.address!), ...P(async () => 'tx1') }, NOW);
+    // An agent spend of $6 arrives while the pot is still resolving its payee.
+    const agent = serialSpend(async () => checkAgentSpend('1Pot', 6, NOW));
+    await Promise.resolve();
+    release();
+    expect((await paying)[0].ok).toBe(true);
+    // It is checked after the $30 is logged: only $3 left, so it is refused.
+    expect((await agent).ok).toBe(false);
+  });
+
   test('stopped pot and the daily cap refuse; nothing is signed', async () => {
     const s = setup();
     setAgentStopped('1Pot', true, NOW);
