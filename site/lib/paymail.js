@@ -687,11 +687,12 @@ function makeHandlers({
       const [s, row] = await publicIdentity(handle);
       if (s !== 200) return [s, row];
       // No picture of their own: their generated bAvatar, drawn from the identity key (bChatX
-      // /api/bavatar, the same picture the wallet draws), so other BSV apps show one too.
+      // /api/bavatar, the same picture the wallet draws), so other BSV apps show one too. BAVATAR_HOST swaps the host
+      // (e.g. www.bitcoinchat.online, the same app) while bchatx.com is unreachable.
       const avatar =
         row.avatar ||
         (/^0[23][0-9a-f]{64}$/.test(row.identity_key || '')
-          ? `https://www.bchatx.com/api/bavatar/${row.identity_key}.png`
+          ? `${String(env.BAVATAR_HOST || process.env.BAVATAR_HOST || 'https://www.bchatx.com').replace(/\/$/, '')}/api/bavatar/${row.identity_key}.png`
           : '');
       const co = !row._opns && companyOf(row.alias);
       if (co) return [200, { name: co.name, avatar, company: companyOut(co) }];
