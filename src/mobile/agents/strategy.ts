@@ -13,6 +13,9 @@ import {
   getAgentAccount,
   allAgentsStopped,
   ledgerSpentToday,
+  resetStrategyLedger,
+  clearStrategyLedger,
+  strategyLedgerSpent,
   type AgentLogEntry,
 } from './agentAccounts';
 
@@ -268,6 +271,7 @@ export const loadStrategy = (
   now = Date.now(),
 ) => {
   write(KEY(id), { strategy, mode, loadedAt: now, startValueUsd } satisfies Loaded);
+  resetStrategyLedger(id, now);
   if (mode === 'paper') write(PAPER(id), null);
   appendAgentLog(id, {
     at: now,
@@ -281,6 +285,7 @@ export const setStrategyMode = (id: string, mode: Loaded['mode'], now = Date.now
   const l = getLoadedStrategy(id);
   if (!l || l.mode === mode) return;
   write(KEY(id), { ...l, mode, loadedAt: now });
+  resetStrategyLedger(id, now);
   if (mode === 'paper') write(PAPER(id), null);
   appendAgentLog(id, { at: now, action: 'strategy', detail: `${l.strategy.name}: switched to ${mode}`, usd: 0 });
 };
@@ -289,6 +294,7 @@ export const unloadStrategy = (id: string, now = Date.now()) => {
   const l = getLoadedStrategy(id);
   if (!l) return;
   write(KEY(id), null);
+  clearStrategyLedger(id);
   appendAgentLog(id, { at: now, action: 'strategy', detail: `Unloaded ${l.strategy.name}`, usd: 0 });
 };
 
@@ -370,8 +376,15 @@ export const checkAgentAction = (
         ...extra,
       }
     : {
-        spentTodayUsd: spentSince(log, Math.max(dayStart(now), loaded.loadedAt)),
-        spentTotalUsd: spentSince(log, loaded.loadedAt),
+        // The ledger survives log truncation; the log is read too (max) for strategies loaded before the ledger.
+        spentTodayUsd: Math.max(
+          spentSince(log, Math.max(dayStart(now), loaded.loadedAt)),
+          strategyLedgerSpent(id, loaded.loadedAt, now).todayUsd,
+        ),
+        spentTotalUsd: Math.max(
+          spentSince(log, loaded.loadedAt),
+          strategyLedgerSpent(id, loaded.loadedAt, now).totalUsd,
+        ),
         startValueUsd: loaded.startValueUsd,
         ...extra,
       };

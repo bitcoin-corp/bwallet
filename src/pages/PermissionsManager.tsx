@@ -8,6 +8,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useSnackbar } from '../hooks/useSnackbar';
 import { ALLOWANCES_ENABLED } from '../services/allowanceFlag';
 import type { Envelope } from '../services/envelopes';
+import { BLOCK_SITE_BASKET } from '../services/reservedBaskets';
 
 /** Permission token as returned by WPM — passed through as-is from background */
 interface PermissionToken {
@@ -86,6 +87,14 @@ const typeColor = (type: PermissionToken['type']): string => {
   }
 };
 
+/** The badge on a permission row. A "Block this site" record is not access: it reads Blocked, in red. */
+export const permissionBadge = (
+  perm: Pick<PermissionToken, 'type' | 'basketName'>,
+): { label: string; color: string } =>
+  perm.type === 'basket' && perm.basketName === BLOCK_SITE_BASKET
+    ? { label: 'Blocked', color: '#d9463e' }
+    : { label: typeLabel(perm.type), color: typeColor(perm.type) };
+
 const friendlyProtocolName = (name?: string): string => {
   if (!name) return 'Unknown protocol';
   const map: Record<string, string> = {
@@ -109,6 +118,7 @@ const friendlyBasketName = (name?: string): string => {
     'admin spending-authorization': 'Spending authorizations (admin)',
     'admin certificate-access': 'Certificate access (admin)',
     'bwalletx.trust-site': 'Sign-in and signing without asking',
+    [BLOCK_SITE_BASKET]: 'Every request from this site is refused. Revoke All Access to unblock it.',
   };
   return map[name] ?? name;
 };
@@ -118,7 +128,7 @@ const formatSatoshis = (sats: number): string => {
   return `${sats.toLocaleString()} sats`;
 };
 
-const formatPermissionDetail = (perm: PermissionToken, spent?: number): string => {
+export const formatPermissionDetail = (perm: PermissionToken, spent?: number): string => {
   switch (perm.type) {
     case 'protocol': {
       const name = friendlyProtocolName(perm.protocol);
@@ -126,7 +136,8 @@ const formatPermissionDetail = (perm: PermissionToken, spent?: number): string =
       return `${name}${level}`;
     }
     case 'basket':
-      if (perm.basketName === 'bwalletx.trust-site') return friendlyBasketName(perm.basketName);
+      if (perm.basketName === 'bwalletx.trust-site' || perm.basketName === BLOCK_SITE_BASKET)
+        return friendlyBasketName(perm.basketName);
       return `Can access: ${friendlyBasketName(perm.basketName)}`;
     case 'spending': {
       // Envelopes by default: an old stored allowance grants nothing (services/allowanceFlag.ts).
@@ -421,9 +432,9 @@ export const PermissionsManager = ({ onBack: _onBack }: PermissionsManagerProps)
                         >
                           <span
                             className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold text-white shrink-0 mt-0.5"
-                            style={{ backgroundColor: typeColor(perm.type) }}
+                            style={{ backgroundColor: permissionBadge(perm).color }}
                           >
-                            {typeLabel(perm.type)}
+                            {permissionBadge(perm).label}
                           </span>
                           <span
                             className="text-xs flex-1 leading-snug break-words"
