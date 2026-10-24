@@ -1,3 +1,4 @@
+import { useWithoutHidden } from '../albums/useAlbums';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
@@ -721,7 +722,8 @@ const SheetButton = ({ icon, label, onClick }: { icon: ReactNode; label: string;
 
 const Mine = ({ q, justMinted, onMint }: { q: string; justMinted: JustMinted[]; onMint: () => void }) => {
   const { chromeStorageService } = useServiceContext();
-  const { items: media, loading, error, hasMore, loadMore } = useWalletMedia();
+  const { items: shownRaw, loading, error, hasMore, loadMore } = useWalletMedia();
+  const media = useWithoutHidden(shownRaw);
   const [note, setNote] = useState('');
   const [open, setOpen] = useState<number | null>(null);
   const identityPubKey = chromeStorageService.getCurrentAccountObject().account?.pubKeys?.identityPubKey;

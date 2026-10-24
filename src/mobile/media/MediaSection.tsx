@@ -1,3 +1,4 @@
+import { useWithoutHidden } from '../albums/useAlbums';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileQuestion, Music, Play, RefreshCw, Send } from 'lucide-react';
@@ -42,7 +43,8 @@ const ELLIPSIS = 'overflow-hidden text-ellipsis whitespace-nowrap';
 
 export const MediaSection = () => {
   const navigate = useNavigate();
-  const { items, hasMore, loading, error, loadMore, reload, refresh, hiddenUnbroadcast } = useWalletMedia();
+  const { items: shownRaw, hasMore, loading, error, loadMore, reload, refresh, hiddenUnbroadcast } = useWalletMedia();
+  const items = useWithoutHidden(shownRaw);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNote, setRefreshNote] = useState('');
   const doRefresh = async () => {

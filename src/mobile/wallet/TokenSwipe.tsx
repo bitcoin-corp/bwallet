@@ -1,12 +1,12 @@
 /**
  * Wallet token rows with Telegram-style swipe actions (owner, 15 Oct 2026), on the shared SwipeRow.
  *  - Swipe LEFT: Send · Receive · Chat (full swipe = Send).
- *  - Swipe RIGHT: Pin · Lock · Archive (full swipe = Archive, with an Undo toast).
+ *  - Swipe RIGHT: Pin · Lock · Folder (albums, 24 Oct 2026) · Archive (full swipe = Archive, with an Undo toast).
  *  - No long-press menu (owner, 15 Oct 2026): the swipes give every action. The tray matches the row's height.
  * Pins and archive are per device (tokenRows.ts). Not in the browser extension (no Chat tab there).
  */
 import { useState, type ReactNode } from 'react';
-import { Archive, ArrowDownLeft, ArrowUpRight, Lock, MessageCircle, Pin, PinOff, Tag } from 'lucide-react';
+import { Archive, ArrowDownLeft, ArrowUpRight, FolderPlus, Lock, MessageCircle, Pin, PinOff, Tag } from 'lucide-react';
 import { SwipeRow, type SwipeAction } from '../swipe/SwipeRow';
 import { showUndo, UndoToastHost } from '../swipe/undo';
 import { IS_EXTENSION } from '../extension';
@@ -29,6 +29,8 @@ export type TokenSwipeProps = {
   onLock?: () => void;
   /** Omitted: no Sell in the tray (BSV, MNEE, builds where listing is off). Opens List for sale. */
   onSell?: () => void;
+  /** Omitted: no Folder in the tray. Opens the add-to-folder sheet (albums/AlbumSheets.tsx). */
+  onFolder?: () => void;
   children: ReactNode;
 };
 
@@ -58,6 +60,14 @@ export const TokenSwipe = (p: TokenSwipeProps) => {
   ];
   if (p.onLock)
     right.push({ id: 'lock', label: 'Lock', color: '#7c5cff', icon: <Lock size={18} />, onPress: p.onLock });
+  if (p.onFolder)
+    right.push({
+      id: 'folder',
+      label: 'Folder',
+      color: '#8a6d1f',
+      icon: <FolderPlus size={18} />,
+      onPress: p.onFolder,
+    });
   if (!p.noArchive)
     right.push({
       id: 'archive',

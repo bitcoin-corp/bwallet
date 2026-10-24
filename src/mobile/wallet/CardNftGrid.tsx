@@ -1,3 +1,4 @@
+import { useWithoutHidden } from '../albums/useAlbums';
 import { useEffect, useMemo, useState } from 'react';
 import { Film } from 'lucide-react';
 import { useWalletMedia, type MediaItem } from '../media/useWalletMedia';
@@ -43,7 +44,8 @@ export function CardNftGrid({
   busy: string | null;
   onPick: (m: MediaItem) => void;
 }) {
-  const { items, hasMore, loading, error, loadMore } = useWalletMedia();
+  const { items: shownRaw, hasMore, loading, error, loadMore } = useWalletMedia();
+  const items = useWithoutHidden(shownRaw);
   const pics = useMemo(() => cardNftChoices(items), [items]);
   return (
     <div className="bw-cdes-nfts">

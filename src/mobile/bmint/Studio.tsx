@@ -1,3 +1,4 @@
+import { useWithoutHidden } from '../albums/useAlbums';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useServiceContext } from '../../hooks/useServiceContext';
@@ -286,7 +287,8 @@ const SubVaultTile = ({ vault, onOpen }: { vault: SubVault; onOpen: () => void }
 
 /** Your vault (owner, 20 Oct 2026): sub-vaults per collection; tap one to open its grid. */
 export const Vault = ({ name }: { name: string }) => {
-  const { items, loading, error, hasMore, loadMore } = useWalletMedia();
+  const { items: shownRaw, loading, error, hasMore, loadMore } = useWalletMedia();
+  const items = useWithoutHidden(shownRaw);
   const xpub = useRelayxAccount();
   const [open, setOpen] = useState<string | null>(null);
   // Every page, so each sub-vault's count is the real one (Wallet › NFTs does the same).

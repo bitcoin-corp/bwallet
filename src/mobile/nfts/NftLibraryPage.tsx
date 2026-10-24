@@ -5,14 +5,33 @@
  * without scripts or same-origin; audio never plays until pressed.
  */
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useAlbums } from '../albums/useAlbums';
+import { AddToAlbumSheet, AlbumBar, HIDE_NOTE } from '../albums/AlbumSheets';
+import {
+  ALL_VIEW,
+  filterView,
+  isHidden,
+  liveView,
+  nftKey,
+  removeFromAlbum,
+  setHidden,
+  viewCounts,
+  type AlbumView,
+  type ItemKey,
+} from '../albums/albums';
 import { useNavigate, useParams } from 'react-router-dom';
 import { cancelOrdinalListing } from '@1sat/actions';
 import { readAssetIdTag } from '@1sat/types';
 import {
   Box,
+  CheckCircle2,
+  Circle,
   Copy,
   Download,
   ExternalLink,
+  EyeOff,
+  Eye,
+  FolderPlus,
   FileText,
   Music,
   Play,
@@ -63,6 +82,9 @@ const ROUTE = '/m/nfts';
 const MIN_TILE = 170;
 const GAP = 12;
 const CAPTION = 52;
+
+/** Album key for a library row (albums.ts). */
+const keyOf = (i: LibraryItem) => nftKey(i.origin);
 
 /** unbroadcast.ts PENDING_ON_CHAIN, via useWalletMedia. */
 const isPending = (m: MediaItem) => !!m.pending;
@@ -165,57 +187,110 @@ const Tile = ({
   size,
   onOpen,
   onPlay,
+  picked,
+  onLongPress,
 }: {
   m: MediaItem;
   it: LibraryItem;
   size: number;
   onOpen: () => void;
   onPlay: () => void;
-}) => (
-  <div style={{ width: size }} className="flex flex-col">
-    <button
-      onClick={onOpen}
-      aria-label={`Open ${it.name}`}
-      className="relative overflow-hidden rounded-xl bg-[var(--bw-surface)] border border-white/5 hover:border-[color:var(--bw-accent)]/60 transition-colors"
-      style={{ width: size, height: size }}
-    >
-      <div className={`absolute inset-0 ${m.flagged ? 'blur-xl' : ''}`}>
-        <Preview m={m} type={it.type} />
-      </div>
-      {(it.type === 'video' || it.type === 'audio') && (
-        <span
-          role="button"
-          aria-label={it.type === 'audio' ? `Play ${it.name}` : `Open ${it.name}`}
-          onClick={(e) => {
-            if (it.type !== 'audio') return;
-            e.stopPropagation();
-            onPlay();
-          }}
-          className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full"
-          style={{ background: GOLD }}
-        >
-          <Play size={14} color="#010101" fill="#010101" />
-        </span>
-      )}
-      {it.pending && (
-        <span className="absolute top-2 left-2 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-semibold text-[color:var(--bw-accent)]">
-          Pending
-        </span>
-      )}
-      {it.listed && (
-        <span className="absolute top-2 right-2 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-semibold text-[#A1FF8B]">
-          Listed
-        </span>
-      )}
-    </button>
-    <div className="pt-1.5 min-w-0">
-      <div className="text-xs font-semibold text-white truncate">{it.name}</div>
-      <div className="text-[10px] text-[#98A2B3] truncate">
-        {it.collection ? collectionLabel(it.collection) : (it.contentType ?? 'Unknown type')}
+  /** Set while selecting: true = in the selection. */
+  picked?: boolean;
+  /** Long-press (or right-click): start selecting with this item. */
+  onLongPress: () => void;
+}) => {
+  const press = useLongPress(onLongPress);
+  return (
+    <div style={{ width: size }} className="flex flex-col">
+      <button
+        {...press}
+        onClick={() => {
+          if (press.consumed()) return;
+          onOpen();
+        }}
+        aria-label={picked === undefined ? `Open ${it.name}` : `${picked ? 'Deselect' : 'Select'} ${it.name}`}
+        aria-pressed={picked}
+        className="relative overflow-hidden rounded-xl bg-[var(--bw-surface)] border border-white/5 hover:border-[color:var(--bw-accent)]/60 transition-colors"
+        style={{ width: size, height: size }}
+      >
+        <div className={`absolute inset-0 ${m.flagged ? 'blur-xl' : ''}`}>
+          <Preview m={m} type={it.type} />
+        </div>
+        {picked !== undefined && (
+          <span className="absolute top-2 left-2 z-[1] rounded-full bg-black/60" aria-hidden>
+            {picked ? <CheckCircle2 size={22} color="var(--bw-accent)" /> : <Circle size={22} color="#fff" />}
+          </span>
+        )}
+        {picked === undefined && (it.type === 'video' || it.type === 'audio') && (
+          <span
+            role="button"
+            aria-label={it.type === 'audio' ? `Play ${it.name}` : `Open ${it.name}`}
+            onClick={(e) => {
+              if (it.type !== 'audio') return;
+              e.stopPropagation();
+              onPlay();
+            }}
+            className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full"
+            style={{ background: GOLD }}
+          >
+            <Play size={14} color="#010101" fill="#010101" />
+          </span>
+        )}
+        {it.pending && (
+          <span className="absolute top-2 left-2 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-semibold text-[color:var(--bw-accent)]">
+            Pending
+          </span>
+        )}
+        {it.listed && (
+          <span className="absolute top-2 right-2 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-semibold text-[#A1FF8B]">
+            Listed
+          </span>
+        )}
+      </button>
+      <div className="pt-1.5 min-w-0">
+        <div className="text-xs font-semibold text-white truncate">{it.name}</div>
+        <div className="text-[10px] text-[#98A2B3] truncate">
+          {it.collection ? collectionLabel(it.collection) : (it.contentType ?? 'Unknown type')}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
+
+/** Press-and-hold (500 ms) or right-click; the click that ends a long press is swallowed. */
+const useLongPress = (fire: () => void) => {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fired = useRef(false);
+  const clear = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  return {
+    onPointerDown: () => {
+      fired.current = false;
+      clear();
+      timer.current = setTimeout(() => {
+        fired.current = true;
+        fire();
+      }, 500);
+    },
+    onPointerUp: clear,
+    onPointerLeave: clear,
+    onPointerCancel: clear,
+    onContextMenu: (e: { preventDefault: () => void }) => {
+      e.preventDefault();
+      clear();
+      fired.current = true;
+      fire();
+    },
+    consumed: () => {
+      const f = fired.current;
+      fired.current = false;
+      return f;
+    },
+  };
+};
 
 /* ---------- Run (RelayX) ---------- */
 
@@ -358,6 +433,10 @@ const DetailPanel = ({
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [picture, setPicture] = useState(false);
+  const [albums, updateAlbums] = useAlbums();
+  const [filing, setFiling] = useState(false);
+  const key = nftKey(it.origin);
+  const hidden = isHidden(albums, key);
   const txid = it.outpoint.split('_')[0];
   const originTx = it.origin.split('_')[0];
   const shareLink = `${window.location.origin}/wallet/nfts/${it.outpoint}`;
@@ -515,7 +594,20 @@ const DetailPanel = ({
           >
             <Copy size={15} /> Copy link
           </button>
+          <button onClick={() => setFiling(true)} className={`${btn} bg-[var(--bw-surface)] text-white`}>
+            <FolderPlus size={15} /> Add to album
+          </button>
+          <button
+            onClick={() => {
+              updateAlbums((s) => setHidden(s, [key], !hidden));
+              setMsg(hidden ? 'Unhidden. It’s back in your NFTs.' : 'Hidden. Find it in the Hidden album.');
+            }}
+            className={`${btn} bg-[var(--bw-surface)] text-white`}
+          >
+            {hidden ? <Eye size={15} /> : <EyeOff size={15} />} {hidden ? 'Unhide' : 'Hide'}
+          </button>
         </div>
+        <p className="text-[11px] text-[#98A2B3] m-0">{HIDE_NOTE}</p>
         {it.legacyListing && (
           <p className="text-[11px] text-[color:var(--bw-accent)]">
             This NFT sits in an old OrdLock v1 listing. 1Sat withdrew that contract, so it isn’t for sale and can’t be
@@ -527,6 +619,15 @@ const DetailPanel = ({
         )}
         {msg && <p className="text-xs text-[#98A2B3] break-all">{msg}</p>}
       </div>
+      {filing && (
+        <AddToAlbumSheet
+          state={albums}
+          update={updateAlbums}
+          keys={[key]}
+          title={`Add “${it.name}” to album`}
+          onClose={() => setFiling(false)}
+        />
+      )}
       {sending && (
         <NftDetail
           item={m}
@@ -615,7 +716,24 @@ const NftLibraryPage = () => {
     [media],
   );
   const byOutpoint = useMemo(() => new Map(media.map((m) => [m.output.outpoint.replace('.', '_'), m])), [media]);
-  const shown = useMemo(() => filterAndSort(lib, filter, sort), [lib, filter, sort]);
+  // Albums and Hidden (albums.ts): the album row picks which items the filters below work on.
+  const [albums, updateAlbums] = useAlbums();
+  const [pickedView, setView] = useState<AlbumView>(ALL_VIEW);
+  const view = liveView(albums, pickedView);
+  const inView = useMemo(() => filterView(lib, keyOf, albums, view), [lib, albums, view]);
+  const albumCounts = useMemo(() => viewCounts(lib, keyOf, albums), [lib, albums]);
+  // Selecting (Select button or long-press a tile): outpoints picked.
+  const [picked, setPicked] = useState<Set<string> | null>(null);
+  const [filing, setFiling] = useState<ItemKey[] | null>(null);
+  const togglePick = (op: string) =>
+    setPicked((p) => {
+      const n = new Set(p ?? []);
+      if (n.has(op)) n.delete(op);
+      else n.add(op);
+      return n;
+    });
+  const pickedKeys = (): ItemKey[] => (picked ? lib.filter((i) => picked.has(i.outpoint)).map(keyOf) : []);
+  const shown = useMemo(() => filterAndSort(inView, filter, sort), [inView, filter, sort]);
   const runShown = useMemo(() => {
     const q = filter.query.trim().toLowerCase();
     return runAll && q
@@ -624,10 +742,10 @@ const NftLibraryPage = () => {
   }, [runAll, filter.query]);
   const showOneSat = source !== 'run';
   const showRun = !!xpub && source !== '1sat';
-  const groups = useMemo(() => groupByCollection(lib), [lib]);
-  const counts = useMemo(() => typeCounts(lib), [lib]);
-  const listedCount = lib.filter((i) => i.listed).length;
-  const pendingCount = lib.filter((i) => i.pending).length;
+  const groups = useMemo(() => groupByCollection(inView), [inView]);
+  const counts = useMemo(() => typeCounts(inView), [inView]);
+  const listedCount = inView.filter((i) => i.listed).length;
+  const pendingCount = inView.filter((i) => i.pending).length;
 
   const openKey = (openParam ?? '').replace('.', '_');
   const openItem = lib.find((i) => i.outpoint === openKey);
@@ -703,7 +821,7 @@ const NftLibraryPage = () => {
               aria-label="Collection"
               className="rounded-xl bg-[var(--bw-surface)] px-3 py-2 text-sm"
             >
-              <option value="">All collections ({lib.length})</option>
+              <option value="">All collections ({inView.length})</option>
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>
                   {collectionLabel(g.id)} ({g.count})
@@ -727,7 +845,60 @@ const NftLibraryPage = () => {
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
             </button>
+            {showOneSat && lib.length > 0 && (
+              <button
+                onClick={() => setPicked((p) => (p ? null : new Set()))}
+                aria-pressed={!!picked}
+                className="rounded-xl bg-[var(--bw-surface)] px-3 py-2 text-sm"
+              >
+                {picked ? 'Done' : 'Select'}
+              </button>
+            )}
           </div>
+          {showOneSat && (
+            <AlbumBar state={albums} update={updateAlbums} view={view} onView={setView} counts={albumCounts} />
+          )}
+          {view.kind === 'hidden' && <p className="text-[11px] text-[#98A2B3] m-0">{HIDE_NOTE}</p>}
+          {picked && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl bg-[var(--bw-surface)] px-3 py-2">
+              <span className="text-xs font-semibold mr-auto">
+                {picked.size ? `${picked.size} selected` : 'Tap NFTs to select'}
+              </span>
+              <button
+                disabled={!picked.size}
+                onClick={() => setFiling(pickedKeys())}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-[#010101] disabled:opacity-40"
+                style={{ background: GOLD }}
+              >
+                <FolderPlus size={13} /> Add to album
+              </button>
+              {view.kind === 'album' && (
+                <button
+                  disabled={!picked.size}
+                  onClick={() => {
+                    const keys = pickedKeys();
+                    updateAlbums((s) => removeFromAlbum(s, view.id, keys));
+                    setPicked(null);
+                  }}
+                  className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-white/15 disabled:opacity-40"
+                >
+                  Remove from album
+                </button>
+              )}
+              <button
+                disabled={!picked.size}
+                onClick={() => {
+                  const keys = pickedKeys();
+                  updateAlbums((s) => setHidden(s, keys, view.kind !== 'hidden'));
+                  setPicked(null);
+                }}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold border border-white/15 disabled:opacity-40"
+              >
+                {view.kind === 'hidden' ? <Eye size={13} /> : <EyeOff size={13} />}
+                {view.kind === 'hidden' ? 'Unhide' : 'Hide'}
+              </button>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-1.5">
             <div role="group" aria-label="Source" className="flex rounded-full bg-[var(--bw-surface)] p-0.5 mr-1">
               {(['all', '1sat', 'run'] as const)
@@ -767,8 +938,8 @@ const NftLibraryPage = () => {
               </button>
             )}
             <span className="ml-auto text-xs text-[#98A2B3]">
-              {shown.length === lib.length ? `${lib.length}` : `${shown.length} of ${lib.length}`} NFT
-              {lib.length === 1 ? '' : 's'}
+              {shown.length === inView.length ? `${inView.length}` : `${shown.length} of ${inView.length}`} NFT
+              {inView.length === 1 ? '' : 's'}
               {hasMore ? ' · loading more…' : ''}
               {note ? ` · ${note}` : ''}
             </span>
@@ -787,7 +958,15 @@ const NftLibraryPage = () => {
               <Empty onMint={() => navigate('/m/bpics')} />
             )
           ) : !shown.length && lib.length ? (
-            <div className="py-16 text-center text-sm text-[#98A2B3]">Nothing matches these filters.</div>
+            <div className="py-16 text-center text-sm text-[#98A2B3]">
+              {inView.length
+                ? 'Nothing matches these filters.'
+                : view.kind === 'hidden'
+                  ? 'Nothing hidden. Open an NFT and tap Hide to keep it out of your lists.'
+                  : view.kind === 'album'
+                    ? 'Nothing in this album yet. Tap Select, pick NFTs and tap Add to album.'
+                    : 'Every NFT here is hidden. Open the Hidden album to see them.'}
+            </div>
           ) : (
             <div style={{ height: rows * rowH, position: 'relative' }}>
               {Array.from({ length: Math.max(0, last - first) }, (_, r) => {
@@ -802,8 +981,10 @@ const NftLibraryPage = () => {
                           m={m}
                           it={it}
                           size={size}
-                          onOpen={() => navigate(`${ROUTE}/${it.outpoint}`)}
+                          onOpen={() => (picked ? togglePick(it.outpoint) : navigate(`${ROUTE}/${it.outpoint}`))}
                           onPlay={() => playMusic(audioMedia, m)}
+                          picked={picked ? picked.has(it.outpoint) : undefined}
+                          onLongPress={() => setPicked((p) => new Set([...(p ?? []), it.outpoint]))}
                         />
                       ) : null;
                     })}
@@ -822,6 +1003,17 @@ const NftLibraryPage = () => {
           )}
         </div>
       </div>
+      {filing && (
+        <AddToAlbumSheet
+          state={albums}
+          update={updateAlbums}
+          keys={filing}
+          onClose={() => {
+            setFiling(null);
+            setPicked(null);
+          }}
+        />
+      )}
       {relayx && xpub && (
         <RelayxRecoverScreen
           xpub={xpub}

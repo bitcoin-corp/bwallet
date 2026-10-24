@@ -1,3 +1,4 @@
+import { useWithoutHidden } from '../albums/useAlbums';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -130,7 +131,8 @@ export function CollectionsPanel({
 }) {
   const mod = useArt();
   // The wallet's own NFT list (same source as My NFTs): names unlock packs, no extra lookups.
-  const { items: nfts } = useWalletMedia();
+  const { items: shownRaw } = useWalletMedia();
+  const nfts = useWithoutHidden(shownRaw);
   const navigate = useNavigate();
   const holdings = useMemo(() => ({ tokens: heldTokenSymbols(), nftNames: nfts.map((n) => n.name) }), [nfts]);
   if (!mod) return <p className="bw-cdes-empty">Loading collections…</p>;

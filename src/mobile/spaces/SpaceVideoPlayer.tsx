@@ -6,6 +6,7 @@
  * and a staff phone moves the room to the next track when a video ends (album_goto, version-guarded).
  * Tickets are the room's existing door (door.ts / DoorButton), not a new payment.
  */
+import { useWithoutHidden } from '../albums/useAlbums';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatApiError, type BchatClient } from '../chat/api';
 import { useWalletMedia } from '../media/useWalletMedia';
@@ -397,7 +398,8 @@ const HostControls = ({
 
 /** The wallet's own video inscriptions (mounted only when opened, so lists load on demand). */
 const OrdinalPicker = ({ onPick }: { onPick: (origin: string, title: string) => void }) => {
-  const { items, loading, error } = useWalletMedia();
+  const { items: shownRaw, loading, error } = useWalletMedia();
+  const items = useWithoutHidden(shownRaw);
   const vids = items.filter((i) => i.kind === 'video' && !i.pending && !i.flagged);
   if (error)
     return (

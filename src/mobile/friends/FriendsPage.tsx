@@ -1,3 +1,4 @@
+import { useWithoutHidden } from '../albums/useAlbums';
 import { TipButton } from '../tip/TipButton';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -452,7 +453,8 @@ const Action = ({
 );
 
 const NftPicker = ({ to, onClose }: { to: string; onClose: () => void }) => {
-  const { items, loading, error, hasMore, loadMore } = useWalletMedia();
+  const { items: shownRaw, loading, error, hasMore, loadMore } = useWalletMedia();
+  const items = useWithoutHidden(shownRaw);
   const [pick, setPick] = useState<MediaItem | null>(null);
   if (pick) return <NftDetail item={pick} all={items} initialTo={to} onClose={() => setPick(null)} onSent={onClose} />;
   return (
