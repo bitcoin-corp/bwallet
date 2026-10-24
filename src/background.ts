@@ -138,6 +138,7 @@ import { markPayeeMismatch, parsePayees, payeesAllowed } from './services/allowa
 import { ADMIN_ORIGINATOR, initWallet, openAccountStorageForBackup, type AccountContext } from './initWallet';
 import { isExtensionSender, reservedOriginatorRefusal } from './services/adminOriginator';
 import { isReservedBasket, RESERVED_BASKET_REFUSAL, revokeBasketGrantsForOriginator } from './services/reservedBaskets';
+import { pinnedProtocolRefusal } from './services/pinnedProtocols';
 import { isReservedProtocol, reservedProtocolRefusal, RESERVED_REFUSAL, withoutReservedProtocols } from './services/reservedProtocols';
 import { healIndexFundActions } from './mobile/tokens/indexFundHeal';
 import { continuesChain, endChain, isAlreadyProcessedAbort, markChainStep, startsChain } from './services/dappChain';
@@ -1781,7 +1782,14 @@ if (!(
     // Wallet-internal protocols (bTrust, Locks, funds, presign…) are never available to an outside site or app,
     // and the refusal comes before any unlock or permission sheet (services/reservedProtocols.ts, audit C1).
     if (!isFromExtension && message?.originator !== ADMIN_ORIGINATOR) {
-      const refusal = reservedProtocolRefusal(String(message?.action ?? ''), message?.params);
+      const refusal =
+        reservedProtocolRefusal(String(message?.action ?? ''), message?.params) ??
+        // Protocols pinned to their home site (services/pinnedProtocols.ts): a user's private archive keys.
+        pinnedProtocolRefusal(
+          String(message?.action ?? ''),
+          message?.params,
+          sender.origin ? normalizeOriginator(sender.origin) : undefined,
+        );
       if (refusal) {
         sendResponse({ type: message.action, success: false, error: refusal });
         return true;

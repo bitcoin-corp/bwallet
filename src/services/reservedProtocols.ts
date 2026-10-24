@@ -12,6 +12,9 @@
  * the tests until it is classified there.
  */
 
+import { normalizeOriginator } from '@1sat/wallet';
+import { pinnedAllowed, pinnedProtocolRefusal, PINNED_REFUSAL } from './pinnedProtocols';
+
 type Protocol = readonly [number, string];
 
 const key = (p: Protocol) => `${p[0]}:${p[1].trim().toLowerCase()}`;
@@ -121,7 +124,9 @@ export function guardReservedProtocols<T extends object>(manager: T, adminOrigin
     if (typeof original !== 'function') continue;
     m[method] = async (args: unknown, originator?: string) => {
       if (isOutside(originator)) {
-        const refusal = reservedProtocolRefusal(method, args);
+        const refusal =
+          reservedProtocolRefusal(method, args) ??
+          pinnedProtocolRefusal(method, args, normalizeOriginator(originator ?? ''));
         if (refusal) throw new Error(refusal);
       }
       return (original as (a: unknown, o?: string) => Promise<unknown>).call(manager, args, originator);
@@ -132,6 +137,9 @@ export function guardReservedProtocols<T extends object>(manager: T, adminOrigin
     m.ensureProtocolPermission = async (args: { originator?: string; protocolID?: unknown }) => {
       if (isOutside(args?.originator) && isReservedProtocol(args?.protocolID))
         throw new Error(`${RESERVED_REFUSAL}: "${String((args.protocolID as Protocol)[1])}"`);
+      // Pinned protocols (pinnedProtocols.ts): only their home site may even be asked.
+      if (isOutside(args?.originator) && !pinnedAllowed(args?.protocolID, normalizeOriginator(args?.originator ?? '')))
+        throw new Error(`${PINNED_REFUSAL}: "${String((args.protocolID as Protocol)[1])}"`);
       return (ensure as (a: unknown) => Promise<boolean>).call(manager, args);
     };
   }

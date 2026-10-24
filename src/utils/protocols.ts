@@ -2,11 +2,16 @@
  * Plain-language labels for protocols whose BRC-43 names are opaque to users.
  * Protocols absent from the table render their raw name unchanged.
  */
+import { PINNED_PROTOCOLS } from '../services/pinnedProtocols';
+
 const KNOWN_PROTOCOLS: Record<string, { label: string; description: string }> = {
   '2:3241645161d8': {
     label: 'BRC-29 payment',
     description: 'An application is requesting permission to derive payment addresses for a specific recipient.',
   },
+  ...Object.fromEntries(
+    PINNED_PROTOCOLS.map((p) => [`${p.protocolID[0]}:${p.protocolID[1]}`, { label: p.label, description: p.description }]),
+  ),
 };
 
 export const knownProtocol = (protocolID?: [number, string]) =>

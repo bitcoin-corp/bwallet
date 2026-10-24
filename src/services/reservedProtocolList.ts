@@ -61,5 +61,6 @@ export const EXTERNAL_OK: readonly (readonly [number, string, string])[] = [
   [2, 'bwallet sign in', 'Sign in with bWalletX (bwalletx-connect, bit-sign, bChatX)'],
   [0, 'fwetch identity', 'bit-sign fwetch feed signatures'],
   [2, '3241645161d8', 'BRC-29 payments: every BRC-100 payer derives these keys'],
+  [2, 'bmintx archive', 'bMintX private archive: pinned to bmintx.com only (pinnedProtocols.ts)'],
   [1, 'sigma', 'SIGMA post signatures: the wallet asks for it with a first post (permissionBundle.ts POST_PROTOCOL)'],
 ];
