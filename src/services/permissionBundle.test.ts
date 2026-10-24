@@ -407,3 +407,39 @@ describe('allowance only on money sheets (b-Aware 24 Oct 2026: sign-in stored a 
     expect(allowanceGranted(b, b.items)).toBe(true);
   });
 });
+
+describe('requests that join a sheet already on screen (b-Aware report, 24 Oct 2026)', () => {
+  test('a basket request fired mid-sheet is risky, unticked and denied by a plain Allow', () => {
+    const { clock, bundler } = setup();
+    const b = bundler.add(proto('sign', 'evil.example', { counterparty: 'anyone' }));
+    clock.tick(400);
+    bundler.add(basket('late', 'evil.example'));
+    const model = buildSheetModel(b);
+    const late = model.lines.find((l) => l.requestID === 'late')!;
+    expect(late.risky).toBe(true);
+    expect(late.checked).toBe(false);
+    expect(late.text).toMatch(/^Added while this was open/);
+    const d = sheetDecisions(model, true, {}, false);
+    expect(d.sign).toBe(true);
+    expect(d.late).toBe(false);
+    // Ticking it knowingly still works.
+    expect(sheetDecisions(model, true, { late: true }, true).late).toBe(true);
+  });
+
+  test('a spend that joins an open sheet is never its main payment', () => {
+    const { clock, bundler } = setup();
+    const b = bundler.add(proto('sign', 'evil.example', { counterparty: 'anyone' }));
+    clock.tick(400);
+    bundler.add(spend('pay', 5000, 'evil.example'));
+    const model = buildSheetModel(b);
+    expect(model.payment).toBeUndefined();
+    expect(sheetDecisions(model, true, {}, false).pay).toBe(false);
+  });
+
+  test('requests inside the merge window are not marked late', () => {
+    const { bundler } = setup();
+    const b = bundler.add(proto('a'));
+    bundler.add(basket('b'));
+    expect(b.items.every((i) => !i.lateJoin)).toBe(true);
+  });
+});

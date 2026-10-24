@@ -5,7 +5,8 @@
  * Stricter than the manual Resync coins, because nobody asked for it:
  * - Only the default basket. Tokens, locks and OrdLocks are left to Repair Sync's token-aware passes.
  * - A spender counts from the 1sat spend index (batched, 429 backoff; it can name a mempool spend, which the restore
- *   pass below undoes if that spend is dropped), or else a CONFIRMED WhatsOnChain spend ("status": "confirmed" on
+ *   pass below undoes if that spend is dropped) only when WhatsOnChain names the same spender (mainnet; elsewhere the
+ *   index alone), or else a CONFIRMED WhatsOnChain spend ("status": "confirmed" on
  *   /tx/<txid>/<vout>/spent, checked 19 Oct 2026), mainnet only. A WhatsOnChain mempool spend never clears a coin.
  * - Never the wallet's own unfinished actions: their txids are not spenders, and coins they spend are skipped.
  * - Every coin cleared is remembered (outpoint → spender); later runs re-check them, and one both lookups now call
@@ -86,8 +87,14 @@ export async function autoResyncCoins(d: AutoResyncDeps): Promise<AutoResyncRepo
     if (!index.has(o)) continue;
     let by: string | null = null;
     const ix = index.get(o);
-    if (isSpender(ix)) by = ix;
-    else {
+    if (isSpender(ix)) {
+      // One source never clears a coin on its own (b-Aware report, 24 Oct 2026): where WhatsOnChain is available
+      // (mainnet) it must name the same spender, mempool or confirmed. Unspent or unknown there: leave the coin.
+      if (d.woc) {
+        const w = await askWoc(o);
+        if (w && w.txid.toLowerCase() === ix.toLowerCase()) by = ix;
+      } else by = ix;
+    } else {
       const w = await askWoc(o);
       if (w && w.confirmed && isSpender(w.txid)) by = w.txid;
     }

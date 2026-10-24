@@ -117,6 +117,19 @@ function signCosignInputLegacy(tx: Transaction, inputIndex: number, privateKey: 
 
 // ─── Public API ──────────────────────────────────────────────
 
+/**
+ * The fee tier, amount and recipient come from the MNEE API's live config, and the "Legacy MNEE Found" prompt shows
+ * only the gross balance, so a wrong or hostile config could take nearly all of it (b-Aware report, 24 Oct 2026).
+ * The sweep refuses any fee above 1 MNEE, or above the larger of 0.01 MNEE and 1% of the balance. Atomic units
+ * (5 decimals: 100_000 = 1 MNEE).
+ */
+export const MAX_SWEEP_FEE_ATOMIC = 100_000;
+export const sweepFeeOk = (tokensIn: number, fee: number): boolean =>
+  Number.isSafeInteger(fee) &&
+  fee >= 0 &&
+  fee <= MAX_SWEEP_FEE_ATOMIC &&
+  fee <= Math.max(1_000, Math.floor(tokensIn / 100));
+
 export interface SweepLegacyMneeInput {
   /** The MneeClient instance (from apiContext.services.mnee) */
   mneeClient: MneeClient;
@@ -176,6 +189,9 @@ export async function sweepLegacyMnee(input: SweepLegacyMneeInput): Promise<Swee
 
     // Calculate fee (sweep entire balance to one address)
     const fee = config.fees.find((f) => tokensIn >= f.min && tokensIn <= f.max)?.fee ?? 0;
+    if (!sweepFeeOk(tokensIn, fee))
+      return { error: `MNEE asked for a fee of ${fee / 100_000} MNEE, which is too high. Nothing was sent.` };
+    if (fee > 0) onProgress?.(`Network fee: ${fee / 100_000} MNEE`);
     const sweepAmount = tokensIn - fee;
     if (sweepAmount <= 0) return { error: 'MNEE balance too small to cover fees' };
 

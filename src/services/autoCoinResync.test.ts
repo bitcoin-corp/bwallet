@@ -43,6 +43,16 @@ describe('autoResyncCoins', () => {
     expect(r.released).toBe(1);
   });
 
+  test('an index spend WhatsOnChain does not back never clears (b-Aware report, 24 Oct 2026)', async () => {
+    const idx = { coins: [`${A}_0`], getSpends: async (b: string[]) => b.map(() => S) };
+    const unspent = deps({ ...idx, woc: async () => null });
+    expect((await autoResyncCoins(unspent.d)).released).toBe(0);
+    const other = deps({ ...idx, woc: async () => ({ txid: C, confirmed: true }) });
+    expect((await autoResyncCoins(other.d)).released).toBe(0);
+    const agree = deps({ ...idx, woc: async () => ({ txid: S, confirmed: false }) });
+    expect((await autoResyncCoins(agree.d)).released).toBe(1);
+  });
+
   test('mempool-only WhatsOnChain spender never clears; confirmed does', async () => {
     const mem = deps({ coins: [`${A}_0`], woc: async () => ({ txid: S, confirmed: false }) });
     expect((await autoResyncCoins(mem.d)).released).toBe(0);

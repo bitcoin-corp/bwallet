@@ -27,6 +27,12 @@ export interface BundleRequest {
   certificate?: { verifier: string; certType: string; fields: string[] };
   spending?: { satoshis: number; lineItems?: { type: string; description: string; satoshis: number }[] };
   reason?: string;
+  /**
+   * Set when the request joined a sheet that was already on screen (b-Aware report, 24 Oct 2026). Such a line is
+   * treated as risky: never pre-ticked, shown on the careful card, and answered "denied" unless the user ticks it.
+   * A site can no longer slip a request into a sign-in sheet the user is about to Allow.
+   */
+  lateJoin?: boolean;
 }
 
 export type BundleState = 'collecting' | 'shown';
@@ -86,7 +92,8 @@ export class PermissionBundler<R extends BundleRequest = BundleRequest> {
   add(request: R): PermissionBundle<R> {
     const existing = this.openFor(request.originator);
     if (existing) {
-      if (!existing.items.some((i) => i.requestID === request.requestID)) existing.items.push(request);
+      if (!existing.items.some((i) => i.requestID === request.requestID))
+        existing.items.push(existing.state === 'shown' ? { ...request, lateJoin: true } : request);
       if (existing.state === 'shown') this.opts.onUpdate?.(existing);
       return existing;
     }
@@ -243,6 +250,7 @@ const protoLevel = (r: BundleRequest) => Number(r.protocolID?.[0] ?? 0);
 /** True when a request should never be pre-ticked (plan §3c). */
 export const isRiskyRequest = (r: BundleRequest): boolean => {
   if (r.privileged) return true;
+  if (r.lateJoin) return true;
   // NOT counterparty 'anyone' (owner, 11 Oct 2026): it is how a site gets a signature it can check
   // with only your public identity key, e.g. "Sign in with bWalletX" on bChatX. It proves you hold
   // your key and moves nothing; anything "encrypted for anyone" is readable from your public key
@@ -393,7 +401,8 @@ export const buildSheetModel = (bundle: Pick<PermissionBundle, 'originator' | 'i
   for (const r of bundle.items) {
     if (r.type === 'spending') {
       const sats = r.spending?.satoshis ?? 0;
-      if (!payment) {
+      // A spend that joined an open sheet is never the sheet's main payment (Allow would answer it).
+      if (!payment && !r.lateJoin) {
         payment = {
           requestID: r.requestID,
           satoshis: sats,
@@ -401,10 +410,10 @@ export const buildSheetModel = (bundle: Pick<PermissionBundle, 'originator' | 'i
           detail: lineDetail(r),
         };
       } else {
-        // A second spend in the same bundle: shown as its own line, never pre-ticked.
+        // A second (or late) spend in the same bundle: shown as its own line, never pre-ticked.
         lines.push({
           requestID: r.requestID,
-          text: `Also pay ${sats.toLocaleString()} sats`,
+          text: `${r.lateJoin ? 'Added while this was open: pay' : 'Also pay'} ${sats.toLocaleString()} sats`,
           detail: lineDetail(r),
           risky: true,
           checked: false,
@@ -421,7 +430,7 @@ export const buildSheetModel = (bundle: Pick<PermissionBundle, 'originator' | 'i
     const checked = !risky && (r.type !== 'protocol' || r.counterparty === 'anyone' || isIdentityKeyRequest(r));
     lines.push({
       requestID: r.requestID,
-      text: lineText(r),
+      text: r.lateJoin ? `Added while this was open: ${lineText(r)}` : lineText(r),
       detail: lineDetail(r),
       risky,
       checked,
