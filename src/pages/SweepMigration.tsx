@@ -4,6 +4,7 @@ import { PrivateKey } from '@bsv/sdk';
 import { prepareSweepInputs, sweepBsv, sweepOrdinals, sweepBsv21 } from '@1sat/actions';
 import { cancelOwnedOrdLockListings } from '../utils/cancelOrdLockListings';
 import { scanAddress, type ScannedAssets } from '../sweep/scanner';
+import { heldOrdinals, normOutpoint } from '../services/legacyOrd';
 import { fundingOwners, sweepKeyWifs } from '../sweep/sweepKeys';
 import type { IndexedOutput } from '@1sat/types';
 import { Button } from '../components/Button';
@@ -194,10 +195,17 @@ export const SweepMigration = () => {
       merged.totalBsv += r.totalBsv;
     }
 
+    // Ordinals the wallet already holds (the sync watches the legacy ord address, services/legacyOrd.ts) are in
+    // Wallet › NFTs already: not offered again, not counted as "still at your old address".
+    if (apiContext.wallet) {
+      const held = await heldOrdinals(apiContext.wallet as never).catch(() => new Set<string>());
+      merged.ordinals = merged.ordinals.filter((o) => !held.has(normOutpoint(o.outpoint)));
+    }
+
     setOwners(fundingOwners(addresses.map((a, i) => ({ address: a, funding: results[i]?.funding ?? [] }))));
     setAssets(merged);
     setStep('review');
-  }, [legacyKeys, apiContext.services]);
+  }, [legacyKeys, apiContext.services, apiContext.wallet]);
 
   useEffect(() => {
     if (step === 'scanning') runScan();

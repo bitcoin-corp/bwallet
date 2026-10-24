@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WalletOutput } from '@bsv/sdk';
 import { listOrdinals, syncAddresses } from '@1sat/actions';
+import { takeInLegacyOrd } from '../../services/legacyOrd';
 import { onMinted } from '../mint/mint';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { getOutputName, getTagValue } from '../../utils/format';
@@ -180,6 +181,8 @@ export const useWalletMedia = () => {
       synced = false;
       console.warn('[media] syncAddresses failed:', e);
     }
+    // NFTs sent to the legacy ord address (paymail ordinals): services/legacyOrd.ts.
+    await takeInLegacyOrd(apiContext).catch((e) => console.warn('[media] legacy ord sync failed:', e));
     const before = itemsRef.current.map((i) => i.output.outpoint);
     setLoading(true);
     try {

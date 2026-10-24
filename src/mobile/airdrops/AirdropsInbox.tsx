@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Coins, EyeOff, Flag, ShieldAlert } from 'lucide-react';
 import { listOrdinals, syncAddresses } from '@1sat/actions';
+import { takeInLegacyOrd } from '../../services/legacyOrd';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { useBottomMenu } from '../../hooks/useBottomMenu';
 import { asMenuItem } from '../tabs/tabs';
@@ -269,6 +270,8 @@ const useKeepNft = () => {
     } catch (e) {
       console.warn('[airdrops] syncAddresses after Keep failed:', e);
     }
+    // A kept NFT at the legacy ord address joins the list too (services/legacyOrd.ts).
+    await takeInLegacyOrd(apiContext).catch((e) => console.warn('[airdrops] legacy ord sync failed:', e));
     try {
       const { outputs } = await listOrdinals.execute(apiContext, { limit: 200, offset: 0 });
       return inWalletList(

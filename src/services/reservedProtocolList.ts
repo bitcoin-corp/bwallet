@@ -49,6 +49,8 @@ export const RESERVED_PROTOCOLS: readonly Protocol[] = [
   [2, 'bmusic artist'],
   [2, 'bmusic listen claim'],
   [2, 'bpositive'],
+  // The legacy ordinals key (addresses.ordAddress), watched by the sync (src/services/legacyOrd.ts).
+  [2, 'bwalletx legacy ord'],
 ];
 
 /**
