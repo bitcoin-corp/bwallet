@@ -375,6 +375,10 @@ export const checkAgentAction = (
         startValueUsd: loaded.startValueUsd,
         ...extra,
       };
+  // Live mode must know what it holds before a holdTokens stop can be honoured: never treat "unknown" as 0
+  // (b-Aware report, 24 Oct 2026). The caller passes holding (agentTrade.ts reads the account's balances).
+  if (!paper && loaded.strategy.rules.stop?.holdTokens && !(typeof st.holding === 'number' && st.holding >= 0))
+    return refuse("Couldn't read this account's token holdings, so the stop rule can't be checked", 'stop');
   const r = checkRules(loaded.strategy.rules, a, st);
   if (!r.ok) return refuse(r.reason, r.rule);
   if (!paper) return { ok: true, paper: false };

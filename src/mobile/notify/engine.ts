@@ -55,6 +55,7 @@ import {
   isMe,
   mentionsMe,
   nativeId,
+  osNoticeBody,
   type IncomingRow,
   type MeKeys,
   type NotifyItem,
@@ -62,6 +63,7 @@ import {
 import { clearChatBadges, setChatRooms, setFeedLatest } from '../tabs/tabBadges';
 import { loadPollState, pushItems, savePollState, setAsked, wasAsked, type PollState } from './store';
 import { IS_TAURI } from '../desktop/ipc';
+import { localPreviews } from '../push/logic';
 
 export type Me = MeKeys & {
   /** Names to match mentions on (paymail, $handle, OpNS name, profile name). */
@@ -576,7 +578,10 @@ function watchCalls() {
 
 async function deliver(found: NotifyItem[]) {
   const on = allowed(found, loadPrefs().notify);
-  const added = pushItems(on);
+  const stored = pushItems(on);
+  // OS notices honour "Show message previews"; the in-app list (pushItems above) keeps the full text.
+  const previews = localPreviews();
+  const added = stored.map((i) => ({ ...i, body: osNoticeBody(i, previews) }));
   if (added.length && IS_TAURI) {
     // Desktop (Tauri): OS notifications through the Rust side (desktop/notify.ts).
     void import('../desktop/notify')

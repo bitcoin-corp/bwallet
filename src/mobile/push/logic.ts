@@ -164,6 +164,26 @@ export interface UiPrefs {
   categories: Record<string, boolean>;
 }
 
+/**
+ * A local copy of "Show message previews" so notices built on this device (notify/engine.ts) honour it too,
+ * not only the push server. Off unless the user turned it on.
+ */
+const PREVIEWS_KEY = 'bwx:notify:previews';
+export const localPreviews = (): boolean => {
+  try {
+    return globalThis.localStorage?.getItem(PREVIEWS_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+export const setLocalPreviews = (on: boolean): void => {
+  try {
+    globalThis.localStorage?.setItem(PREVIEWS_KEY, on ? '1' : '0');
+  } catch {
+    /* private mode: stays off */
+  }
+};
+
 export const DEFAULT_QUIET = { from: '22:00', to: '07:00' } as const;
 export const DEFAULT_UI_PREFS: UiPrefs = {
   previews: false,

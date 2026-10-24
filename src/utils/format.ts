@@ -1,15 +1,23 @@
 import { toToken, toTokenSat } from 'satoshi-token';
 import { formatFiat } from './displayCurrency';
 
+/**
+ * BSV-21 allows at most 18 decimals. `dec` comes from a token's inscription (any sender can mint one), and a huge
+ * value makes the decimal formatter pad millions of digits on every render (b-Aware report, 24 Oct 2026), so
+ * anything outside 0..18 is shown as the raw amount.
+ */
+export const MAX_TOKEN_DECIMALS = 18;
+export const validDecimals = (dec: number): boolean => Number.isInteger(dec) && dec >= 0 && dec <= MAX_TOKEN_DECIMALS;
+
 export function showAmount(amt: bigint, dec: number): string {
-  if (!Number.isFinite(dec) || dec < 0) {
+  if (!validDecimals(dec)) {
     return amt.toString();
   }
   return toToken(amt.toString(), dec, 'string');
 }
 
 export function normalize(amt: string, dec: number): string {
-  if (!Number.isFinite(dec) || dec < 0) {
+  if (!validDecimals(dec)) {
     return amt.split('.')[0];
   }
   return toTokenSat(amt, dec, 'string');

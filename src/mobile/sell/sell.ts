@@ -77,6 +77,7 @@ export function fromRaw(raw: bigint, dec: number): string {
  */
 export function totalPriceSats(raw: bigint, dec: number, pricePerToken: number): number {
   if (!Number.isFinite(pricePerToken) || pricePerToken <= 0 || raw <= 0n) return 0;
+  if (!Number.isInteger(dec) || dec < 0 || dec > 18) return 0; // BSV-21 max; a crafted dec must not hang BigInt math
   const scale = 10n ** BigInt(dec);
   // price as integer millisats to keep fractional per-unit prices exact enough
   const milli = BigInt(Math.round(pricePerToken * 1000));

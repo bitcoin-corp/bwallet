@@ -1,7 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { loadSession } from '../chat/api';
 import { isNative } from '../native';
-import { deviceTimeZone, DEFAULT_UI_PREFS, fromServerPrefs, toServerPrefs, type UiPrefs } from './logic';
+import {
+  deviceTimeZone,
+  DEFAULT_UI_PREFS,
+  fromServerPrefs,
+  setLocalPreviews,
+  toServerPrefs,
+  type UiPrefs,
+} from './logic';
 import { onPushState, PUSH_PLATFORM, PushApi, pushEnabled, pushRegistered, setPushEnabled } from './register';
 import { ErrorActions } from '../errors/ErrorActions';
 
@@ -65,7 +72,11 @@ export const PushSettings = ({ Toggle }: { Toggle: ToggleC }) => {
     if (!session) return;
     new PushApi(session.token)
       .prefs()
-      .then((p) => setPrefs(fromServerPrefs(p)))
+      .then((p) => {
+        const u = fromServerPrefs(p);
+        setLocalPreviews(u.previews);
+        setPrefs(u);
+      })
       .catch(() => setPrefs({ ...DEFAULT_UI_PREFS }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token]);
@@ -92,6 +103,7 @@ export const PushSettings = ({ Toggle }: { Toggle: ToggleC }) => {
 
   const save = async (next: UiPrefs) => {
     setPrefs(next);
+    setLocalPreviews(next.previews);
     if (!session) return;
     setError('');
     try {

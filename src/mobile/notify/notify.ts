@@ -161,6 +161,24 @@ export const isMe = (a: { address: string; bapId: string | null }, me: MeKeys, t
 export const allowed = (items: NotifyItem[], on: Record<NotifyCategory, boolean>): NotifyItem[] =>
   items.filter((i) => on[KIND_CATEGORY[i.kind]] !== false);
 
+const PRIVATE_BODY: Partial<Record<NotifyKind, string>> = {
+  reply: 'New reply',
+  quote: 'New quote',
+  like: 'On your post',
+  lock: 'On your post',
+  mention: 'You were mentioned',
+  chat: 'New message',
+  bmail: 'New mail',
+};
+
+/**
+ * The body an OS / lock-screen notice may show. With "Show message previews" off (the default) anything built
+ * from message or post text is replaced by a generic line; payments, sales and calls carry no message text.
+ * The in-app list still shows the full item. (b-Aware report, 24 Oct 2026: the local poller ignored the toggle.)
+ */
+export const osNoticeBody = (i: Pick<NotifyItem, 'kind' | 'body'>, previews: boolean): string =>
+  previews ? i.body : (PRIVATE_BODY[i.kind] ?? i.body);
+
 /** Short one-line excerpt for a notification body. */
 export const excerpt = (text: string, max = 90): string => {
   const t = text.replace(/\s+/g, ' ').trim();

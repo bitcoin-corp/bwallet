@@ -101,3 +101,14 @@ describe('incoming outputs', () => {
     expect(nativeId('x')).toBeGreaterThan(0);
   });
 });
+
+describe('OS notices honour "Show message previews"', () => {
+  test('off hides message and post text; payments and calls keep their body', async () => {
+    const { osNoticeBody } = await import('./notify');
+    expect(osNoticeBody({ kind: 'chat', body: 'my secret DM' }, false)).toBe('New message');
+    expect(osNoticeBody({ kind: 'mention', body: '@me secret' }, false)).toBe('You were mentioned');
+    expect(osNoticeBody({ kind: 'bmail', body: 'subject line' }, false)).toBe('New mail');
+    expect(osNoticeBody({ kind: 'payment', body: 'You received 1k sats' }, false)).toBe('You received 1k sats');
+    expect(osNoticeBody({ kind: 'chat', body: 'my secret DM' }, true)).toBe('my secret DM');
+  });
+});

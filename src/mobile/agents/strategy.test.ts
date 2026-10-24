@@ -175,6 +175,21 @@ describe('paper mode', () => {
       reason: 'Not an agent account',
     });
   });
+
+  test('live stop.holdTokens: unknown holdings refuse, enough holdings stop, fewer pass', () => {
+    markAgentAccount('1C', [], NOW);
+    loadStrategy(
+      '1C',
+      { ...exampleStrategy('ABC'), rules: rules({ tokens: ['ABC'], stop: { holdTokens: 100 } }) },
+      'live',
+      undefined,
+      NOW,
+    );
+    const buy = { kind: 'buy' as const, token: 'ABC', usd: 1 };
+    expect(checkAgentAction('1C', buy, {}, NOW)).toMatchObject({ ok: false, rule: 'stop' });
+    expect(checkAgentAction('1C', buy, { holding: 100 }, NOW)).toMatchObject({ ok: false, rule: 'stop' });
+    expect(checkAgentAction('1C', buy, { holding: 99 }, NOW)).toEqual({ ok: true, paper: false });
+  });
 });
 
 describe('tickers', () => {
