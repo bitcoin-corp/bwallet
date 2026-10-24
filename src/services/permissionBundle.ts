@@ -364,6 +364,28 @@ const lineDetail = (r: BundleRequest): string => {
   return parts.join(' · ');
 };
 
+/**
+ * A sheet may set a monthly allowance only when it is about money: it carries a payment, or it is a site's first
+ * post (posts cost a little each, and that sheet says so). A plain sign-in or connect never stores one
+ * (b-Aware report 24 Oct 2026: "Sign in" stored a hidden $5/month spending grant).
+ */
+export const offersAllowance = (model: Pick<SheetModel, 'payment' | 'purpose'>): boolean =>
+  !!model.payment || model.purpose === 'post';
+
+/**
+ * Whether an answered bundle may store the allowance: the sheet offered one, and the user granted its payment
+ * (or, for a first-post sheet without a payment, granted something on it).
+ */
+export const allowanceGranted = (
+  bundle: Pick<PermissionBundle, 'originator' | 'items'>,
+  granted: Pick<BundleRequest, 'requestID'>[],
+): boolean => {
+  const model = buildSheetModel(bundle);
+  if (!offersAllowance(model) || granted.length === 0) return false;
+  if (model.payment) return granted.some((r) => r.requestID === model.payment!.requestID);
+  return true;
+};
+
 /** Build the one sheet for a bundle. Spending requests become the "Pay now" section. */
 export const buildSheetModel = (bundle: Pick<PermissionBundle, 'originator' | 'items'>): SheetModel => {
   const lines: SheetLine[] = [];

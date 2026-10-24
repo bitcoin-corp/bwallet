@@ -13,6 +13,7 @@ import {
   ALLOWANCE_CHOICES_USD,
   buildSheetModel,
   DEFAULT_ALLOWANCE_USD,
+  offersAllowance,
   sheetCanTrust,
   sheetDecisions,
   type BundleRequest,
@@ -95,7 +96,7 @@ export const BundleSheet = (props: {
   }, [request.originator]);
 
   // The allowance line shows when the price is known and the site has none yet.
-  const showAllowance = !!allowance?.usdPerBsv && allowance.existingSats === undefined;
+  const showAllowance = !!allowance?.usdPerBsv && allowance.existingSats === undefined && offersAllowance(model);
   const payUsd =
     model.payment && allowance?.usdPerBsv ? (model.payment.satoshis / 1e8) * allowance.usdPerBsv : undefined;
 

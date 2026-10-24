@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import {
   postPackCompanions,
+  allowanceGranted,
   allowanceSats,
+  offersAllowance,
   buildSheetModel,
   isAutoGrantable,
   isIdentityKeyRequest,
@@ -383,5 +385,25 @@ describe('first-post companions', () => {
       'Sign your posts and likes as you',
     ]);
     expect(m.lines.every((l) => !l.signIn)).toBe(true);
+  });
+});
+
+describe('allowance only on money sheets (b-Aware 24 Oct 2026: sign-in stored a hidden allowance)', () => {
+  test('a plain sign-in / connect sheet never offers or stores an allowance', () => {
+    const b = { originator: 'evil.example', items: [proto('r1', 'evil.example'), basket('r2', 'evil.example')] };
+    expect(offersAllowance(buildSheetModel(b))).toBe(false);
+    expect(allowanceGranted(b, b.items)).toBe(false);
+  });
+  test('a payment sheet stores it only when the payment itself is granted', () => {
+    const b = { originator: 'bmovies.app', items: [proto('r1'), spend('r2', 2500)] };
+    expect(offersAllowance(buildSheetModel(b))).toBe(true);
+    expect(allowanceGranted(b, [b.items[1]])).toBe(true);
+    expect(allowanceGranted(b, [b.items[0]])).toBe(false);
+    expect(allowanceGranted(b, [])).toBe(false);
+  });
+  test('a first-post sheet offers it', () => {
+    const b = { originator: 'bmovies.app', items: [{ ...basket('r1'), basket: 'bap' }] };
+    expect(offersAllowance(buildSheetModel(b))).toBe(true);
+    expect(allowanceGranted(b, b.items)).toBe(true);
   });
 });
