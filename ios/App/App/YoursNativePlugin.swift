@@ -9,9 +9,27 @@ import WebKit
 
 /// Root view controller: registers the app's own plugin with the bridge.
 class YoursBridgeViewController: CAPBridgeViewController {
+    private var bridgeGate: MainFrameBridgeGate?
+
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(YoursNativePlugin())
         bridge?.registerPluginInstance(PasskeysPlugin())
+        installBridgeGate()
+    }
+
+    /// b-Aware row 56. WKScriptMessageHandlers are visible to every frame, and Capacitor's iOS
+    /// bridge (8.5.2) neither checks the frame nor escapes the callbackId it splices into the
+    /// main-frame reply. So a framed bApp or video embed could run JavaScript as the wallet.
+    /// Swap Capacitor's "bridge" handler for a gate that only forwards main-frame messages from the
+    /// app's own origin whose callbackId is a plain number (what native-bridge.js generates).
+    private func installBridgeGate() {
+        guard let capBridge = bridge as? CapacitorBridge,
+              let controller = webView?.configuration.userContentController else { return }
+        let gate = MainFrameBridgeGate(
+            inner: capBridge.webViewDelegationHandler, appURL: capBridge.config.localURL)
+        controller.removeScriptMessageHandler(forName: MainFrameBridgeGate.handlerName)
+        controller.add(gate, name: MainFrameBridgeGate.handlerName)
+        bridgeGate = gate
     }
 
     /// Live Spaces (src/mobile/spaces/background.ts) float the active speaker's <video> as
@@ -21,6 +39,40 @@ class YoursBridgeViewController: CAPBridgeViewController {
         let config = super.webViewConfiguration(for: instanceConfiguration)
         config.allowsPictureInPictureMediaPlayback = true
         return config
+    }
+}
+
+/// Forwards a bridge message to Capacitor only when it comes from the wallet itself.
+/// Checked statically by src/mobile/iosBridgeGate.test.ts.
+final class MainFrameBridgeGate: NSObject, WKScriptMessageHandler {
+    static let handlerName = "bridge"
+    private weak var inner: WKScriptMessageHandler?
+    private let appScheme: String
+    private let appHost: String
+    private let appPort: Int
+
+    init(inner: WKScriptMessageHandler, appURL: URL) {
+        self.inner = inner
+        appScheme = (appURL.scheme ?? "").lowercased()
+        appHost = (appURL.host ?? "").lowercased()
+        appPort = appURL.port ?? 0
+    }
+
+    static func isSafeCallbackId(_ id: String) -> Bool {
+        guard !id.isEmpty, id.count <= 20 else { return false }
+        let digits = id.hasPrefix("-") ? String(id.dropFirst()) : id
+        return !digits.isEmpty && digits.allSatisfy { $0 >= "0" && $0 <= "9" }
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.frameInfo.isMainFrame else { return }
+        let origin = message.frameInfo.securityOrigin
+        guard origin.protocol.lowercased() == appScheme, origin.host.lowercased() == appHost,
+              origin.port == appPort else { return }
+        if let dict = message.body as? [String: Any], (dict["type"] as? String) == "message" {
+            guard let id = dict["callbackId"] as? String, Self.isSafeCallbackId(id) else { return }
+        }
+        inner?.userContentController(controller, didReceive: message)
     }
 }
 
