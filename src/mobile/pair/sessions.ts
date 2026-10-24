@@ -13,6 +13,7 @@ import {
   isSealed,
   parsePairUrl,
   relaySocketUrl,
+  newClaim,
   isAllowedRelay,
   type HelloFrame,
   type PairLink,
@@ -144,6 +145,8 @@ export type StoredSession = {
   agent?: AgentGrant;
   /** Identity address of the account that paired. Missing on sessions stored before 23 Oct 2026. */
   account?: string;
+  /** Relay role claim (protocol.ts newClaim): only this wallet can rejoin the channel. Missing on older sessions. */
+  claim?: string;
 };
 
 /** What the UI shows while a scan is being confirmed. A CLI pairing passes its grant to confirm. */
@@ -385,7 +388,14 @@ function connect(c: string) {
       const sealer = new Sealer(key, 'wallet');
       sealer.restore({ sent: stored.sent, lastSeen: stored.lastSeen });
       if (!isAllowedRelay(stored.r, ALLOW_LOCAL_RELAY)) return; // never reconnect to an unpinned relay (audit H1)
-      attach({ ws: new WebSocket(relaySocketUrl(stored.r, stored.c, 'wallet')), sealer, stored });
+      // Sessions stored before claims existed get one now; the relay binds it on this connect.
+      const claim = stored.claim ?? newClaim();
+      if (!stored.claim) update(c, { claim });
+      attach({
+        ws: new WebSocket(relaySocketUrl(stored.r, stored.c, 'wallet', undefined, claim)),
+        sealer,
+        stored: { ...stored, claim },
+      });
     } finally {
       connecting.delete(c);
     }
@@ -420,8 +430,9 @@ export function beginPairing(scanned: string): Promise<PendingPair> {
     return Promise.reject(e);
   }
   const P = PrivateKey.fromRandom();
+  const claim = newClaim();
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(relaySocketUrl(link.r, link.c, 'wallet'));
+    const ws = new WebSocket(relaySocketUrl(link.r, link.c, 'wallet', undefined, claim));
     let settled = false;
     const fail = (m: string) => {
       if (settled) return;
@@ -474,6 +485,7 @@ export function beginPairing(scanned: string): Promise<PendingPair> {
             lastUsed: Date.now(),
             ...(agent && { agent }),
             ...(agentDeps.currentId && { account: agentDeps.currentId }),
+            claim,
           };
           save([...load().filter((s) => s.c !== link.c), stored]);
           const l: Live = { ws, sealer: new Sealer(key, 'wallet'), stored };
