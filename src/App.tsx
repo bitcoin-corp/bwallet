@@ -1,4 +1,7 @@
 import { lazy, Suspense, useContext, useEffect, useState } from 'react';
+import { SiteRoomEngine } from './mobile/chat/SiteRoomViews';
+import { STORE_BUILD } from './mobile/storeBuild';
+import { wearActiveSite } from './mobile/theme/siteLook';
 import { MemoryRouter as Router, Route, Routes } from 'react-router-dom';
 import { Show } from './components/Show';
 import { UnlockWallet } from './components/UnlockWallet';
@@ -28,7 +31,7 @@ import { SnackbarProvider } from './contexts/providers/SnackbarProvider';
 import { SentHost } from './components/sent/SentScreen';
 import { SweepMigration } from './pages/SweepMigration';
 import { PANEL_PROMPT_EVENT, PanelPrompt } from './mobile/PanelPrompt';
-import { wearConnectedSiteTheme } from './mobile/theme/accent';
+import { wearConnectedSiteTheme, wearingSiteLook } from './mobile/theme/accent';
 import { accentById } from './mobile/theme/accents';
 import { IS_EXTENSION } from './mobile/extension';
 import { isWebApp } from './mobile/webApp';
@@ -91,7 +94,18 @@ export const App = () => {
       // A connected site that declared a theme is the active tab (mobile/theme/connectTheme.ts); null = put ours back.
       if ((msg as { action?: string })?.action === 'SITE_THEME') {
         const t = (msg as { theme?: unknown }).theme;
-        wearConnectedSiteTheme(typeof t === 'string' && accentById(t).id === t ? t : null);
+        const o = (msg as { origin?: unknown }).origin;
+        const pack = typeof t === 'string' && accentById(t).id === t ? t : null;
+        // A bundled pack the page names wins; otherwise the site's own v2 file (mobile/theme/siteLook.ts).
+        if (pack) {
+          void wearActiveSite(null);
+          wearConnectedSiteTheme(pack);
+        } else {
+          // Only one of the two is ever worn: drop a pack first, then (maybe) wear the site's file.
+          if (!wearingSiteLook()) wearConnectedSiteTheme(null);
+          const path = (msg as { path?: unknown }).path;
+          void wearActiveSite(typeof o === 'string' ? o : null, typeof path === 'string' ? path : null);
+        }
         return;
       }
       window.dispatchEvent(new CustomEvent(PANEL_PROMPT_EVENT, { detail: msg }));
@@ -204,6 +218,8 @@ export const App = () => {
                 <Show when={!isLocked} whenFalseContent={<UnlockWallet onUnlock={handleUnlock} />}>
                   <UsbGate>
                     <UsbBackupRunner />
+                    {/* The connected game's room (mobile/chat/siteRoom.ts); store builds never. */}
+                    {!STORE_BUILD && <SiteRoomEngine />}
                     <UsbBackupPill />
                     <Show
                       when={!isSwitchingAccount}

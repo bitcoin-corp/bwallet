@@ -7,7 +7,9 @@ import {
   accentById,
   accentVars,
   packVars,
+  getCustomAccent,
   setCustomAccent,
+  type Accent,
   type AccentId,
   PAID_EDITIONS,
 } from './accents';
@@ -200,6 +202,7 @@ export const loadAccent = (account: string): AccentId => accentById(read(keyFor(
 /** Applies an account's accent and remembers it for the next startup. */
 export function switchToAccountAccent(account: string): AccentId {
   beforeSite = null; // the account's own theme replaces any connected-site theme
+  siteLookPrev = null; // primeCustom below reloads the account's own 'custom' pack
   const before = applied;
   const pending = read(URL_PENDING_KEY);
   if (account && pending) {
@@ -263,6 +266,9 @@ export function previewMix(mix: MixSpec): void {
 /** Saves and applies an account's accent. */
 export function saveAccent(account: string, id: AccentId): void {
   beforeSite = null; // the user's choice wins over a connected-site theme
+  // Picking a bundled pack while a site's look borrowed 'custom': give the user's own custom pack back.
+  if (siteLookPrev && id !== 'custom') setCustomAccent(siteLookPrev.custom);
+  siteLookPrev = null;
   if (account) write(keyFor(account), id === DEFAULT_ACCENT ? null : id);
   write(BOOT_KEY, id === DEFAULT_ACCENT ? null : id);
   applyAccent(id);
@@ -287,6 +293,34 @@ export function wearConnectedSiteTheme(id: AccentId | null): void {
   applyAccent(back);
   announce();
 }
+
+// The user's own 'custom' pack, kept while a connected site's v2 look borrows the slot (wearSiteLook).
+let siteLookPrev: { custom: Accent | null } | null = null;
+
+/**
+ * Wears a connected site's v2 look (siteLook.ts builds it from the validated theme file) over the whole view, never
+ * saved; null puts back what was showing before.
+ */
+export function wearSiteLook(look: Accent | null): void {
+  if (look) {
+    if (beforeSite === null) beforeSite = applied;
+    if (!siteLookPrev) siteLookPrev = { custom: getCustomAccent() };
+    setCustomAccent(look);
+    applyAccent('custom');
+    announce();
+    return;
+  }
+  if (!siteLookPrev) return;
+  setCustomAccent(siteLookPrev.custom);
+  siteLookPrev = null;
+  const back = beforeSite ?? applied;
+  beforeSite = null;
+  applyAccent(back);
+  announce();
+}
+
+/** True while a connected site's v2 look is worn (wearSiteLook). */
+export const wearingSiteLook = (): boolean => siteLookPrev !== null;
 
 /** True while a connected site's theme is painted over the user's own (Theme settings should not save it). */
 export const wearingConnectedSiteTheme = (): boolean => beforeSite !== null;

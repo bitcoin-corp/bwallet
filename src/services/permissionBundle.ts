@@ -36,6 +36,8 @@ export interface BundleRequest {
    * by a tap made before it appeared: the answer carries a hash of the lines on screen (sheetHash).
    */
   addedLive?: boolean;
+  /** The wallet's own "Reconnect to <site>?" line after a disconnect (services/reconnectGate.ts). */
+  reconnect?: boolean;
 }
 
 /** Most lines that may join one open sheet. More queue for their own sheet. */
