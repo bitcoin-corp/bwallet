@@ -165,7 +165,7 @@ import {
   queuedResult,
   queuedSend,
   repeatRefusal,
-  requestFingerprint,
+  repeatFingerprints,
 } from './services/repeatGuard';
 import { releasedMessage } from './services/stuckSends';
 import { createSendRetry, SEND_RETRY_ALARM } from './services/sendRetry';
@@ -4685,7 +4685,12 @@ if (!(
       // Never between the steps of a site's multi-step action: the preparation's own wallet actions break the
       // chain (services/dappChain.ts, vexvoid.com streamed mint 11 Oct 2026).
       const continuing = !isAdmin && continuesChain(message.params);
-      const fingerprint = isAdmin || continuing ? null : await requestFingerprint(message.params).catch(() => null);
+      // Every site payment is checked against the repeat guard, chain or not: the chain options are the site's own
+      // words, so they may skip funding preparation but never the guard (b-Aware row 55, 24 Oct 2026). A noSend step
+      // is checked but not recorded: nothing went out yet, and a retried chain must not be refused for it.
+      const { fingerprint, recordedFingerprint } = isAdmin
+        ? { fingerprint: null, recordedFingerprint: null }
+        : await repeatFingerprints(message.params).catch(() => ({ fingerprint: null, recordedFingerprint: null }));
       const earlier = await withRepeatGuard((g) => g.check(fingerprint));
       if (earlier) {
         console.warn('[createAction] identical request still going out; refusing a second payment', earlier);
@@ -4746,7 +4751,7 @@ if (!(
         // Queued to retry is not a failure: the wallet will send it. Say so, and guard against paying again.
         if (queuedSend(err)) {
           const queued = queuedResult(err);
-          await withRepeatGuard((g) => g.record(fingerprint, { origin: message.originator, txid: queued?.txid }));
+          await withRepeatGuard((g) => g.record(recordedFingerprint, { origin: message.originator, txid: queued?.txid }));
           // With its txid, answer like a send (BRC-100 callers read txid) and say it's pending; else the old message.
           if (!queued) throw new Error(QUEUED_MESSAGE);
           sendResponse({ type: CWIEventName.CREATE_ACTION, success: true, data: queued });
@@ -4776,7 +4781,7 @@ if (!(
         }
       }
       await withRepeatGuard((g) =>
-        g.record(fingerprint, {
+        g.record(recordedFingerprint, {
           origin: message.originator,
           reference: result.signableTransaction?.reference,
           txid: result.txid,
