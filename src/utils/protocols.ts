@@ -10,7 +10,10 @@ const KNOWN_PROTOCOLS: Record<string, { label: string; description: string }> = 
     description: 'An application is requesting permission to derive payment addresses for a specific recipient.',
   },
   ...Object.fromEntries(
-    PINNED_PROTOCOLS.map((p) => [`${p.protocolID[0]}:${p.protocolID[1]}`, { label: p.label, description: p.description }]),
+    PINNED_PROTOCOLS.map((p) => [
+      `${p.protocolID[0]}:${p.protocolID[1]}`,
+      { label: p.label, description: p.description },
+    ]),
   ),
 };
 
