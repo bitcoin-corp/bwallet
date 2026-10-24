@@ -8,6 +8,8 @@ import {
   type WornTheme,
 } from './connectSiteTheme';
 import { wearSiteLook } from './accent';
+import { setActiveSiteRoom } from '../chat/siteRoom';
+import { STORE_BUILD } from '../storeBuild';
 
 /**
  * The whole extension view in a connected site's colours (docs/SITE-THEME.md "The whole view"). Built only from a
@@ -52,10 +54,15 @@ export async function wearActiveSite(origin: string | null, path: string | null 
   shownPath = path;
   if (origin) rememberSitePath(origin, path);
   const mine = ++seq;
-  if (!origin || !shouldWearSiteTheme(origin)) return wearSiteLook(null);
+  if (!origin || !shouldWearSiteTheme(origin)) {
+    setActiveSiteRoom(null);
+    return wearSiteLook(null);
+  }
   const t = await loadConnectTheme(origin, { path }).catch(() => null);
   if (mine !== seq) return;
   wearSiteLook(t ? siteLookAccent(t) : null);
+  // The game's room follows the same root / path sub-theme (store builds never open one).
+  setActiveSiteRoom(t?.room && !STORE_BUILD ? { ticker: t.room, origin } : null);
 }
 
 // A switch flipped, a site revoked, or its theme arrived: look again.

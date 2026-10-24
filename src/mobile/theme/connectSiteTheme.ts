@@ -1,5 +1,6 @@
 import { isPairedHost } from '../../services/originKey';
 import { contrast } from './colour';
+import { roomTicker } from '../chat/siteRoom';
 
 /**
  * Connected-site themes (docs/SITE-THEME.md; owner, 23 Oct 2026: "every site that connects to bWallet needs a theme
@@ -40,6 +41,8 @@ export type ConnectTheme = {
   cardArt?: string;
   /** Root file only: path prefix → same-origin /.well-known/*.json sub-theme URL (validated, ≤ PATHS_MAX). */
   paths?: Record<string, string>;
+  /** The site's chat room: a ticker the wallet's room list knows (mobile/chat/siteRoom.ts). Optional. */
+  room?: string;
 };
 
 /** A theme ready to paint: images already fetched and checked. */
@@ -58,6 +61,7 @@ const KEYS = new Set([
   'logo',
   'cardArt',
   'paths',
+  'room',
 ]);
 const HEX = /^#[0-9a-f]{6}$/i;
 // Plain words: no markup, links or addresses.
@@ -201,6 +205,8 @@ export function parseConnectTheme(v: unknown, origin: string): ParseResult {
   }
   // A bad `paths` map is dropped, never fatal: the root theme still applies.
   const paths = t.paths === undefined ? null : parsePaths(t.paths, origin);
+  // A bad `room` is dropped too: no room means the normal home screen.
+  const room = roomTicker(t.room);
   return {
     theme: {
       name: t.name.trim(),
@@ -214,6 +220,7 @@ export function parseConnectTheme(v: unknown, origin: string): ParseResult {
       ...(logo ? { logo } : {}),
       ...(cardArt ? { cardArt } : {}),
       ...(paths && Object.keys(paths).length ? { paths } : {}),
+      ...(room ? { room } : {}),
     },
     fixed,
   };

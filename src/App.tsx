@@ -1,4 +1,6 @@
 import { lazy, Suspense, useContext, useEffect, useState } from 'react';
+import { SiteRoomEngine } from './mobile/chat/SiteRoomViews';
+import { STORE_BUILD } from './mobile/storeBuild';
 import { wearActiveSite } from './mobile/theme/siteLook';
 import { MemoryRouter as Router, Route, Routes } from 'react-router-dom';
 import { Show } from './components/Show';
@@ -216,6 +218,8 @@ export const App = () => {
                 <Show when={!isLocked} whenFalseContent={<UnlockWallet onUnlock={handleUnlock} />}>
                   <UsbGate>
                     <UsbBackupRunner />
+                    {/* The connected game's room (mobile/chat/siteRoom.ts); store builds never. */}
+                    {!STORE_BUILD && <SiteRoomEngine />}
                     <UsbBackupPill />
                     <Show
                       when={!isSwitchingAccount}

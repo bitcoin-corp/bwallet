@@ -137,6 +137,7 @@ import { RoomFilterChips, SpacesRoomList } from '../spaces/SpacesFilter';
 import { loadRoomFilter, saveRoomFilter, type RoomFilter } from '../spaces/roomFilterPref';
 import { bappForTicker, isBappRoom, type Bapp } from '../chat/bappRooms';
 import { BappRoomCards } from '../chat/BappRoomCards';
+import { SiteRoomBalance } from '../chat/SiteRoomViews';
 import { useLocation } from 'react-router-dom';
 import { guardedSendBsv21 } from '../../services/tokenSpendGuard';
 
@@ -748,6 +749,8 @@ const Conversation = ({
         background: BG,
       }}
     >
+      {/* The connected game's room: a short balance card on top (chat/SiteRoomViews.tsx; only for that room). */}
+      <SiteRoomBalance ticker={room.ticker} />
       <div
         // Two rows (owner, 17 Oct 2026): back, picture, name and details on the first; the room's buttons on the
         // second. On one row the buttons squeezed the name and details into a one-word column.

@@ -1,3 +1,4 @@
+import { publishBalance } from './balanceStore';
 import { RefreshGlyph, UpToDateAnnouncer } from '../../components/RefreshGlyph';
 import * as qr from 'qrcode';
 import { isLightPattern } from './cardPatternsLight';
@@ -943,11 +944,15 @@ class WalletCardBoundary extends Component<
   }
 }
 
-const RealWalletCard = (p: WalletCardProps) => (
-  <WalletCardBoundary usd={p.usd} sats={p.sats} onRetry={p.onRetry}>
-    <WalletCardInner {...p} />
-  </WalletCardBoundary>
-);
+const RealWalletCard = (p: WalletCardProps) => {
+  // The connected game's room shows a short balance card (chat/SiteRoomViews.tsx) from this.
+  useEffect(() => publishBalance('bsv', p.sats, 'sats'), [p.sats]);
+  return (
+    <WalletCardBoundary usd={p.usd} sats={p.sats} onRetry={p.onRetry}>
+      <WalletCardInner {...p} />
+    </WalletCardBoundary>
+  );
+};
 
 // Balance cards (bWalletX only, never in store builds): the real card becomes the first slide of a multi-balance carousel.
 export const WalletCard = (p: WalletCardProps) =>

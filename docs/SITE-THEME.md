@@ -40,6 +40,7 @@ Either file, served over https from the site's own origin, `Access-Control-Allow
 | `cardArt`                         | optional; same rules, ≤ 256 KB; drawn behind the banner                                    |
 
 | `paths` | optional, root file only; see "Path sub-themes" below |
+| `room` | optional; the site's chat room ticker (`ASSAULT` or `$ASSAULT`, 1-20 letters/digits); see "The game's room" |
 
 No other keys. No CSS, fonts, scripts, gradients or arbitrary values. File ≤ 8 KB.
 
@@ -95,6 +96,19 @@ is picked by the wallet.
   dresses only the banner (logo, name, colours) and a thin accent edge around the sheet.
 - The whole-view look is colours only: no logo, art, fonts, CSS or patterns from the site reach the wallet's own
   screens.
+
+## The game's room (extension)
+
+Owner, 24 Oct 2026: when a site or game is connected, the extension opens straight to its chat room, in its look.
+
+- The room is the `room` of the theme in force for the active tab: the root file, or the path sub-theme for that
+  page (so `/arcade/assault` opens the Assault room). Switching to another connected game follows it; nothing
+  connected, the user's own home screen comes back.
+- Only a room the wallet already lists (`/api/bitsign/rooms`) is opened, through the Chat tab's own ticker hand-off.
+  Unknown room, no chat sign-in, or a bad `room` value: the normal home screen, nothing else changes.
+- Above the room, a short balance card: the balance in dollars large, BSV small, in the site's colours. It shows the
+  last balance the wallet card read.
+- Store builds never do this: rooms there can take a penny ticket, and the store edition sells no paid content.
 
 ## Switches
 
