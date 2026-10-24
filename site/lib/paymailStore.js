@@ -146,6 +146,23 @@ function supabaseStore(env = process.env, f = fetch) {
         `bwallet_social_links?identity_key=eq.${q(key)}&select=provider,account,handle,identity_key,signature,signed_at&order=created_at.asc&limit=20`,
       )) ?? [],
     // Signed name bindings + the public append-only log (migrations/20261017_name_bindings.sql).
+    // Company offers (migrations/20261024_company_offers.sql). A receipt is insert-only: no code path updates it.
+    getOffer: (ref) => one(`company_offers?ref=eq.${q(ref)}&limit=1`),
+    putOffer: (row) =>
+      req('company_offers?on_conflict=ref', {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(row),
+      }),
+    getReceipt: (txid) => one(`subscription_receipts?txid=eq.${q(txid)}&limit=1`),
+    insertReceipt: (row) =>
+      req('subscription_receipts', {
+        method: 'POST',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify(row),
+      }),
+    listReceipts: async (alias) =>
+      (await req(`subscription_receipts?alias=eq.${q(alias)}&select=record&order=created_at.desc&limit=200`)) || [],
     getBinding: (alias) => one(`bwallet_name_bindings?alias=eq.${q(alias)}&limit=1`),
     putBinding: (row) =>
       req('bwallet_name_bindings', {

@@ -43,6 +43,9 @@ const ROUTES = {
   'bphone-book-act': ['POST', 'bphone-book-act'],
   // Settings › Identity › Your name (signed): one display name for every paymail on the key.
   'set-name': ['POST', 'set-name'],
+  // Company offers (lib/offerReceipts.js): the company key registers a sealed offer; directors list receipts.
+  'offer-register': ['POST', 'offer-register'],
+  'offer-receipts': ['POST', 'offer-receipts'],
   // Signed name bindings + public log (docs/NAME-BINDINGS.md).
   bind: ['POST', 'bind'],
   'name-log': ['GET', 'name-log'],

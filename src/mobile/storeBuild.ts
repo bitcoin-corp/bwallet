@@ -561,6 +561,20 @@ export const BIZ_AGENT_ACCOUNT_ENABLED: boolean = !(
  * drops the lazy AgreementsPage / AgreementsBox / BitSignImportPage chunks.
  * Store grep: `Review & sign|bwallet.bureau|Seal on chain|Import from bit-sign|bwallet agreement|Needs my signature`.
  */
+/**
+ * Company offers paid by signature (offer/, 24 Oct 2026): a director composes, the company account seals, the named
+ * offeree signs to pay. bWalletX only, never in a store build, not even as code (payment for securities; no "buy
+ * shares" anywhere). Literal env check so Rollup drops the lazy OffersPage. Inside bWalletX the screens show only to
+ * the company's directors, the company account, and the named offeree of a received offer (offer/useOffers.ts).
+ * VITE_OFFERS=0 turns it off in a bWalletX build too.
+ */
+export const OFFERS_ENABLED: boolean =
+  !(
+    import.meta.env.VITE_STORE_BUILD === '1' ||
+    import.meta.env.VITE_CHANNEL === 'ios-store' ||
+    import.meta.env.VITE_CHANNEL === 'android-play'
+  ) && import.meta.env.VITE_OFFERS !== '0';
+
 export const BUREAU_ENABLED: boolean = !(
   import.meta.env.VITE_STORE_BUILD === '1' ||
   import.meta.env.VITE_CHANNEL === 'ios-store' ||

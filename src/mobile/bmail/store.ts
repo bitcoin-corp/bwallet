@@ -39,6 +39,8 @@ export type Sent = {
   inReplyTo?: string;
   /** Bureau agreement part sent with this mail (kept so the Bureau shows what I sent and signed). */
   agreement?: unknown;
+  /** Company offer payload sent with this mail (offer/payload.ts): kept so both parties' vaults show it. */
+  offer?: unknown;
 };
 export type MailState = {
   received: Received[];

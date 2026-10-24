@@ -66,6 +66,11 @@ export type Sealed = {
    * BRC-29 delivery details, so the recipient's wallet can derive the key and internalize the output.
    */
   ordinal?: SealedOrdinal;
+  /**
+   * Company offer (src/mobile/offer/payload.ts parses and checks it): draft, sealed offer or acceptance. Opaque here,
+   * like `agreement`; the subject + body always say what it is for older clients.
+   */
+  offer?: unknown;
 };
 /** `tags`: the NFT's own ordinal tags (type:, origin:, …) so it lists properly in the recipient's NFTs. */
 export type SealedOrdinal = { txid: string; deliveries: unknown[]; name?: string; tags?: string[] };
@@ -82,10 +87,15 @@ export const newMessageId = (rand: (n: number) => Uint8Array = defaultRand): str
   [...rand(16)].map((b) => b.toString(16).padStart(2, '0')).join('');
 const defaultRand = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 
+/** The offer payload's JSON may use at most this many characters (offer HTML ≤ 24 000 + signatures). */
+export const OFFER_JSON_MAX = 40_000;
+const offerOk = (o: unknown) => !!o && typeof o === 'object' && JSON.stringify(o).length <= OFFER_JSON_MAX;
+
 const agreementOk = (a: unknown) => !!a && typeof a === 'object' && JSON.stringify(a).length <= AGREEMENT_JSON_MAX;
 
 export const sealedToBytes = (s: Sealed): number[] => {
   if (s.agreement !== undefined && !agreementOk(s.agreement)) throw new Error('This document is too large to send.');
+  if (s.offer !== undefined && !offerOk(s.offer)) throw new Error('This offer is too large to send.');
   return [
     ...new TextEncoder().encode(
       JSON.stringify({
@@ -93,6 +103,7 @@ export const sealedToBytes = (s: Sealed): number[] => {
         body: s.body.slice(0, BODY_MAX),
         ...(s.agreement !== undefined ? { agreement: s.agreement } : {}),
         ...(ordinalOk(s.ordinal) ? { ordinal: s.ordinal } : {}),
+        ...(s.offer !== undefined ? { offer: s.offer } : {}),
       }),
     ),
   ];
@@ -105,6 +116,7 @@ export const bytesToSealed = (b: number[] | Uint8Array): Sealed => {
   };
   if (agreementOk(j.agreement)) out.agreement = j.agreement;
   if (ordinalOk(j.ordinal)) out.ordinal = j.ordinal;
+  if (offerOk(j.offer)) out.offer = j.offer;
   return out;
 };
 

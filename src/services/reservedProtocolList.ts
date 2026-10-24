@@ -32,6 +32,8 @@ export const RESERVED_PROTOCOLS: readonly Protocol[] = [
   [2, 'bwallet issuer'],
   [2, 'bwallet paymail'],
   [2, 'bwallet agreement'],
+  // Company offers (src/mobile/offer/offer.ts): seal, director and subscriber signatures over the document hash.
+  [2, 'bcorp offer'],
   [2, 'bwx partnership'],
   [2, 'bwx escrow'],
   [2, 'bwx commission terms'],

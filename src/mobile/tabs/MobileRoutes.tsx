@@ -12,6 +12,7 @@ import {
   BPOSITIVE_ENABLED,
   BSPACES_ENABLED,
   BUREAU_ENABLED,
+  OFFERS_ENABLED,
   DIRECT_UPDATE_ENABLED,
   MARKET_ENABLED,
   PAY_STREAM_ENABLED,
@@ -55,6 +56,8 @@ const MyReportsPage = lazy(() => import('../agent/MyReportsPage'));
 // bMail › Agreements (was the Bureau): bWalletX only (storeBuild.ts BUREAU_ENABLED); not built for the stores.
 const AgreementsPage = BUREAU_ENABLED ? lazy(() => import('../bureau/AgreementsPage')) : null;
 const BitSignImportPage = BUREAU_ENABLED ? lazy(() => import('../bureau/BitSignImportPage')) : null;
+// bMail › Agreements › Offers: company offers accepted by signing to pay. bWalletX only (storeBuild.ts OFFERS_ENABLED).
+const OffersPage = OFFERS_ENABLED ? lazy(() => import('../offer/OffersPage')) : null;
 // The top bar's mailbox: bMail in the content area, between the top bar and the tab bar.
 const BMailPage = lazy(() => import('../bmail/BMailPage'));
 // The top bar's phone button: bPhone Calls in the content area (active calls stay full-screen via CallScreen).
@@ -152,6 +155,7 @@ const MobileRoutes = () => (
         <Route path="reports" element={<MyReportsPage />} />
         {AgreementsPage && <Route path="bmail/agreements" element={<AgreementsPage />} />}
         {BitSignImportPage && <Route path="bmail/agreements/bit-sign" element={<BitSignImportPage />} />}
+        {OffersPage && <Route path="bmail/offers" element={<OffersPage />} />}
         {/* The Bureau moved into bMail (18 Oct 2026): old links land there. */}
         {AgreementsPage && <Route path="bureau" element={<Navigate to="/m/bmail/agreements" replace />} />}
         {/* Old links (/agent, /m/agent) keep working (renamed Ask b, 12 Oct 2026). */}

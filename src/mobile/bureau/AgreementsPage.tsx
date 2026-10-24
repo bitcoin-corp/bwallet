@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Archive, ChevronLeft, FilePen, Hourglass, Search, ShieldCheck, Sparkles, X } from 'lucide-react';
@@ -34,6 +34,7 @@ import {
 import { DocView } from './DocView';
 import { useBureau } from './useBureau';
 import { newMessageId } from '../bmail/envelope';
+import { OFFERS_ENABLED } from '../storeBuild';
 import './agreements.css';
 
 /**
@@ -43,6 +44,8 @@ import './agreements.css';
  * Sign-first: what needs my signature sits on top with a Review & sign button; drafting with b lives in the composer.
  */
 const f = (u: string, i?: RequestInit) => fetch(u, i);
+// Company offers: a link shown only to a director, the company account or a named offeree (offer/OffersLink.tsx).
+const OffersLink = OFFERS_ENABLED ? lazy(() => import('../offer/OffersLink')) : null;
 type Bureau = ReturnType<typeof useBureau>;
 
 const FOLDER_ICON: Record<FolderId, typeof Archive> = {
@@ -509,6 +512,11 @@ const AgreementsPage = () => {
         </button>
         <h1 className="ag-title">Agreements</h1>
         <span className="ag-grow" />
+        {OffersLink && (
+          <Suspense fallback={null}>
+            <OffersLink />
+          </Suspense>
+        )}
         <button
           type="button"
           className="ag-btn primary"
