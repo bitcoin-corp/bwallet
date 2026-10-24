@@ -134,6 +134,10 @@ export const useBMail = () => {
         me,
         sent: s.sent,
         known: new Set(s.received.map((r) => r.id)),
+        // Credits already spent by a stored letter: one reply per reply-paid credit.
+        creditsUsed: new Set(
+          s.received.filter((r) => r.replyCredit && r.env.inReplyTo).map((r) => r.env.inReplyTo as string),
+        ),
       });
       updateMail(me, (x) => addReceived(x, items));
       await acknowledge(wallet, ack).catch(() => undefined);

@@ -13,10 +13,11 @@ import {
   ALLOWANCE_CHOICES_USD,
   buildSheetModel,
   DEFAULT_ALLOWANCE_USD,
-  offersAllowance,
   sheetCanTrust,
   sheetAnswer,
+  sheetHash,
   sheetView,
+  shownItems,
   type SheetChoice,
   type BundleRequest,
 } from '../../services/permissionBundle';
@@ -26,6 +27,8 @@ import { ApprovalCard, Check, Chip, Cross, SiteTile } from '../../components/app
 import { CARD } from '../../components/approval/cardTheme';
 import { CarefulHero, ConnectHero, PayHero, SignInHero } from '../../components/approval/ApprovalHeroes';
 import { useSheetPrice } from '../../components/DollarAmount';
+import { EnvelopePresets } from '../../components/approval/EnvelopePresets';
+import { envelopeUsdText } from '../../services/envelopes';
 import { dollarsFirst, dollarsInline } from '../../utils/dollarsFirst';
 
 /**
@@ -41,9 +44,20 @@ export type BundlePayload = {
   mint?: MintSheet;
 };
 
-type Allowance = { usdPerBsv?: number; existingSats?: number; defaultUsd: number };
+type Allowance = {
+  usdPerBsv?: number;
+  existingSats?: number;
+  defaultUsd: number;
+  /** Monthly allowances are on (services/allowanceFlag.ts); off by default, envelopes instead. */
+  allowances?: boolean;
+  /** The site's envelope (services/envelopes.ts): offered on its pay sheet, with what it holds now. */
+  envelope?: { offer: boolean; balanceSats?: number; presetsUsd: readonly number[] };
+};
 
 const fmtUsd = (usd: number) => (usd < 1 ? `${Math.round(usd * 100)}¢` : `$${usd.toFixed(2)}`);
+
+/** How long a refused answer's message stays up before the sheet moves on (the background leaves the window open). */
+export const ANSWER_ERROR_HOLD_MS = 3000;
 
 export const BundleSheet = (props: {
   request: BundlePayload;
@@ -68,13 +82,32 @@ export const BundleSheet = (props: {
   const signerFingerprint = keyFingerprint(signer?.pubKeys?.identityPubKey);
   const model = useMemo(() => buildSheetModel(request), [request]);
 
-  // Ticks keyed by requestID. Nothing joins a sheet once it is on screen (permissionBundle.ts queues it instead).
+  // Ticks keyed by requestID, so a line that joins live gets its own (unticked) tick without resetting the rest.
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  // A line joined: hold the buttons for a moment so a tap already on its way cannot land on the new set.
+  const [hold, setHold] = useState(false);
+  const shownCount = useRef(request.items.length);
+  useEffect(() => {
+    if (request.items.length === shownCount.current) return;
+    shownCount.current = request.items.length;
+    setHold(true);
+    const t = setTimeout(() => setHold(false), 1000);
+    return () => clearTimeout(t);
+  }, [request.items.length]);
+  // First touch freezes the sheet: anything arriving after it gets its own sheet.
+  const frozen = useRef(false);
+  const freeze = () => {
+    if (frozen.current) return;
+    frozen.current = true;
+    sendMessageAsync({ action: 'BUNDLE_SHEET_FREEZE', bundleID: request.bundleID }).catch(() => undefined);
+  };
   const isChecked = (id: string, dflt: boolean) => checked[id] ?? dflt;
 
   const [allowance, setAllowance] = useState<Allowance | undefined>();
   const [allowanceUsd, setAllowanceUsd] = useState<number>(DEFAULT_ALLOWANCE_USD);
   const [allowanceOn, setAllowanceOn] = useState(true);
+  // Opt-in: a pay sheet pays this payment; putting money in the envelope is the user's own choice.
+  const [envelopeUsd, setEnvelopeUsd] = useState(0);
   const [remember, setRemember] = useState(true);
   // "Don't ask again": later sign-in, signing and basket requests from this site need no sheet.
   const canTrust = useMemo(() => sheetCanTrust(request), [request]);
@@ -106,8 +139,11 @@ export const BundleSheet = (props: {
   // The allowance line shows when the price is known and the site has none yet.
   // A mint sheet is for this one mint: never an allowance or "don't ask again" (the background enforces it too).
   const mint = request.mint && model.payment && model.lines.every((l) => !l.risky) ? request.mint : undefined;
-  const showAllowance =
-    !mint && !!allowance?.usdPerBsv && allowance.existingSats === undefined && offersAllowance(model);
+  // Pay in the moment (owner, 24 Oct 2026): these sheets never offer a monthly allowance.
+  const showAllowance = false as boolean;
+  // "Put $X in <site>'s envelope" / "Top up the envelope": a payment from a micropayments site, or one with an envelope.
+  const envelope = !mint && model.payment && allowance?.usdPerBsv ? allowance.envelope : undefined;
+  const showEnvelope = !!envelope?.offer;
   // Dollars first (owner, 24 Oct 2026): the site's allowance rate when the background sent one, else the live price.
   const price = useSheetPrice(allowance?.usdPerBsv);
   const payAmount = model.payment ? dollarsFirst(model.payment.satoshis, price) : undefined;
@@ -127,15 +163,22 @@ export const BundleSheet = (props: {
       }
       if (approve) markSiteConnected(request.originator); // its sheets may now wear its theme (docs/SITE-THEME.md)
       const answer = sheetAnswer(model, choice, checked, detailsSeen, view);
-      await sendMessageAsync({
+      const res = await sendMessageAsync<{ success?: boolean; error?: string }>({
         action: 'BUNDLE_PERMISSION_RESPONSE',
+        seenHash: seenHash(choice),
         bundleID: request.bundleID,
         decisions: answer.decisions,
         allowanceUsd: answer.mayStore && showAllowance && allowanceOn ? allowanceUsd : 0,
+        envelopeUsd: answer.mayStore && showEnvelope ? envelopeUsd : 0,
         remember: answer.mayStore && remember,
         trustSite: !mint && answer.mayStore && remember && canTrust && trustSite,
         block: answer.block,
       });
+      if (res && res.success === false && res.error) {
+        // e.g. "This request changed while you were answering…": leave it on screen long enough to read.
+        addSnackbar(res.error, 'error');
+        await new Promise((r) => setTimeout(r, ANSWER_ERROR_HOLD_MS));
+      }
       onResponse();
     } catch (error) {
       addSnackbar(error instanceof Error ? error.message : String(error), 'error');
@@ -175,9 +218,11 @@ export const BundleSheet = (props: {
     setAllowanceUsd(next);
     setAllowanceOn(next > 0);
   };
-  const disabled = busy || !armed;
+  const disabled = busy || !armed || hold;
   const careful = kind === 'careful';
   const riskyLines = model.lines.filter((l) => l.risky);
+  // Lines that joined while the sheet was open: shown up front with their own tick ("New: …").
+  const newLines = model.lines.filter((l) => l.isNew && !(careful && l.risky));
   // Every line a tap can grant is on the face (owner: never approve something the user can't read).
   // Lines whose row has been fully on screen (above the choices). On the careful card Allow waits until every line
   // was read; a line never on screen is never granted (sheetView.hidden).
@@ -211,7 +256,11 @@ export const BundleSheet = (props: {
   const view = sheetView(model, careful, careful && !detailsSeen ? seenLines : undefined);
   // Careful card: "I trust it, allow" waits until every line has been on screen (or Details was opened).
   const mustRead = careful && view.hidden.size > 0;
-  const ordinaryLines = careful ? model.lines.filter((l) => !l.risky) : [];
+  const ordinaryLines = careful ? model.lines.filter((l) => !l.risky && !l.isNew) : [];
+  // Live sheet: an Allow is bound to exactly the lines on screen (background checks the hash). A line not on
+  // screen is never in it, so it can never be granted. Not now and Block decline everything, so they cover all.
+  const seenHash = (choice: SheetChoice) =>
+    sheetHash(choice === 'allow' ? shownItems(request.items, view) : request.items);
 
   const toggle = (id: string, dflt: boolean) => setChecked((c) => ({ ...c, [id]: !isChecked(id, dflt) }));
   const lineRow = (l: (typeof model.lines)[number], big = false) => (
@@ -257,10 +306,15 @@ export const BundleSheet = (props: {
           Signing in as {signingAs}
         </p>
       )}
+      {model.lines.length > 0 && (
+        <p className="m-0" style={{ fontSize: 12, fontWeight: 700, color: CARD.muted }}>
+          Allow this app
+        </p>
+      )}
       {model.lines.map((l) => lineRow(l))}
       {model.payment && (
         <p className="m-0" style={{ padding: '6px 0' }}>
-          Pay now: <span style={{ color: CARD.gold, fontWeight: 600 }}>{payLabel}</span> to {request.originator}
+          Pay <span style={{ color: CARD.gold, fontWeight: 600 }}>{payLabel}</span> now to {request.originator}
           {model.payment.description && <> &ldquo;{model.payment.description}&rdquo;</>}
         </p>
       )}
@@ -309,7 +363,8 @@ export const BundleSheet = (props: {
             style={{ width: 18, height: 18, accentColor: CARD.gold, flexShrink: 0, marginTop: 1 }}
           />
           <span>
-            Don&apos;t ask again on {request.originator} for sign-in and signing. Payments stay within the allowance;
+            Don&apos;t ask again on {request.originator} for sign-in and signing.{' '}
+            {allowance?.allowances ? 'Payments stay within the allowance;' : 'Payments still ask, or use its envelope;'}{' '}
             your personal details always ask.
           </span>
         </label>
@@ -453,8 +508,40 @@ export const BundleSheet = (props: {
           <Check size={18} />
           {allowanceSetsUsd > 0
             ? `Then up to ${fmtUsd(allowanceSetsUsd)} a month without asking`
-            : 'Every payment asks you first'}
+            : envelopeUsd > 0
+              ? `Then small payments come out of the envelope`
+              : 'Every payment asks you first'}
         </div>
+        {showEnvelope && envelope && (
+          <div className="flex flex-col" style={{ gap: 8 }} data-testid="envelope-offer">
+            <span style={{ fontSize: 15, fontWeight: 600 }}>
+              {envelope.balanceSats !== undefined ? (
+                <>
+                  Top up the envelope
+                  <span style={{ fontSize: 13, fontWeight: 400, color: CARD.muted }}>
+                    {' '}
+                    · {dollarsInline(envelope.balanceSats, price)} left, not enough for this
+                  </span>
+                </>
+              ) : (
+                <>
+                  {envelopeUsd > 0 ? `Also put ${envelopeUsdText(envelopeUsd)}` : 'Also put money'} in {gold(name)}
+                  &apos;s envelope?
+                </>
+              )}
+            </span>
+            <EnvelopePresets
+              presetsUsd={envelope.presetsUsd}
+              value={envelopeUsd}
+              onChange={setEnvelopeUsd}
+              allowNone
+              disabled={disabled}
+            />
+            <span style={{ fontSize: 12, color: CARD.muted }}>
+              Stays in your wallet. Small payments from {name} come out of it without asking; Coin return any time.
+            </span>
+          </div>
+        )}
       </>
     );
   } else if (kind === 'post') {
@@ -588,6 +675,7 @@ export const BundleSheet = (props: {
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: 'spring', damping: 24, stiffness: 260 }}
       data-approval-kind={kind}
+      onPointerDownCapture={freeze}
     >
       <ApprovalCard
         tone={careful ? 'red' : 'gold'}
@@ -610,6 +698,11 @@ export const BundleSheet = (props: {
         error={usbError || (mustRead ? 'Scroll to read every line before allowing' : '')}
       >
         {body}
+        {newLines.length > 0 && (
+          <div className="flex flex-col" data-testid="new-lines" style={{ gap: 4, marginTop: 8 }}>
+            {newLines.map((l) => lineRow(l, true))}
+          </div>
+        )}
       </ApprovalCard>
     </motion.div>
   );

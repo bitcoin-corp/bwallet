@@ -31,7 +31,32 @@ export interface BundleRequest {
   certificate?: { verifier: string; certType: string; fields: string[] };
   spending?: { satoshis: number; lineItems?: { type: string; description: string; satoshis: number }[] };
   reason?: string;
+  /**
+   * Joined the sheet while it was on screen (live sheet). Shown as "New: …", never pre-ticked, and never covered
+   * by a tap made before it appeared: the answer carries a hash of the lines on screen (sheetHash).
+   */
+  addedLive?: boolean;
 }
+
+/** Most lines that may join one open sheet. More queue for their own sheet. */
+export const MAX_LIVE_CHANGES = 3;
+
+/**
+ * A short, stable fingerprint of exactly the requests a sheet shows (order-independent). The sheet sends the
+ * hash of what was on screen when the user tapped; the background answers only if it still matches.
+ */
+export const sheetHash = (items: Pick<BundleRequest, 'requestID'>[]): string => {
+  const text = items
+    .map((i) => i.requestID)
+    .sort()
+    .join('\n');
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `${items.length}:${h.toString(16)}`;
+};
 
 /** Most requests one site may have waiting behind its open sheet. More are refused, so nothing can starve. */
 export const MAX_QUEUED_PER_SITE = 10;
@@ -54,6 +79,10 @@ export interface PermissionBundle<R extends BundleRequest = BundleRequest> {
   state: BundleState;
   items: R[];
   createdAt: number;
+  /** The user touched the sheet: nothing more joins it (later requests queue). */
+  frozen?: boolean;
+  /** Lines that joined while it was on screen. */
+  liveChanges?: number;
 }
 
 export interface BundlerOptions<R extends BundleRequest> {
@@ -63,6 +92,8 @@ export interface BundlerOptions<R extends BundleRequest> {
   onReady: (bundle: PermissionBundle<R>) => void;
   /** Queued requests became the site's next bundle (its sheet shows after the merge window). */
   onPromote?: (bundle: PermissionBundle<R>) => void;
+  /** A line joined a sheet that is on screen: the sheet reloads it. */
+  onUpdate?: (bundle: PermissionBundle<R>) => void;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
   now?: () => number;
@@ -113,6 +144,12 @@ export class PermissionBundler<R extends BundleRequest = BundleRequest> {
       existing.items.push(request);
       return existing;
     }
+    if (existing && !existing.frozen && (existing.liveChanges ?? 0) < MAX_LIVE_CHANGES) {
+      existing.items.push({ ...request, addedLive: true });
+      existing.liveChanges = (existing.liveChanges ?? 0) + 1;
+      this.opts.onUpdate?.(existing);
+      return existing;
+    }
     if (existing) {
       const queue = this.queues.get(request.originator) ?? [];
       if (queue.some((i) => i.requestID === request.requestID)) return undefined;
@@ -150,6 +187,12 @@ export class PermissionBundler<R extends BundleRequest = BundleRequest> {
     const bundle = this.open(originator, queue);
     this.opts.onPromote?.(bundle);
     return bundle;
+  }
+
+  /** The user touched the sheet (pointerdown): from now on new requests queue for their own sheet. */
+  freeze(id: string): void {
+    const b = this.bundles.get(id);
+    if (b) b.frozen = true;
   }
 
   /** Requests waiting behind a site's open sheet, in arrival order. */
@@ -197,9 +240,16 @@ export class PermissionBundler<R extends BundleRequest = BundleRequest> {
   resolve(
     id: string,
     decisions: Record<string, boolean>,
-  ): { granted: R[]; denied: R[]; carried?: PermissionBundle<R> } | undefined {
+    seenHash?: string,
+  ): { granted: R[]; denied: R[]; carried?: PermissionBundle<R>; stale?: boolean } | undefined {
     const bundle = this.bundles.get(id);
     if (!bundle) return undefined;
+    // The tap was for a different set of lines than the sheet now holds: grant nothing.
+    if (seenHash !== undefined && seenHash !== sheetHash(bundle.items)) {
+      this.forget(id);
+      this.promote(bundle.originator);
+      return { granted: [], denied: [...bundle.items], stale: true };
+    }
     this.forget(id);
     const granted: R[] = [];
     const denied: R[] = [];
@@ -284,6 +334,8 @@ export interface SheetLine {
   checked: boolean;
   /** A real sign-in line (a signature anyone can check, the public identity key, or a sign-in protocol). */
   signIn?: boolean;
+  /** Joined while the sheet was open: shown as "New: …" with its own tick, never covered by Allow alone. */
+  isNew?: boolean;
   /** For a key used only for your own data (counterparty self): what it keeps private, e.g. "Ask b chats". */
   privateLabel?: string;
 }
@@ -462,7 +514,7 @@ export const buildSheetModel = (bundle: Pick<PermissionBundle, 'originator' | 'i
   for (const r of bundle.items) {
     if (r.type === 'spending') {
       const sats = r.spending?.satoshis ?? 0;
-      if (!payment) {
+      if (!payment && !r.addedLive) {
         payment = {
           requestID: r.requestID,
           satoshis: sats,
@@ -470,13 +522,14 @@ export const buildSheetModel = (bundle: Pick<PermissionBundle, 'originator' | 'i
           detail: lineDetail(r),
         };
       } else {
-        // A second spend in the same bundle: shown as its own line, never pre-ticked.
+        // A second (or live-added) spend: shown as its own line, never pre-ticked.
         lines.push({
           requestID: r.requestID,
-          text: `Also pay ${sats.toLocaleString()} sats`,
+          text: `${r.addedLive ? 'New: pay' : 'Also pay'} ${sats.toLocaleString()} sats`,
           detail: lineDetail(r),
           risky: true,
           checked: false,
+          ...(r.addedLive ? { isNew: true } : {}),
         });
       }
       continue;
@@ -487,10 +540,12 @@ export const buildSheetModel = (bundle: Pick<PermissionBundle, 'originator' | 'i
     // reach a sheet at all (services/reservedProtocols.ts).
     // The public identity key is the other exception: Sign in with bWalletX asks for it first, and an unticked line
     // made Allow answer "denied" for it ("Permission denied." on every site since 5.2.35, 20 Oct 2026).
-    const checked = !risky && (r.type !== 'protocol' || r.counterparty === 'anyone' || isIdentityKeyRequest(r));
+    const checked =
+      !risky && !r.addedLive && (r.type !== 'protocol' || r.counterparty === 'anyone' || isIdentityKeyRequest(r));
     lines.push({
       requestID: r.requestID,
-      text: lineText(r),
+      text: r.addedLive ? `New: ${lineText(r)}` : lineText(r),
+      ...(r.addedLive ? { isNew: true } : {}),
       detail: lineDetail(r),
       risky,
       checked,
@@ -536,7 +591,8 @@ export const sheetView = (
   /** Lines whose row has been fully on screen. Given, every other line counts as hidden until it scrolls in. */
   seen?: ReadonlySet<string>,
 ): Required<SheetView> => ({
-  faceTicks: new Set(careful ? model.lines.map((l) => l.requestID) : []),
+  // Lines that joined live are drawn up front with their own tick on every card ("New: …").
+  faceTicks: new Set(model.lines.filter((l) => careful || l.isNew).map((l) => l.requestID)),
   hidden: new Set(seen ? model.lines.filter((l) => !seen.has(l.requestID)).map((l) => l.requestID) : []),
 });
 
@@ -555,9 +611,9 @@ export const sheetDecisions = (
   for (const l of model.lines) {
     // Never on screen: not answered, so never granted.
     if (!detailsSeen && view.hidden?.has(l.requestID)) continue;
-    // A tick box on the face (or in opened Details) decides as drawn.
+    // A tick box on the face (or in opened Details) decides as drawn; a new line counts only when the user ticked it.
     const drawn = detailsSeen || !!view.faceTicks?.has(l.requestID);
-    const ticked = ticks[l.requestID] ?? (l.checked || (!l.risky && !drawn));
+    const ticked = ticks[l.requestID] ?? (l.isNew ? false : l.checked || (!l.risky && !drawn));
     decisions[l.requestID] = approve && ticked;
   }
   if (model.payment) decisions[model.payment.requestID] = approve;

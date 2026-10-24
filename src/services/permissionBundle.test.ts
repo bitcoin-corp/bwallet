@@ -13,6 +13,8 @@ import {
   sheetView,
   shownItems,
   sheetAnswer,
+  sheetHash,
+  MAX_LIVE_CHANGES,
   blockActive,
   BLOCK_SITE_BASKET,
   MAX_QUEUED_PER_SITE,
@@ -53,17 +55,19 @@ const setup = () => {
   const clock = fakeTimers();
   const ready: PermissionBundle[] = [];
   const promoted: PermissionBundle[] = [];
+  const updated: PermissionBundle[] = [];
   let n = 0;
   const bundler = new PermissionBundler({
     windowMs: 400,
     onReady: (b) => ready.push(b),
     onPromote: (b) => promoted.push(b),
+    onUpdate: (b) => updated.push(b),
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
     now: clock.now,
     newId: () => `b${++n}`,
   });
-  return { clock, ready, promoted, bundler };
+  return { clock, ready, promoted, updated, bundler };
 };
 
 const proto = (id: string, originator = 'bmovies.app', extra: Partial<BundleRequest> = {}): BundleRequest => ({
@@ -157,6 +161,7 @@ describe('PermissionBundler answers', () => {
     const { clock, ready, bundler } = setup();
     const b = bundler.add(proto('r1'))!;
     clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
     expect(bundler.add(basket('r2'))).toBeUndefined();
     expect(ready).toHaveLength(1); // no second sheet yet
     expect(b.items.map((i) => i.requestID)).toEqual(['r1']);
@@ -167,6 +172,7 @@ describe('PermissionBundler answers', () => {
     const { clock, bundler } = setup();
     const b = bundler.add(proto('r1'))!;
     clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
     expect(bundler.add(proto('r1'))).toBe(b);
     expect(b.items).toHaveLength(1);
     expect(bundler.queued('bmovies.app')).toHaveLength(0);
@@ -176,6 +182,7 @@ describe('PermissionBundler answers', () => {
     const { clock, ready, bundler } = setup();
     const b = bundler.add(proto('r1'))!;
     clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
     b.items.push(basket('unseen')); // defensive path: an item missing from the decisions
     const res = bundler.resolve(b.id, { r1: true })!;
     expect(res.granted.map((r) => r.requestID)).toEqual(['r1']);
@@ -422,11 +429,12 @@ describe('allowance only on money sheets (b-Aware 24 Oct 2026: sign-in stored a 
   });
 });
 
-describe('requests that arrive while a sheet is open (option A, 24 Oct 2026)', () => {
+describe('requests that arrive after the user touched a sheet (option A, 24 Oct 2026)', () => {
   test("the first sheet's Allow never grants a late request", () => {
     const { clock, ready, bundler } = setup();
     const b = bundler.add(proto('sign', 'evil.example', { counterparty: 'anyone' }))!;
     clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
     bundler.add(basket('late', 'evil.example'));
     const model = buildSheetModel(b);
     expect(model.lines.map((l) => l.requestID)).toEqual(['sign']);
@@ -446,6 +454,7 @@ describe('requests that arrive while a sheet is open (option A, 24 Oct 2026)', (
     const { clock, ready, bundler } = setup();
     const b = bundler.add(proto('sign', 'evil.example', { counterparty: 'anyone' }))!;
     clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
     bundler.add(basket('late', 'evil.example'));
     bundler.resolve(b.id, { sign: false });
     clock.tick(400);
@@ -458,6 +467,7 @@ describe('requests that arrive while a sheet is open (option A, 24 Oct 2026)', (
     const { clock, ready, bundler } = setup();
     const b = bundler.add(proto('sign', 'evil.example', { counterparty: 'anyone' }))!;
     clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
     bundler.add(spend('pay', 5000, 'evil.example'));
     const first = buildSheetModel(b);
     expect(first.payment).toBeUndefined();
@@ -471,6 +481,7 @@ describe('requests that arrive while a sheet is open (option A, 24 Oct 2026)', (
     const { clock, ready, promoted, bundler } = setup();
     const b = bundler.add(proto('a'))!;
     clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
     bundler.add(basket('q'));
     bundler.drop(b.id);
     expect(promoted).toHaveLength(1);
@@ -482,6 +493,7 @@ describe('requests that arrive while a sheet is open (option A, 24 Oct 2026)', (
     const { clock, ready, bundler } = setup();
     const b = bundler.add(proto('a'))!;
     clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
     for (const id of ['q1', 'q2', 'q3']) bundler.add(basket(id));
     bundler.resolve(b.id, { a: true });
     clock.tick(400);
@@ -492,6 +504,7 @@ describe('requests that arrive while a sheet is open (option A, 24 Oct 2026)', (
     const { clock, bundler } = setup();
     bundler.add(proto('a'));
     clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
     for (let i = 0; i < MAX_QUEUED_PER_SITE; i++) bundler.add(basket(`q${i}`));
     expect(() => bundler.add(basket('one-too-many'))).toThrow(PermissionQueueFullError);
     expect(() => bundler.add(basket('x'))).toThrow(/Too many permission requests/);
@@ -503,6 +516,7 @@ describe('requests that arrive while a sheet is open (option A, 24 Oct 2026)', (
     const { clock, ready, bundler } = setup();
     const b = bundler.add(proto('a'))!;
     clock.tick(400);
+    bundler.freeze(bundler.list()[0].id); // touched: later requests queue
     bundler.add(basket('q1'));
     bundler.add(basket('q2'));
     bundler.removeRequest('q1');
@@ -565,6 +579,95 @@ describe('the three answers of a careful sheet (owner, 24 Oct 2026)', () => {
   });
 });
 
+describe('the live sheet (owner, 24 Oct 2026)', () => {
+  test('an untouched open sheet takes a new line live, marked New and unticked', () => {
+    const { clock, updated, bundler } = setup();
+    const b = bundler.add(proto('sign', 'bmovies.app', { counterparty: 'anyone' }))!;
+    clock.tick(400);
+    expect(bundler.add(basket('late'))).toBe(b);
+    expect(updated).toHaveLength(1);
+    const line = buildSheetModel(b).lines.find((l) => l.requestID === 'late')!;
+    expect(line.isNew).toBe(true);
+    expect(line.checked).toBe(false);
+    expect(line.text).toMatch(/^New: /);
+  });
+
+  test('Allow alone never grants a New line; ticking it does', () => {
+    const { clock, bundler } = setup();
+    const b = bundler.add(proto('sign', 'bmovies.app', { counterparty: 'anyone' }))!;
+    clock.tick(400);
+    bundler.add(basket('late'));
+    const model = buildSheetModel(b);
+    expect(sheetDecisions(model, true, {}, false)).toEqual({ sign: true, late: false });
+    expect(sheetDecisions(model, true, { late: true }, false).late).toBe(true);
+  });
+
+  test('an approve bound to an older set of lines (hash mismatch) grants nothing', () => {
+    const { clock, bundler } = setup();
+    const b = bundler.add(proto('sign', 'bmovies.app', { counterparty: 'anyone' }))!;
+    clock.tick(400);
+    const before = buildSheetModel(b);
+    const seen = sheetHash(b.items); // what was on screen when the user tapped
+    bundler.add(basket('late')); // arrives before the tap reaches the background
+    const res = bundler.resolve(b.id, sheetDecisions(before, true, {}, false), seen)!;
+    expect(res.stale).toBe(true);
+    expect(res.granted).toHaveLength(0);
+    expect(res.denied.map((r) => r.requestID).sort()).toEqual(['late', 'sign']);
+  });
+
+  test('a missing hash grants nothing; a matching hash grants the ticked lines', () => {
+    const one = setup();
+    const b1 = one.bundler.add(proto('sign', 'bmovies.app', { counterparty: 'anyone' }))!;
+    one.clock.tick(400);
+    expect(one.bundler.resolve(b1.id, { sign: true }, '')!.granted).toHaveLength(0);
+    const two = setup();
+    const b2 = two.bundler.add(proto('sign', 'bmovies.app', { counterparty: 'anyone' }))!;
+    two.clock.tick(400);
+    two.bundler.add(basket('late'));
+    const res = two.bundler.resolve(b2.id, { sign: true, late: false }, sheetHash(b2.items))!;
+    expect(res.granted.map((r) => r.requestID)).toEqual(['sign']);
+    expect(res.denied.map((r) => r.requestID)).toEqual(['late']);
+  });
+
+  test('the hash depends on the set, not the order', () => {
+    expect(sheetHash([{ requestID: 'a' }, { requestID: 'b' }])).toBe(
+      sheetHash([{ requestID: 'b' }, { requestID: 'a' }]),
+    );
+    expect(sheetHash([{ requestID: 'a' }])).not.toBe(sheetHash([{ requestID: 'a' }, { requestID: 'b' }]));
+  });
+
+  test('after pointerdown (freeze) a new request queues for its own sheet', () => {
+    const { clock, ready, bundler } = setup();
+    const b = bundler.add(proto('a'))!;
+    clock.tick(400);
+    bundler.freeze(b.id);
+    expect(bundler.add(basket('late'))).toBeUndefined();
+    expect(b.items).toHaveLength(1);
+    bundler.resolve(b.id, { a: true }, sheetHash(b.items));
+    clock.tick(400);
+    expect(ready[1].items.map((i) => i.requestID)).toEqual(['late']);
+  });
+
+  test('live changes are capped; beyond the cap requests queue', () => {
+    const { clock, bundler } = setup();
+    const b = bundler.add(proto('a'))!;
+    clock.tick(400);
+    for (let i = 0; i < MAX_LIVE_CHANGES; i++) expect(bundler.add(basket(`l${i}`))).toBe(b);
+    expect(bundler.add(basket('over'))).toBeUndefined();
+    expect(bundler.queued('bmovies.app').map((i) => i.requestID)).toEqual(['over']);
+  });
+
+  test('a live spend is a New line, never the main payment', () => {
+    const { clock, bundler } = setup();
+    const b = bundler.add(proto('sign', 'bmovies.app', { counterparty: 'anyone' }))!;
+    clock.tick(400);
+    bundler.add(spend('pay', 5000));
+    const model = buildSheetModel(b);
+    expect(model.payment).toBeUndefined();
+    expect(sheetDecisions(model, true, {}, false).pay).toBe(false);
+  });
+});
+
 describe('never approve a line the user cannot read (mixed careful batch, 24 Oct 2026)', () => {
   const site = 'mixed.example';
   const mixed = () =>
@@ -619,5 +722,19 @@ describe('never approve a line the user cannot read (mixed careful batch, 24 Oct
     const items = [proto('key', site, { privileged: true }), basket('bk', site)];
     expect(shownItems(items, { hidden: new Set(['bk']) }).map((i) => i.requestID)).toEqual(['key']);
     expect(shownItems(items, sheetView(mixed(), true))).toEqual(items);
+  });
+
+  test('the hash covers only the shown lines: a hidden line makes the answer stale, so nothing is granted', () => {
+    const { clock, bundler } = setup();
+    const b = bundler.add(proto('key', site, { privileged: true }))!;
+    bundler.add(basket('bk', site));
+    clock.tick(400);
+    const hidden = { hidden: new Set(['bk']) };
+    const seen = sheetHash(shownItems(b.items, hidden));
+    expect(seen).not.toBe(sheetHash(b.items));
+    const answer = sheetAnswer(buildSheetModel(b), 'allow', { key: true }, false, hidden);
+    const r = bundler.resolve(b.id, answer.decisions, seen)!;
+    expect(r.granted).toEqual([]);
+    expect(r.stale).toBe(true);
   });
 });

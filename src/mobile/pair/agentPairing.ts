@@ -22,6 +22,7 @@ import {
 } from './mintScope';
 import { getAgentAccount, getAgentLog, isAgentAccount } from '../agents/agentAccounts';
 import { runAgentAction } from '../agents/agentTrade';
+import { serialSpend } from '../agents/spendQueue';
 import { getLoadedStrategy, getPaperBook, loadStrategy, parseStrategy } from '../agents/strategy';
 
 export const CLI_ORIGIN = 'https://cli.bwalletx.com';
@@ -104,13 +105,8 @@ export type AgentDeps = {
 };
 
 const uploads = new UploadStore();
-let mintQueue: Promise<unknown> = Promise.resolve();
-/** One spend (mint, buy, send) at a time per phone, so two requests can't both pass the budget check. */
-const serial = <T>(fn: () => Promise<T>): Promise<T> => {
-  const run = mintQueue.then(fn, fn);
-  mintQueue = run.catch(() => undefined);
-  return run;
-};
+/** One spend (mint, buy, send) at a time per phone, shared with pot payments (agents/spendQueue.ts). */
+const serial = serialSpend;
 
 const asCollection = (v: unknown): Collection => {
   const c = (v && typeof v === 'object' ? v : {}) as P;

@@ -2,15 +2,21 @@
  * Native passkeys for the Capacitor apps (iOS + Android). The web view's origin is capacitor://localhost or
  * https://localhost, never bwalletx.com, so navigator.credentials can't use our rpId there. The "Passkeys" plugin
  * (ios/App/App/PasskeysPlugin.swift, android/.../PasskeysPlugin.java) asks the OS directly:
- *   iOS 18+   ASAuthorizationPlatformPublicKeyCredentialProvider + PRF (webcredentials:bwalletx.com entitlement)
- *   Android   Credential Manager (androidx.credentials) with extensions.prf (assetlinks.json on bwalletx.com)
- * Same rpId (bwalletx.com) and same PRF salt as the web, so one synced passkey opens the same backups everywhere.
+ *   iOS 18+   ASAuthorizationPlatformPublicKeyCredentialProvider + PRF (webcredentials:web.bwalletx.com entitlement)
+ *   Android   Credential Manager (androidx.credentials) with extensions.prf (assetlinks.json on web.bwalletx.com)
+ * Same rpId (web.bwalletx.com) and same PRF salt as the web, so one synced passkey opens the same backups everywhere.
  * All binary values cross the bridge as base64url strings.
  */
 import { b64url, fromB64url } from './seedBackup';
 
-/** The rpId the apps claim. Must match the AASA / assetlinks files on https://bwalletx.com/.well-known/. */
-export const NATIVE_RP_ID = 'bwalletx.com';
+/**
+ * The wallet's rpId (web, desktop and the apps). Scoped to web.bwalletx.com, not the registrable domain: with
+ * rpId bwalletx.com any *.bwalletx.com page could ask for the passkey and get the same PRF output, so the seed
+ * backup would open from any subdomain (b-Aware row 57). desktop.bwalletx.com joins through Related Origin
+ * Requests (public/.well-known/webauthn). The apps' AASA / assetlinks files live on
+ * https://web.bwalletx.com/.well-known/.
+ */
+export const NATIVE_RP_ID = 'web.bwalletx.com';
 
 export type NativePasskeyAvailability = {
   /** The OS can make/use passkeys for bwalletx.com from this app. */

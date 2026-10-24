@@ -1,0 +1,28 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "ZQ4NX9NJ89.com.bitcoincorp.bwallet.private",
+          "ZQ4NX9NJ89.com.bitcoincorp.bwallet"
+        ],
+        "components": [
+          {
+            "/": "/pair",
+            "comment": "Phone pairing QR (src/mobile/pair)"
+          },
+          {
+            "/": "/social",
+            "comment": "Continue with X / Google return (src/mobile/social)"
+          }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "ZQ4NX9NJ89.com.bitcoincorp.bwallet.private",
+      "ZQ4NX9NJ89.com.bitcoincorp.bwallet"
+    ]
+  }
+}

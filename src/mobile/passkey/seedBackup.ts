@@ -20,7 +20,7 @@ export const HKDF_INFO = 'bwalletx seed backup v1 aes-256-gcm';
 export type SeedBackupBlob = {
   kind: typeof BLOB_KIND;
   v: 1;
-  /** Relying party the passkey belongs to ("bwalletx.com" in production). */
+  /** Relying party the passkey belongs to ("web.bwalletx.com" in production). */
   rpId: string;
   /** base64url credential id, so restore can ask for exactly this passkey. */
   credentialId: string;
