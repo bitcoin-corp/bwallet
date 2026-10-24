@@ -24,6 +24,8 @@ describe('crossSiteSignRefusal (audit 24 Oct B1)', () => {
     expect(crossSiteSignRefusal('app.bchatx.com', sig(msg))).toBeNull();
     expect(crossSiteSignRefusal('bchatx.com:8443', sig(msg))).toBeNull();
     expect(crossSiteSignRefusal('bchatx.com.paired.invalid', sig(msg))).toBeNull();
+    expect(crossSiteSignRefusal(`bchatx.com.c${'ab'.repeat(22)}.paired.invalid`, sig(msg))).toBeNull();
+    expect(crossSiteSignRefusal(`evil.com.c${'ab'.repeat(22)}.paired.invalid`, sig(msg))).not.toBeNull();
   });
 
   test('one matching field cannot launder a second, foreign one', () => {
@@ -37,6 +39,45 @@ describe('crossSiteSignRefusal (audit 24 Oct B1)', () => {
     expect(crossSiteSignRefusal('evil.com', { data: [0, 255, 1, 2, 200, 3] })).toBeNull();
     expect(crossSiteSignRefusal('evil.com', { hashToDirectlySign: [1, 2, 3] })).toBeNull();
     expect(crossSiteSignRefusal(undefined, sig(JSON.stringify({ domain: 'good.com' })))).toBeNull();
+  });
+
+  test('b-Aware 24 Oct (b_feedback 51): uri/url/site/callback fields and login lines are bindings', () => {
+    const shapes = [
+      JSON.stringify({ url: 'https://good.com/login' }),
+      JSON.stringify({ uri: 'https://good.com/login' }),
+      JSON.stringify({ site: 'good.com' }),
+      JSON.stringify({ callback: 'https://good.com/cb' }),
+      JSON.stringify({ redirect_uri: 'https://good.com/cb' }),
+      JSON.stringify({ message: 'good.com wants you to sign in' }),
+      'Login: good.com wants you to sign in',
+      'good.com wallet login: 0123abcd',
+      'bitcoinchat.online wallet login: 0123abcd',
+      'Sign in to good.com with bWallet\n\nNonce: 1',
+    ];
+    for (const msg of shapes) {
+      expect(crossSiteSignRefusal('evil.com', sig(msg))).not.toBeNull();
+    }
+    expect(crossSiteSignRefusal('good.com', sig('good.com wallet login: 0123abcd'))).toBeNull();
+    expect(crossSiteSignRefusal('app.good.com', sig(JSON.stringify({ url: 'https://good.com/x' })))).toBeNull();
+  });
+
+  test("bit-sign's Sign in with bWallet challenge is bound to its origin", () => {
+    const msg = [
+      'Sign in to www.bchatx.com with bWallet',
+      '',
+      'This proves you hold this wallet. It does not spend anything.',
+      '',
+      'Origin: https://www.bchatx.com',
+      'Nonce: abc',
+      'Expires: 2026-10-24T15:00:00Z',
+    ].join('\n');
+    expect(crossSiteSignRefusal('evil.com', sig(msg))).not.toBeNull();
+    expect(crossSiteSignRefusal('www.bchatx.com', sig(msg))).toBeNull();
+  });
+
+  test('ordinary prose about logging in is not a binding', () => {
+    expect(crossSiteSignRefusal('evil.com', sig('I logged in today and it worked'))).toBeNull();
+    expect(crossSiteSignRefusal('evil.com', sig('post: read https://good.com/news first'))).toBeNull();
   });
 
   test('boundHosts reads both forms', () => {

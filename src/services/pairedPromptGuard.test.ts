@@ -3,9 +3,10 @@ import { pairedOrigin } from './originKey';
 import { isPairedOriginator, pairedGrantAllowed, takePendingFor } from './pairedPromptGuard';
 
 const SITE = 'https://shop.example';
-const PAIRED = pairedOrigin(SITE);
+const CH = 'AAAAAAAAAAAAAAAAAAAAAA';
+const PAIRED = pairedOrigin(SITE, CH);
 const now = 1_800_000_000_000;
-const session = (over: Record<string, unknown> = {}) => ({ origin: SITE, lastUsed: now - 1000, ...over });
+const session = (over: Record<string, unknown> = {}) => ({ c: CH, origin: SITE, lastUsed: now - 1000, ...over });
 
 type Entry = { request: { originator?: string }; granted?: boolean; denied?: boolean };
 
@@ -36,6 +37,9 @@ describe('paired prompt guard', () => {
     expect(pairedGrantAllowed(PAIRED, [session({ origin: 'https://other.example' })], now)).toBe(false);
     expect(pairedGrantAllowed(PAIRED, [session({ agent: { expiresAt: now - 1 } })], now)).toBe(false);
     expect(pairedGrantAllowed(PAIRED, [session({ agent: { expiresAt: now + 1 } })], now)).toBe(true);
+    // Another pairing claiming the same site cannot grant under this pairing's key (b-Aware 24 Oct 2026).
+    expect(pairedGrantAllowed(PAIRED, [session({ c: 'BBBBBBBBBBBBBBBBBBBBBB' })], now)).toBe(false);
+    expect(pairedGrantAllowed(PAIRED, [session({ c: undefined })], now)).toBe(false);
   });
 
   test('takePendingFor removes only that originator', () => {

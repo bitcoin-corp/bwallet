@@ -5,16 +5,54 @@
  * for a signature under good.com's login protocol, over a challenge it fetched from good.com, and replay it
  * there as the user. Changing key derivation would change every existing login key, so instead the wallet
  * reads the data it is asked to sign: when it is text that names the site it is meant for (a SIWE-style
- * "<host> wants you to sign in" line, or a domain / origin / host / audience field), that site must be the one
+ * "<host> wants you to sign in" or "<host> wallet login:" line, or a domain / origin / host / audience / uri / url /
+ * site / callback / redirect field), that site must be the one
  * calling (or a parent/subdomain of it). Data that names no site is signed as before; free links inside content (a post with a URL) are not
  * treated as a binding, so signed posts keep working.
  */
 
-const BINDING_FIELD = /["']?\b(domain|origin|host|hostname|audience|aud)\b["']?\s*[:=]\s*["']?([^\s"',;}\]]+)/gi;
-const SIWE_LINE = /^\s*([a-z0-9.-]+\.[a-z]{2,}(?::\d+)?) wants you to sign in/im;
+// Keys that say which site a message is for. uri/url/site/callback/redirect shapes added after the b-Aware
+// report of 24 Oct 2026 (b_feedback 51): a sign-in message naming its site through one of these was not checked.
+const BINDING_KEYS = [
+  'domain',
+  'origin',
+  'host',
+  'hostname',
+  'audience',
+  'aud',
+  'uri',
+  'url',
+  'site',
+  'website',
+  'realm',
+  'rp',
+  'rp_id',
+  'rpid',
+  'relying_party',
+  'callback',
+  'callback_url',
+  'callback_uri',
+  'redirect',
+  'redirect_uri',
+  'redirect_url',
+  'return_to',
+  'return_url',
+  'return_uri',
+].join('|');
+const BINDING_FIELD = new RegExp(`["']?\\b(${BINDING_KEYS})\\b["']?\\s*[:=]\\s*["']?([^\\s"',;}\\]]+)`, 'gi');
+// "<host> wants you to sign in" (SIWE), "<host> wallet login:" and "Sign in to <host>" lines, anywhere in the
+// text: a prefix such as "Login: " or a JSON string around the line must not hide it.
+const HOST = '((?:[a-z0-9-]+\\.)+[a-z]{2,}(?::\\d+)?)';
+const SIGN_IN_LINES = [
+  new RegExp(
+    `(?:^|[\\s"'\`(:])${HOST}(?: wants you to sign in| (?:wallet |account )?(?:log ?in|sign[ -]?in)\\b)`,
+    'gim',
+  ),
+  new RegExp(`\\b(?:sign|log) ?in to ${HOST}`, 'gi'),
+];
 const HOST_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 
-/** Lower-case hostname with no port, no trailing dot and no ".paired.invalid" pairing suffix. */
+/** Lower-case hostname with no port, no trailing dot and no pairing suffix (".c<hex>.paired.invalid"). */
 export const bareHost = (value: string): string | null => {
   let v = value.trim().toLowerCase();
   if (!v) return null;
@@ -29,7 +67,7 @@ export const bareHost = (value: string): string | null => {
     .replace(/\/.*$/, '')
     .replace(/:\d+$/, '')
     .replace(/\.$/, '')
-    .replace(/\.paired\.invalid$/, '');
+    .replace(/(\.c[0-9a-f]{44})?\.paired\.invalid$/, '');
   return HOST_RE.test(v) ? v : null;
 };
 
@@ -55,10 +93,11 @@ const decodeText = (data: unknown): string | null => {
 /** Every site the text says it is meant for. */
 export const boundHosts = (text: string): string[] => {
   const out = new Set<string>();
-  const siwe = SIWE_LINE.exec(text);
-  if (siwe) {
-    const h = bareHost(siwe[1]);
-    if (h) out.add(h);
+  for (const re of SIGN_IN_LINES) {
+    for (const m of text.matchAll(re)) {
+      const h = bareHost(m[1]);
+      if (h) out.add(h);
+    }
   }
   for (const m of text.matchAll(BINDING_FIELD)) {
     const h = bareHost(m[2]);

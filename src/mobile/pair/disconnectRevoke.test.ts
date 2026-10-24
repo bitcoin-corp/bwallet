@@ -44,13 +44,16 @@ g.localStorage = {
 g.document = { visibilityState: 'visible', addEventListener: () => undefined };
 
 const sessions = await import('./sessions');
+const { pairedOrigin } = await import('../../services/originKey');
 
 const settle = () => new Promise<void>((r) => setTimeout(r, 25));
 const HOST = 'https://pairtest.example';
-const PAIRED_KEY = 'pairtest.example.paired.invalid';
+/** The paired key of the most recent pairing (it names that pairing's channel, originKey.ts). */
+let PAIRED_KEY = '';
 const signIn = { data: [1], protocolID: [2, 'bwallet sign in'], keyID: 'n', counterparty: 'anyone' };
 
 const pair = async (channel: string) => {
+  PAIRED_KEY = pairedOrigin(HOST, channel).slice('https://'.length);
   const url = pairUrl({
     v: PAIR_VERSION,
     r: 'relay.bwallet.space',
@@ -148,7 +151,7 @@ describe('Disconnect withdraws the paired grants (b-Aware report)', () => {
     sessions.forget(channel, false);
     await settle();
     expect(done).toEqual([]);
-    expect(localStorage.getItem('bwallet.pair.revokeQueue')).toContain('pairtest.example.paired.invalid');
+    expect(localStorage.getItem('bwallet.pair.revokeQueue')).toContain(PAIRED_KEY);
 
     up = true;
     await sessions.flushRevocations();

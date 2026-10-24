@@ -46,10 +46,31 @@ export const originatorForOrigin = (origin: string | undefined | null): Originat
  * sessions therefore run under their own permission key, "<host>.paired.invalid" (.invalid can never resolve, so no
  * real site can hold it), and never inherit the site's saved grants, monthly allowance or "Don't ask again".
  * See docs/PAIRING-ORIGIN-PROOF.md for how a site could later prove its origin.
+ *
+ * The key also names the pairing's own relay channel, "<host>.c<channel hex>.paired.invalid" (b-Aware report,
+ * 24 Oct 2026): keyed by host alone, a second pairing that merely claimed the same origin (a forged QR, any Origin
+ * header) shared the live pairing's grants and allowance, and signed with no sheet. Now every pairing starts empty
+ * and whatever it is granted stays with that one channel.
  */
 export const PAIRED_SUFFIX = '.paired.invalid';
-export const pairedOrigin = (origin: string): string => {
+/** Before 24 Oct 2026 the paired key had no channel label; kept to sweep grants stored under it. */
+export const legacyPairedOrigin = (origin: string): string => {
   const u = new URL(origin);
   return `https://${u.hostname}${PAIRED_SUFFIX}${u.port ? `:${u.port}` : ''}`;
+};
+/**
+ * DNS label for a 22-char base64url relay channel id: "c" + the hex of its characters (45 chars, under the 63 limit).
+ * The characters, not the decoded bytes: the last base64url char has padding bits, so two channel ids the relay
+ * treats as different could decode to the same bytes.
+ */
+export const channelLabel = (channel: string): string => {
+  if (!/^[A-Za-z0-9_-]{22}$/.test(channel)) throw new Error('Bad pairing channel');
+  let hex = '';
+  for (let i = 0; i < channel.length; i++) hex += channel.charCodeAt(i).toString(16).padStart(2, '0');
+  return `c${hex}`;
+};
+export const pairedOrigin = (origin: string, channel: string): string => {
+  const u = new URL(origin);
+  return `https://${u.hostname}.${channelLabel(channel)}${PAIRED_SUFFIX}${u.port ? `:${u.port}` : ''}`;
 };
 export const isPairedHost = (host: string) => host.toLowerCase().replace(/\.$/, '').endsWith(PAIRED_SUFFIX);
