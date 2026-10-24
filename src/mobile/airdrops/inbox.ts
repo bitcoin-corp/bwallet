@@ -257,6 +257,10 @@ export const activeQuarantine = (): Set<string> => quarantineFor(activeAccount);
 export const activeNftQuarantine = (st: Store | null = store()): Set<string> =>
   activeAccount ? quarantinedNfts(loadItems(activeAccount, st).items, loadInbox(activeAccount, st)) : new Set();
 
+/** Kept (or trusted-sender) NFTs for the active account. */
+export const activeKeptNfts = (st: Store | null = store()): AirdropItem[] =>
+  activeAccount ? keptNfts(loadItems(activeAccount, st).items, loadInbox(activeAccount, st)) : [];
+
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 export const subscribeInbox = (l: () => void) => {

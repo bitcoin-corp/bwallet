@@ -5,6 +5,7 @@ import {
   LEGACY_ORD_KEY_ID,
   LEGACY_ORD_PROTOCOL,
   legacyOrdKey,
+  legacyOrdVisible,
   syncLegacyOrd,
   watchedLegacyOrdAddress,
 } from './legacyOrd';
@@ -104,5 +105,18 @@ describe('syncLegacyOrd', () => {
         })),
       },
     ]);
+  });
+});
+
+describe('legacyOrdVisible (quarantine wins)', () => {
+  const A = 'a'.repeat(64);
+  const B = 'b'.repeat(64);
+  const legacy = new Set([`${A}_0`, `${B}_1`]);
+  test('a legacy NFT shows only once kept; other NFTs always show', () => {
+    expect(legacyOrdVisible(`${'c'.repeat(64)}.0`, legacy, [])).toBe(true);
+    expect(legacyOrdVisible(`${A}.0`, legacy, [])).toBe(false);
+    expect(legacyOrdVisible(`${A}.0`, legacy, [{ txid: A, outpoint: `${A}_0` }])).toBe(true);
+    expect(legacyOrdVisible(`${B}.1`, legacy, [{ txid: B }])).toBe(true);
+    expect(legacyOrdVisible(`${B}.1`, legacy, [{ txid: A, outpoint: `${A}_0` }])).toBe(false);
   });
 });

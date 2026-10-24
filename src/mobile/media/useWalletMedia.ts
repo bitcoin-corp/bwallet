@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WalletOutput } from '@bsv/sdk';
 import { listOrdinals, syncAddresses } from '@1sat/actions';
-import { takeInLegacyOrd } from '../../services/legacyOrd';
+import { legacyOrdVisible, takeInLegacyOrd, takenInLegacy } from '../../services/legacyOrd';
+import { activeKeptNfts } from '../airdrops/inbox';
 import { onMinted } from '../mint/mint';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { getOutputName, getTagValue } from '../../utils/format';
@@ -96,7 +97,12 @@ export const useWalletMedia = () => {
   const visible = useCallback(
     (outputs: WalletOutput[], reset: boolean) => {
       const media = outputs.filter(isMediaOutput);
-      const keep = media.filter((o) => !offChain.current.has(txidOf(o.outpoint)));
+      // NFTs from the legacy ord address stay in bMail › Quarantine until kept (services/legacyOrd.ts).
+      const legacy = takenInLegacy();
+      const kept = legacy.size ? activeKeptNfts() : [];
+      const keep = media.filter(
+        (o) => !offChain.current.has(txidOf(o.outpoint)) && legacyOrdVisible(o.outpoint, legacy, kept),
+      );
       setHiddenUnbroadcast((n) => (reset ? 0 : n) + media.length - keep.length);
       return dedupeByOrigin(keep.map(toItem));
     },

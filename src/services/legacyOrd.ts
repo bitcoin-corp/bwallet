@@ -84,6 +84,39 @@ export const installLegacyOrdSigner = (wallet: SignerWallet, key: PrivateKey): (
 /** "txid_vout" / "txid.vout" → "txid_vout", lower case. */
 export const normOutpoint = (o: string) => o.toLowerCase().replace('.', '_');
 
+const TAKEN_KEY = 'bwx.legacyOrd.takenIn';
+/** Outpoints (normalised) this device took in from the legacy ord address. Shown only once kept (legacyOrdVisible). */
+export const takenInLegacy = (): Set<string> => {
+  try {
+    const v = JSON.parse(globalThis.localStorage?.getItem(TAKEN_KEY) ?? '[]') as unknown;
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  } catch {
+    return new Set();
+  }
+};
+const rememberTakenIn = (ops: string[]) => {
+  if (!ops.length) return;
+  try {
+    globalThis.localStorage?.setItem(TAKEN_KEY, JSON.stringify([...new Set([...takenInLegacy(), ...ops])]));
+  } catch {
+    // no storage here: the list then hides nothing extra, the inbox's Quarantine still applies on screen
+  }
+};
+
+/**
+ * Quarantine wins (owner review, 24 Oct 2026): an NFT taken in from the legacy ord address shows in Wallet › NFTs
+ * only once it is kept (or its sender trusted) in bMail. `kept`: the inbox's kept NFTs (airdrops/inbox keptNfts).
+ */
+export const legacyOrdVisible = (
+  outpoint: string,
+  legacy: Set<string>,
+  kept: { txid: string; outpoint?: string }[],
+): boolean => {
+  const op = normOutpoint(outpoint);
+  if (!legacy.has(op)) return true;
+  return kept.some((k) => (k.outpoint ? normOutpoint(k.outpoint) === op : op.split('_')[0] === k.txid.toLowerCase()));
+};
+
 type ListWallet = Pick<WalletInterface, 'listOutputs' | 'internalizeAction'>;
 
 /** Outpoints already in the wallet's ordinals basket (normalised). */
@@ -144,6 +177,7 @@ export const syncLegacyOrd = async (deps: LegacyOrdDeps): Promise<{ added: numbe
         })),
       } as Parameters<typeof internalizeBeef>[0]);
       added += r.internalized;
+      rememberTakenIn(vouts.map((v) => `${txid}_${v}`));
     } catch (err) {
       failed++;
       console.warn('[legacyOrd] could not take in', txid, err);
