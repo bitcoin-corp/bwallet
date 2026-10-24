@@ -33,7 +33,6 @@ import r_21e8 from './brand/apps/radar/21e8.png';
 import r_anvilcast from './brand/apps/radar/anvilcast.png';
 import r_bicomedia from './brand/apps/radar/bicomedia.png';
 import r_edwinpai from './brand/apps/radar/edwinpai.png';
-import r_etched from './brand/apps/radar/etched.png';
 import r_foundry from './brand/apps/radar/foundry.png';
 import r_gaialog from './brand/apps/radar/gaialog.png';
 import r_immutify from './brand/apps/radar/immutify.png';
@@ -82,7 +81,6 @@ import r_foxplorer from './brand/apps/radar/foxplorer.png';
 import r_gaiaexplorer from './brand/apps/radar/gaiaexplorer.png';
 import r_teranode_explorer from './brand/apps/radar/teranode-explorer.png';
 import r_quickstart_docs from './brand/apps/radar/quickstart-docs.png';
-import r_bitschool from './brand/apps/radar/bitschool.png';
 import r_higher_learning_bsv from './brand/apps/radar/higher-learning-bsv.png';
 import r_the_ai_bitcoin_revolution_book from './brand/apps/radar/the-ai-bitcoin-revolution-book.png';
 import r_bitcoinsvwiki from './brand/apps/radar/bitcoinsvwiki.png';
@@ -358,13 +356,6 @@ const BSVRADAR_APPS: Omit<RadarApp, 'source'>[] = [
     icon: r_edwinpai,
   },
   {
-    name: 'Etched',
-    url: 'https://etched.page',
-    desc: 'An internet archive tool that permanently timestamps and stores web pages',
-    group: 'tools',
-    icon: r_etched,
-  },
-  {
     name: 'Foundry',
     url: 'https://anvil.sendbsv.com/app/Foundry',
     desc: 'Deploy any static Website or App on-chain — drag a folder, your BSV wallet signs,…',
@@ -621,13 +612,6 @@ const BSVRADAR_APPS: Omit<RadarApp, 'source'>[] = [
     desc: 'Interactive developer documentation for the BSV WalletClient',
     group: 'learn',
     icon: r_quickstart_docs,
-  },
-  {
-    name: 'BitSchool',
-    url: 'https://bitschool.online',
-    desc: 'Master Bitcoin SV through interactive learning',
-    group: 'learn',
-    icon: r_bitschool,
   },
   {
     name: 'Higher Learning BSV',

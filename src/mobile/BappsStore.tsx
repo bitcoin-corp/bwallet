@@ -7,6 +7,7 @@
 import { useMemo, useState } from 'react';
 import { Coins, Lock, MessagesSquare, Palette, Search, Smartphone, ChevronDown } from 'lucide-react';
 import { STORE_BUILD } from './storeBuild';
+import { COMING_BAPPS } from './bapps';
 
 /** Adult (18+) tiles never reach a store build; a literal env check so Rollup drops the age-gate text too (store grep). */
 const ADULT_UI: boolean = !(
@@ -19,6 +20,8 @@ import {
   BX_APPS,
   COMMERCIAL_APPS,
   byCategory,
+  productKey,
+  withoutDuplicates,
   matchesQuery,
   meetsStandard,
   visibleApps,
@@ -30,6 +33,8 @@ export interface StoreItem {
   key: string;
   name: string;
   verb?: string;
+  /** The site or wallet path it opens; used to drop repeats of a product already listed above. */
+  url?: string;
   icon?: string;
   color?: string;
   standard?: BappStandard;
@@ -212,13 +217,30 @@ export const BappsStore = ({
 
   const bx = useMemo(() => visibleApps(BX_APPS, store).filter((a) => matchesQuery(a, q)), [q, store]);
   const commercial = useMemo(() => visibleApps(COMMERCIAL_APPS, store).filter((a) => matchesQuery(a, q)), [q, store]);
-  const built = builtins.filter((b) => matchesQuery(b, q));
-  const ready = community.filter((c) => c.standard && meetsStandard(c.standard) && matchesQuery(c, q));
-  const notReady = community.filter((c) => !(c.standard && meetsStandard(c.standard)) && matchesQuery(c, q));
-  const empty = !bx.length && !commercial.length && !built.length && !ready.length && !notReady.length;
+  // One entry per product: a built-in that repeats a b*X or commercial app (by name or site) is not listed again,
+  // and community apps skip anything already listed above.
+  const listed = useMemo(() => [...BX_APPS, ...COMMERCIAL_APPS], []);
+  const uniqueBuilt = useMemo(() => withoutDuplicates(builtins, listed), [builtins, listed]);
+  const uniqueCommunity = useMemo(
+    () => withoutDuplicates(community, [...listed, ...uniqueBuilt]),
+    [community, listed, uniqueBuilt],
+  );
+  const built = uniqueBuilt.filter((b) => matchesQuery(b, q));
+  const coming = COMING_BAPPS.filter((c) => matchesQuery(c, q));
+  const ready = uniqueCommunity.filter((c) => c.standard && meetsStandard(c.standard) && matchesQuery(c, q));
+  const notReady = uniqueCommunity.filter((c) => !(c.standard && meetsStandard(c.standard)) && matchesQuery(c, q));
+  const empty =
+    !bx.length && !commercial.length && !built.length && !coming.length && !ready.length && !notReady.length;
 
+  // A tile opens the tool that works: a b*X card whose product has an in-wallet screen (bMintX → /m/bmint) opens it.
+  const inWallet = useMemo(
+    () => new Map(builtins.filter((b) => b.url?.startsWith('/')).map((b) => [productKey(b.name), b])),
+    [builtins],
+  );
   const openApp = (a: StoreApp) => {
     if (a.adult && !adultOk) return setConfirming(a);
+    const screen = inWallet.get(productKey(a.name));
+    if (screen) return screen.onOpen();
     open(a.url, a.name);
   };
   const art = (a: StoreApp) =>
@@ -335,6 +357,34 @@ export const BappsStore = ({
         <section className="flex flex-col gap-3">
           <Header label="In your wallet" sub="Built-in bApps and the bApps suite" />
           <Grid>{built.map((i) => itemCard(i))}</Grid>
+        </section>
+      )}
+      {coming.length > 0 && (
+        <section className="flex flex-col gap-2" aria-label="Coming bApps">
+          <Header label="Coming" sub="Not live yet. Listed so you know it's on the way" />
+          <div className="flex flex-wrap gap-2">
+            {coming.map((c) => (
+              <span
+                key={c.name}
+                title={c.verb}
+                className="inline-flex items-center gap-2 rounded-full py-1 pl-1 pr-3 text-[12px] font-semibold"
+                style={{
+                  background: 'var(--bw-card, var(--bw-surface))',
+                  color: 'var(--bw-text)',
+                  border: '1px solid var(--bw-line)',
+                }}
+              >
+                <img src={c.icon} alt="" width={24} height={24} className="h-6 w-6 rounded-[7px] object-cover" />
+                {c.name}
+                <span
+                  className="rounded px-1 text-[9px] font-bold uppercase"
+                  style={{ background: 'rgb(var(--bw-accent-rgb) / 0.16)', color: 'var(--bw-accent-hi)' }}
+                >
+                  Coming
+                </span>
+              </span>
+            ))}
+          </div>
         </section>
       )}
       {ready.length > 0 && (

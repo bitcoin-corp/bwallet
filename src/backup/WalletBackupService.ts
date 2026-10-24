@@ -386,6 +386,8 @@ export class WalletBackupService {
     },
     passwordKey: string,
     onProgress: BackupProgressCallback,
+    /** Runs after every check passes and before the first write (e.g. clearing old USB state). */
+    beforeWrite?: () => Promise<void>,
   ): Promise<AnyBackupManifestOrLegacy> {
     // Parse chromeStorage (shared by all formats)
     const chromeStorageJson = new TextDecoder().decode(data.chromeStorage);
@@ -396,6 +398,8 @@ export class WalletBackupService {
 
       const legacyStorage = this.stripUsbState(JSON.parse(chromeStorageJson) as LegacyChromeStorage);
       const passKey = await this.verifyPasswordKey(legacyStorage, passwordKey);
+      await this.assertResidentAccountsSurvive(chromeStorageService.storage?.accounts, legacyStorage.accounts, passKey);
+      await beforeWrite?.();
 
       onProgress({ stage: 'importing', message: 'Restoring account settings...' });
 
@@ -428,6 +432,12 @@ export class WalletBackupService {
 
     const backupChromeStorage = this.stripUsbState(JSON.parse(chromeStorageJson) as BackupChromeStorage);
     const passKey = await this.verifyPasswordKey(backupChromeStorage, passwordKey);
+    await this.assertResidentAccountsSurvive(
+      chromeStorageService.storage?.accounts,
+      backupChromeStorage.accounts,
+      passKey,
+    );
+    await beforeWrite?.();
 
     onProgress({ stage: 'importing', message: 'Restoring account settings...' });
 
@@ -525,6 +535,38 @@ export class WalletBackupService {
       out[id] = { ...rest, encryptedKeys: reEncrypted };
     }
     return out;
+  }
+
+  /**
+   * A restore merges the archive's accounts into the live map but replaces the single root salt
+   * and the session key with the archive's. An account already on this device and not in the
+   * archive keeps keys sealed under the old key, which no longer exists afterwards, so it would be
+   * locked out for good (agent accounts have no seed to fall back on). Refuse before any write
+   * unless every such account still opens with the restored key (same wallet, same password).
+   */
+  static async assertResidentAccountsSurvive(
+    liveAccounts: Record<string, Account> | undefined,
+    backupAccounts: Record<string, Account> | undefined,
+    passKey: string,
+  ): Promise<void> {
+    const stranded: string[] = [];
+    for (const [id, account] of Object.entries(liveAccounts || {})) {
+      if (!account?.encryptedKeys || (backupAccounts && id in backupAccounts)) continue;
+      let opens = false;
+      try {
+        JSON.parse(await decrypt(account.encryptedKeys, passKey));
+        opens = true;
+      } catch {
+        opens = false;
+      }
+      if (!opens) stranded.push(account.name || id);
+    }
+    if (stranded.length) {
+      throw new Error(
+        `This browser already has a wallet with accounts that are not in this backup (${stranded.join(', ')}). ` +
+          'Restoring would lock them out. Back up this wallet and sign out first, or restore on a fresh install.',
+      );
+    }
   }
 
   /** Archives never carry USB state, but strip defensively so a hand-edited file can't smuggle it in. */

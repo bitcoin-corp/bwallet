@@ -3,10 +3,10 @@ import Capacitor
 import CryptoKit
 import UIKit
 
-/// Native side of src/mobile/passkey/nativePasskeys.ts: platform passkeys for rpId bwalletx.com with the WebAuthn
+/// Native side of src/mobile/passkey/nativePasskeys.ts: platform passkeys for rpId web.bwalletx.com with the WebAuthn
 /// PRF extension, so the app and web.bwalletx.com share one passkey and derive the same backup key.
 ///
-/// Needs `webcredentials:bwalletx.com` in App.entitlements and https://bwalletx.com/.well-known/apple-app-site-association
+/// Needs `webcredentials:web.bwalletx.com` in App.entitlements and https://web.bwalletx.com/.well-known/apple-app-site-association
 /// listing ZQ4NX9NJ89.<bundle id>. PRF needs iOS 18+; older iOS reports UNSUPPORTED and the UI keeps the 12 words.
 /// The salt is passed as the WebAuthn PRF input (AuthenticationServices applies the same WebAuthn hashing as Safari).
 /// Binary values cross the bridge as base64url.

@@ -202,3 +202,16 @@ describe('example swipe trays', () => {
     expect(EXAMPLE_SWIPE.right.some((a) => a.id === EXAMPLE_SWIPE.fullRight)).toBe(true);
   });
 });
+
+describe('reply-paid credit is single use (b-Aware, 24 Oct 2026)', () => {
+  test('one credit pays for one reply, from the person it was sent to', async () => {
+    const { replyCreditOk } = await import('./route');
+    const sent = [{ id: 'aa11bb22', to: 'bob', replyPaidSats: 500 }];
+    const env = { from: 'bob', inReplyTo: 'aa11bb22', usesReplyCredit: true };
+    expect(replyCreditOk(env, sent, new Set())).toBe(true);
+    expect(replyCreditOk(env, sent, new Set(['aa11bb22']))).toBe(false);
+    expect(replyCreditOk({ ...env, from: 'eve' }, sent, new Set())).toBe(false);
+    expect(replyCreditOk({ ...env, usesReplyCredit: false }, sent, new Set())).toBe(false);
+    expect(replyCreditOk(env, [{ ...sent[0], replyPaidSats: 0 }], new Set())).toBe(false);
+  });
+});

@@ -41,6 +41,19 @@ export async function requestFingerprint(
   return sha256Hex(parts.sort().join('|'));
 }
 
+/**
+ * The fingerprint a site's createAction is checked against, and the one recorded after it. Chain options
+ * (sendWith, noSendChange, knownTxids, noSend) are the site's own words: they never switch the check off (b-Aware
+ * row 55, 24 Oct 2026). A noSend step is checked but not recorded, because nothing has gone out yet and a retried
+ * chain must not be refused for it.
+ */
+export async function repeatFingerprints(
+  args: Pick<CreateActionArgs, 'outputs' | 'options'>,
+): Promise<{ fingerprint: string | null; recordedFingerprint: string | null }> {
+  const fingerprint = await requestFingerprint(args);
+  return { fingerprint, recordedFingerprint: args.options?.noSend ? null : fingerprint };
+}
+
 export type RepeatEntry = { at: number; origin?: string; reference?: string; txid?: string; aborted?: boolean };
 
 export class RepeatGuard {

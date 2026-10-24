@@ -11,6 +11,8 @@ import {
 } from './connectionLog';
 import { ErrorActions } from '../errors/ErrorActions';
 import { forgetSiteConnected, setSiteThemeAllowed, siteThemeAllowed } from '../theme/connectSiteTheme';
+import { ALLOWANCES_ENABLED } from '../../services/allowanceFlag';
+import type { Envelope } from '../../services/envelopes';
 
 const CARD = '#17191E';
 const LINE = '#2b2f36';
@@ -37,6 +39,8 @@ const GRANT_NAMES: Record<string, string> = {
 export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
   const [log, setLog] = useState<ConnectionLog>({});
   const [groups, setGroups] = useState<Group[]>([]);
+  // Each site's envelope (services/envelopes.ts), with Coin return on its row.
+  const [envelopes, setEnvelopes] = useState<{ list: Envelope[]; usdPerBsv?: number }>({ list: [] });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -45,12 +49,14 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [l, g] = await Promise.all([
+    const [l, g, e] = await Promise.all([
       loadConnectionLog(),
       send<{ groups: Group[] }>({ action: 'PERMISSIONS_LIST_ALL' }).catch(() => null),
+      send<{ envelopes: Envelope[]; usdPerBsv?: number }>({ action: 'ENVELOPES_LIST' }).catch(() => null),
     ]);
     setLog(l);
     setGroups(g?.success ? (g.data?.groups ?? []) : []);
+    setEnvelopes(e?.success ? { list: e.data?.envelopes ?? [], usdPerBsv: e.data?.usdPerBsv } : { list: [] });
     setLoading(false);
   }, []);
   useEffect(() => {
@@ -69,7 +75,29 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
       error: String(e),
     }));
     if (!res.success) setError(res.error || 'Could not revoke');
-    else forgetSiteConnected(r.host);
+    else {
+      forgetSiteConnected(r.host);
+      // Revoking everything also closes its envelope: what is left stays yours.
+      await send({ action: 'ENVELOPE_COIN_RETURN', originator: r.originator }).catch(() => null);
+    }
+    setBusy('');
+    await load();
+  };
+
+  const envelopeFor = (r: ConnectionRow) =>
+    envelopes.list.find((e) => e.originator === r.host || (!!r.originator && e.originator === r.originator));
+  const money = (sats: number) =>
+    envelopes.usdPerBsv
+      ? `$${((sats / 1e8) * envelopes.usdPerBsv).toFixed(2)}`
+      : `${bsvString(sats).replace(/\.?0+$/, '')} BSV`;
+  const coinReturn = async (e: Envelope) => {
+    setBusy(e.originator);
+    setError('');
+    const res = await send<{ returnedSats: number }>({
+      action: 'ENVELOPE_COIN_RETURN',
+      originator: e.originator,
+    }).catch((err) => ({ success: false, error: String(err) }) as { success: boolean; error?: string });
+    if (!res.success) setError(res.error || 'Could not close the envelope');
     setBusy('');
     await load();
   };
@@ -121,7 +149,8 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
             <div className="text-xs mt-1" style={{ color: MUTED }}>
               {r.calls} {r.calls === 1 ? 'call' : 'calls'} · {r.payments} {r.payments === 1 ? 'payment' : 'payments'} ·
               spent {bsvString(r.spentSats).replace(/\.?0+$/, '')} BSV
-              {r.spendLimitSats !== undefined &&
+              {ALLOWANCES_ENABLED &&
+                r.spendLimitSats !== undefined &&
                 ` · allowance ${bsvString(r.spendLimitSats).replace(/\.?0+$/, '')} BSV`}
             </div>
             {Object.keys(r.grants).length > 0 && (
@@ -143,6 +172,26 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
               />
               Use this site&apos;s theme
             </label>
+            {(() => {
+              const env = envelopeFor(r);
+              if (!env) return null;
+              return (
+                <div className="flex items-center gap-2 mt-2" data-testid="connection-envelope">
+                  <span className="text-xs flex-1" style={{ color: '#fff' }}>
+                    Envelope: {money(env.balanceSats)} left
+                  </span>
+                  <button
+                    type="button"
+                    disabled={busy === env.originator}
+                    onClick={() => void coinReturn(env)}
+                    className="text-xs px-3 py-1 rounded-full cursor-pointer bg-transparent"
+                    style={{ color: GOLD, border: `1px solid ${LINE}`, minHeight: 32 }}
+                  >
+                    {busy === env.originator ? 'Returning…' : 'Coin return'}
+                  </button>
+                </div>
+              );
+            })()}
             {r.originator && (
               <button
                 type="button"

@@ -13,8 +13,8 @@
 		<string>applinks:www.bchatx.com</string>
 		<!-- Passwords: iOS offers and saves a strong wallet password (iCloud Keychain). -->
 		<string>webcredentials:www.bwallet.space</string>
-		<!-- Passkeys (src/mobile/passkey/nativePasskeys.ts): rpId bwalletx.com, shared with web.bwalletx.com. -->
-		<string>webcredentials:bwalletx.com</string>
+		<!-- Passkeys (src/mobile/passkey/nativePasskeys.ts): rpId web.bwalletx.com, never the whole bwalletx.com. -->
+		<string>webcredentials:web.bwalletx.com</string>
 	</array>
 </dict>
 </plist>
