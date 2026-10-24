@@ -60,3 +60,44 @@ export const checkXOffer = async (alias: string, available: (a: string) => Promi
   }
   return xOffer(alias, false, alts);
 };
+
+/**
+ * The X handle captured when X was linked on Create, kept for the whole create flow (owner, 24 Oct 2026): the
+ * server's sign-in ticket lasts 10 minutes, but a plain-name claim doesn't need it, so "Claim your name" can still
+ * offer $handle from this. Up to 60 minutes; cleared once the offer has been used or closed.
+ */
+const XKEY = 'bwallet.createXHandle';
+export const X_HANDLE_TTL_MS = 60 * 60_000;
+type Stash = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+const store = (): Stash | null => {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+};
+export const rememberXHandle = (alias: string, now = Date.now(), s: Stash | null = store()) => {
+  try {
+    if (alias) s?.setItem(XKEY, JSON.stringify({ alias, at: now }));
+  } catch {
+    /* private mode */
+  }
+};
+export const rememberedXHandle = (now = Date.now(), s: Stash | null = store()): string => {
+  try {
+    const v = JSON.parse(s?.getItem(XKEY) || 'null') as { alias?: string; at?: number } | null;
+    if (v?.alias && typeof v.at === 'number' && now - v.at < X_HANDLE_TTL_MS && PAYMAIL_ALIAS_RE.test(v.alias))
+      return v.alias;
+    s?.removeItem(XKEY);
+  } catch {
+    /* ignore */
+  }
+  return '';
+};
+export const forgetXHandle = (s: Stash | null = store()) => {
+  try {
+    s?.removeItem(XKEY);
+  } catch {
+    /* ignore */
+  }
+};

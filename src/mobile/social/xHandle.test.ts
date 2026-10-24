@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'bun:test';
-import { checkXOffer, xAlias, xAlternatives, xOffer, xPrefill } from './xHandle';
+import {
+  X_HANDLE_TTL_MS,
+  checkXOffer,
+  forgetXHandle,
+  rememberXHandle,
+  rememberedXHandle,
+  xAlias,
+  xAlternatives,
+  xOffer,
+  xPrefill,
+} from './xHandle';
 
 describe('Link your X on Create: prefill', () => {
   test('fills the X display name and avatar', () => {
@@ -55,5 +65,29 @@ describe('paymail proposal', () => {
   });
   test('alternatives are valid plain aliases, never .x', () => {
     for (const a of xAlternatives('alice')) expect(a).not.toContain('.');
+  });
+});
+
+describe('X handle kept through the create flow', () => {
+  const mem = () => {
+    const m = new Map<string, string>();
+    return {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k),
+    };
+  };
+  test('outlives the 10-minute sign-in ticket, up to 60 minutes', () => {
+    const s = mem();
+    rememberXHandle('alice', 0, s);
+    expect(rememberedXHandle(30 * 60_000, s)).toBe('alice');
+    expect(rememberedXHandle(X_HANDLE_TTL_MS + 1, s)).toBe('');
+    expect(rememberedXHandle(0, s)).toBe(''); // expired entry was removed
+  });
+  test('cleared after use', () => {
+    const s = mem();
+    rememberXHandle('alice', 0, s);
+    forgetXHandle(s);
+    expect(rememberedXHandle(1, s)).toBe('');
   });
 });

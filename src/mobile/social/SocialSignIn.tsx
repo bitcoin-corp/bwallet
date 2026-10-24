@@ -4,7 +4,7 @@ import { socialLoginEnabled } from '../storeBuild';
 import { BWALLET_PAYMAIL_DOMAIN } from '../names/config';
 import { CAP, fill, getCapabilities } from '../names/names';
 import { paymailAvailable } from '../names/paymail';
-import { xAlias, xPrefill } from './xHandle';
+import { forgetXHandle, rememberXHandle, xAlias, xPrefill } from './xHandle';
 
 /** True when name@<our domain> already has an identity key (public lookup; nothing of this wallet is sent). */
 const nameHasWallet = async (alias: string): Promise<boolean> => {
@@ -104,6 +104,7 @@ export const SocialSignIn = ({
     if (filled.current === key) return;
     filled.current = key;
     filledAvatar.current = p.avatar || '';
+    if (xOnly) rememberXHandle(xAlias(p));
     onProfileRef.current(
       xOnly && p.provider === 'x'
         ? xPrefill(p)
@@ -124,6 +125,7 @@ export const SocialSignIn = ({
       else if (filled.current) {
         filled.current = '';
         onClearRef.current?.(filledAvatar.current);
+        if (xOnly) forgetXHandle();
         filledAvatar.current = '';
       }
     });

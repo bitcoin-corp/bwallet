@@ -24,7 +24,7 @@ import {
   defaultDisplayName,
 } from './paymail';
 import { clearSocial, socialProof } from '../social/socialLogin';
-import { checkXOffer, xAlias, type XOffer } from '../social/xHandle';
+import { checkXOffer, forgetXHandle, rememberedXHandle, xAlias, type XOffer } from '../social/xHandle';
 import { BWALLET_PAYMAIL_API, BWALLET_PAYMAIL_DOMAIN, SIBLING_PAYMAIL_DOMAINS } from './config';
 import {
   PERSONAL_FEE_ESTIMATE_SATS,
@@ -90,6 +90,8 @@ export const HandleFlow = ({
   onClaimed?: (paymail: string) => Promise<void> | void;
 }) => {
   useBackClose(true, onClose);
+  // The X handle kept from Create is for this sheet only: forget it when the sheet closes.
+  useEffect(() => () => forgetXHandle(), []);
   const { apiContext, chromeStorageService } = useServiceContext();
   const legacy = useLegacyKeys();
   const account = chromeStorageService.getCurrentAccountObject().account;
@@ -159,7 +161,9 @@ export const HandleFlow = ({
   });
   // Linked X on Create (owner, 24 Oct 2026): propose $handle only when handle@<domain> is free, else free
   // alternatives. The user confirms with a tap; nothing is claimed automatically.
-  const [xHandle] = useState(() => (suggest ? '' : xAlias(socialProof(identityAddress)?.profile)));
+  const [xHandle] = useState(() =>
+    suggest ? '' : xAlias(socialProof(identityAddress)?.profile) || rememberedXHandle(),
+  );
   const [xProposal, setXProposal] = useState<XOffer>({ kind: 'none' });
   useEffect(() => {
     if (!enabled || !xHandle || paymail) return;
@@ -326,6 +330,7 @@ export const HandleFlow = ({
         await adoptSocialAvatar(chromeStorageService, proof.profile.avatar);
         clearSocial();
       }
+      forgetXHandle();
       setPaymail(identityAddress, pm);
       setPm(pm);
       // bChat handle = paymail name, before any token room is opened under it. A sign-in that was
