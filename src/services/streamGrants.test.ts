@@ -13,6 +13,7 @@ import {
   publicGrant,
   recordSpend,
   revokeGrant,
+  revokeGrantsForOriginator,
   spentLastHour,
   tidy,
   type StreamGrant,
@@ -234,5 +235,16 @@ describe('payee allowlist (audit 24 Oct B2)', () => {
   });
   test('a grant without payees behaves as before', () => {
     expect(decide(withGrant(), q({ outputs: [{ satoshis: 100, lockingScript: B }] })).approve).toBe(true);
+  });
+});
+
+describe('Forget site / Revoke all / unpair end streaming grants (b-Aware rows 53, 62)', () => {
+  test("revokeGrantsForOriginator stops every grant of that site, and only that site's", () => {
+    const s = addGrant(withGrant(), grant({ id: 'sg_9', originator: 'other.site' }));
+    const r = revokeGrantsForOriginator(s, 'bmovies.online', T0)!;
+    expect(decide(r, q()).approve).toBe(false);
+    expect(decide(r, q({ originator: 'other.site' })).approve).toBe(true);
+    expect(revokeGrantsForOriginator(r, 'bmovies.online', T0)).toBeUndefined();
+    expect(revokeGrantsForOriginator(emptyStreamState(), 'x', T0)).toBeUndefined();
   });
 });

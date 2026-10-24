@@ -9,6 +9,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { sendMessage } from '../../utils/chromeHelpers';
 import { protocolLabel } from '../../utils/protocols';
 import { isReservedProtocol } from '../../services/reservedProtocols';
+import { ALLOWANCES_ENABLED } from '../../services/allowanceFlag';
 import type {
   GroupedPermissionRequest as GroupedPermissionRequestType,
   GroupedPermissions,
@@ -63,7 +64,8 @@ export const GroupedPermissionRequestPage = (props: GroupedPermissionRequestProp
     if (checkedBaskets.length > 0) granted.basketAccess = checkedBaskets;
     const checkedCerts = (permissions.certificateAccess ?? []).filter((_, i) => certChecked[i]);
     if (checkedCerts.length > 0) granted.certificateAccess = checkedCerts;
-    if (spendingChecked && permissions.spendingAuthorization) {
+    // Envelopes by default: connecting never sets a monthly allowance (services/allowanceFlag.ts).
+    if (ALLOWANCES_ENABLED && spendingChecked && permissions.spendingAuthorization) {
       granted.spendingAuthorization = permissions.spendingAuthorization;
     }
     return granted;
@@ -146,7 +148,7 @@ export const GroupedPermissionRequestPage = (props: GroupedPermissionRequestProp
       </Show>
 
       {/* Spending authorization — shown separately above the list, ticked by default */}
-      <Show when={!!permissions.spendingAuthorization}>
+      <Show when={ALLOWANCES_ENABLED && !!permissions.spendingAuthorization}>
         <motion.div
           className="w-full rounded-2xl px-4 py-3 mb-3"
           style={{
