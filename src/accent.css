@@ -11,6 +11,14 @@
   /* Theme surfaces (src/mobile/theme/accents.ts); Classic values. */
   --bw-bg: #010101;
   --bw-surface: #17191e;
+  /* Gold's ink and lines. Packs override these inline on <html> (applyAccent); without defaults here Gold left
+     var(--bw-text) undefined, so text inside <button> cards fell back to the UA's black on #17191e. */
+  --bw-text: #ffffff;
+  --bw-text-rgb: 255 255 255;
+  --bw-muted: #98a2b3;
+  --bw-line: #2b2f36;
+  --bw-card: #17191e;
+  --bw-card2: #1f2128;
   --bw-trim: transparent;
   --bw-glow: none;
   --bw-font-num: inherit;

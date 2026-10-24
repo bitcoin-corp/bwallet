@@ -60,7 +60,16 @@ export const BMark = ({ color, size = 56 }: { color: string; size?: number }) =>
           <circle cx="62" cy="70" r="12" fill="#000" />
         </mask>
       </defs>
-      <rect width="120" height="120" rx="28" fill="var(--bw-card, #0B0B0C)" />
+      <rect
+        x="0.75"
+        y="0.75"
+        width="118.5"
+        height="118.5"
+        rx="28"
+        fill="#0B0B0C"
+        stroke="var(--bw-line, #2b2f36)"
+        strokeWidth="1.5"
+      />
       <g fill={`url(#${id}g)`} mask={`url(#${id}m)`}>
         <polygon points="50,18 50,72 35,72 35,34" />
         <circle cx="62" cy="70" r="27" />
@@ -76,10 +85,11 @@ const Monogram = ({ name, color, size = 56 }: { name: string; color: string; siz
       width: size,
       height: size,
       borderRadius: size * 0.23,
-      background: 'var(--bw-card, var(--bw-surface))',
-      color,
+      background: 'var(--bw-card2, var(--bw-card, var(--bw-surface)))',
+      // Ink from the theme (a product colour such as gold fails on a white card); the product colour is the ring.
+      color: 'var(--bw-text)',
       fontSize: size * 0.36,
-      boxShadow: `inset 0 0 0 1.5px ${color}55`,
+      boxShadow: `inset 0 0 0 1.5px ${color}99`,
     }}
   >
     {name.replace(/[^A-Z0-9]/g, '').slice(0, 3) || name.slice(0, 2)}
@@ -107,7 +117,7 @@ const Badges = ({ s }: { s?: BappStandard }) => {
             border: on ? 'none' : '1px solid var(--bw-line)',
           }}
         >
-          <Icon size={9} color={on ? 'var(--bw-accent-hi, #FFD24D)' : '#5b6270'} />
+          <Icon size={9} color={on ? 'var(--bw-accent-hi, #FFD24D)' : 'var(--bw-muted, #98A2B3)'} />
         </span>
       ))}
     </div>
@@ -134,23 +144,35 @@ const Card = ({
   <button
     type="button"
     onClick={onOpen}
-    className="flex items-center gap-3 rounded-2xl p-2.5 text-left border-0 w-full min-w-0 active:scale-[0.98] transition-transform"
-    style={{ background: 'var(--bw-surface)', opacity: dim ? 0.7 : 1 }}
+    className="group flex items-center gap-3 rounded-2xl p-3 text-left w-full min-w-0 active:scale-[0.98] transition duration-150 hover:[border-color:rgb(var(--bw-accent-rgb)/0.55)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:[outline-color:var(--bw-accent-hi)]"
+    style={{
+      // Themed card, hairline border, explicit ink: a <button> otherwise inherits the UA's black text.
+      background: 'var(--bw-card, var(--bw-surface))',
+      color: 'var(--bw-text)',
+      border: '1px solid var(--bw-line)',
+      boxShadow: 'inset 0 1px 0 rgb(var(--bw-accent-rgb) / 0.08)',
+    }}
   >
-    <div className="shrink-0">{art}</div>
+    <div className="shrink-0" style={{ opacity: dim ? 0.75 : 1 }}>
+      {art}
+    </div>
     <div className="min-w-0 flex-1 flex flex-col gap-1">
       <div className="flex items-center gap-1.5 min-w-0">
-        <span className="text-[14px] font-bold text-[color:var(--bw-text)] truncate">{name}</span>
+        <span className="text-[15px] font-bold tracking-tight text-[color:var(--bw-text)] truncate">{name}</span>
         {badge && (
           <span
             className="shrink-0 rounded px-1 text-[9px] font-bold uppercase"
-            style={{ background: 'var(--bw-line)', color: 'var(--bw-text)' }}
+            style={{
+              background: 'var(--bw-card2, var(--bw-line))',
+              color: 'var(--bw-text)',
+              border: '1px solid var(--bw-line)',
+            }}
           >
             {badge}
           </span>
         )}
       </div>
-      {verb && <span className="text-[11px] leading-snug text-[#98A2B3] line-clamp-2">{verb}</span>}
+      {verb && <span className="text-[12px] leading-snug text-[color:var(--bw-muted)] line-clamp-2">{verb}</span>}
       <Badges s={standard} />
     </div>
   </button>
@@ -161,7 +183,7 @@ const Header = ({ label, sub }: { label: string; sub?: string }) => (
     <h2 className="m-0 text-[12px] font-bold uppercase tracking-wider" style={{ color: 'var(--bw-accent-hi)' }}>
       {label}
     </h2>
-    {sub && <p className="m-0 text-[10px] text-[#98A2B3]">{sub}</p>}
+    {sub && <p className="m-0 text-[11px] text-[color:var(--bw-muted)]">{sub}</p>}
   </div>
 );
 
@@ -213,7 +235,7 @@ export const BappsStore = ({
         alt=""
         width={56}
         height={56}
-        className="h-14 w-14 rounded-[13px] object-cover bg-[var(--bw-surface)]"
+        className="h-14 w-14 rounded-[13px] object-cover bg-[var(--bw-card,var(--bw-surface))]"
       />
     ) : a.tier === 'bx' ? (
       <BMark color={a.color} />
@@ -224,7 +246,7 @@ export const BappsStore = ({
   const appCards = (apps: StoreApp[]) =>
     byCategory(apps).map((g) => (
       <div key={g.category} className="flex flex-col gap-2">
-        <h3 className="m-0 text-[11px] font-semibold text-[#cfd4dc]">{g.category}</h3>
+        <h3 className="m-0 text-[12px] font-semibold text-[color:var(--bw-text)]">{g.category}</h3>
         <Grid>
           {g.apps.map((a) => (
             <Card
@@ -254,7 +276,7 @@ export const BappsStore = ({
             width={56}
             height={56}
             loading="lazy"
-            className="h-14 w-14 rounded-[13px] object-cover bg-[var(--bw-surface)]"
+            className="h-14 w-14 rounded-[13px] object-cover bg-[var(--bw-card,var(--bw-surface))]"
           />
         ) : (
           <Monogram name={i.name} color={i.color ?? '#FFD24D'} />
@@ -269,17 +291,20 @@ export const BappsStore = ({
 
   return (
     <div className="flex flex-col gap-4" data-testid="bapps-store">
-      <label className="flex items-center gap-2 rounded-full px-3 py-2" style={{ background: 'var(--bw-surface)' }}>
-        <Search size={15} color="#98A2B3" />
+      <label
+        className="flex items-center gap-2 rounded-full px-3 py-2"
+        style={{ background: 'var(--bw-card, var(--bw-surface))', border: '1px solid var(--bw-line)' }}
+      >
+        <Search size={15} color="var(--bw-muted, #98A2B3)" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search bApps, tokens…"
           aria-label="Search bApps"
-          className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[14px] text-[color:var(--bw-text)] placeholder:text-[#6b7280]"
+          className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[14px] text-[color:var(--bw-text)] placeholder:text-[color:var(--bw-muted)]"
         />
       </label>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-[#98A2B3]">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[color:var(--bw-muted)]">
         <span className="inline-flex items-center gap-1">
           <Coins size={10} /> token
         </span>
@@ -324,23 +349,31 @@ export const BappsStore = ({
             type="button"
             onClick={() => setShowNotReady((v) => !v)}
             aria-expanded={showNotReady || !!q.trim()}
-            className="flex items-center justify-between rounded-xl px-3 py-2.5 border-0 text-left"
-            style={{ background: 'var(--bw-surface)' }}
+            className="flex items-center justify-between rounded-xl px-3 py-2.5 text-left"
+            style={{
+              background: 'var(--bw-card, var(--bw-surface))',
+              color: 'var(--bw-text)',
+              border: '1px solid var(--bw-line)',
+            }}
           >
             <span className="flex flex-col">
               <span className="text-[12px] font-bold text-[color:var(--bw-text)]">
                 Not yet bApp-ready ({notReady.length})
               </span>
-              <span className="text-[10px] text-[#98A2B3]">
+              <span className="text-[11px] text-[color:var(--bw-muted)]">
                 Other developers' apps without a token, room, theme or in-wallet sign-in
               </span>
             </span>
-            <ChevronDown size={16} color="#98A2B3" style={{ transform: showNotReady ? 'rotate(180deg)' : undefined }} />
+            <ChevronDown
+              size={16}
+              color="var(--bw-muted, #98A2B3)"
+              style={{ transform: showNotReady ? 'rotate(180deg)' : undefined }}
+            />
           </button>
           {(showNotReady || !!q.trim()) && <Grid>{notReady.map((i) => itemCard(i, true))}</Grid>}
         </section>
       )}
-      {empty && <p className="text-center text-[13px] text-[#98A2B3] py-8">No bApps match “{q}”.</p>}
+      {empty && <p className="text-center text-[13px] text-[color:var(--bw-muted)] py-8">No bApps match “{q}”.</p>}
 
       {ADULT_UI && confirming && (
         <div
@@ -360,7 +393,7 @@ export const BappsStore = ({
               <Lock size={16} color="#ff5a5a" />
               <span className="text-[15px] font-bold text-[color:var(--bw-text)]">Adults only (18+)</span>
             </div>
-            <p className="m-0 text-[12px] text-[#98A2B3]">
+            <p className="m-0 text-[12px] text-[color:var(--bw-muted)]">
               {confirming.name} has adult content. It is a separate brand from Ninja Punk Girls. Only continue if you
               are 18 or over.
             </p>
