@@ -38,6 +38,8 @@ export type AgentLogEntry = {
   txid?: string;
   /** Which strategy rule caused it, once strategies exist (§3). */
   rule?: string;
+  /** How many identical refusals in a row this entry stands for (refusals are coalesced, not appended). */
+  repeat?: number;
 };
 
 const KEY = 'bwallet.agentAccounts';
@@ -45,6 +47,7 @@ const LOG = (id: string) => `bwallet.agentLog.${id}`;
 const STOP_ALL = 'bwallet.agentsStopAll';
 const LOG_MAX = 500;
 const SPEND = (id: string) => `bwallet.agentSpend.${id}`;
+const STRAT_SPEND = (id: string) => `bwallet.strategySpend.${id}`;
 /** Daily cap a new agent account starts with (USD). The owner can change it; null caps are no longer the default. */
 export const DEFAULT_AGENT_DAILY_CAP_USD = 20;
 const EVENT = 'bwallet:agents';
@@ -192,13 +195,54 @@ export const ledgerSpentToday = (id: string, now = Date.now()): number => {
   return l && l.day === dayStart(now) && l.usd > 0 ? l.usd : 0;
 };
 
+/**
+ * The strategy spend ledger: live dollars spent since the loaded strategy started (`since`), plus per-UTC-day
+ * totals. Kept apart from the log (like the day ledger) so the log's size cannot reset a strategy's
+ * maxPerDayUsd / maxTotalUsd (b-Aware report, sugiyantono31). Reset only when a strategy is (re)loaded.
+ */
+export type StrategySpendLedger = { since: number; totalUsd: number; days: Record<string, number> };
+const STRAT_DAYS_KEPT = 40;
+
+export const resetStrategyLedger = (id: string, since: number) =>
+  write(STRAT_SPEND(id), { since, totalUsd: 0, days: {} } satisfies StrategySpendLedger);
+export const clearStrategyLedger = (id: string) => {
+  try {
+    localStorage.removeItem(STRAT_SPEND(id));
+  } catch {
+    /* storage unavailable */
+  }
+};
+export const getStrategyLedger = (id: string) => read<StrategySpendLedger | null>(STRAT_SPEND(id), null);
+
+/** Strategy spend since `since` (total) and today since `since` (day), per the ledger; 0s when it doesn't match. */
+export const strategyLedgerSpent = (id: string, since: number, now = Date.now()) => {
+  const l = getStrategyLedger(id);
+  if (!l || l.since !== since) return { todayUsd: 0, totalUsd: 0 };
+  const today = l.days[String(dayStart(now))];
+  return { todayUsd: today > 0 ? today : 0, totalUsd: l.totalUsd > 0 ? l.totalUsd : 0 };
+};
+
 export const appendAgentLog = (id: string, e: AgentLogEntry) => {
   if (e.usd > 0) {
     const day = dayStart(e.at);
     const l = read<SpendDay | null>(SPEND(id), null);
     write(SPEND(id), { day, usd: (l && l.day === day ? l.usd : 0) + e.usd });
+    const sl = getStrategyLedger(id);
+    if (sl && e.at >= sl.since) {
+      const days = { ...sl.days, [String(day)]: (sl.days[String(day)] ?? 0) + e.usd };
+      const keys = Object.keys(days).sort((a, b) => +b - +a);
+      for (const k of keys.slice(STRAT_DAYS_KEPT)) delete days[k];
+      write(STRAT_SPEND(id), { since: sl.since, totalUsd: sl.totalUsd + e.usd, days } satisfies StrategySpendLedger);
+    }
   }
-  write(LOG(id), trimLog([e, ...getAgentLog(id)]));
+  const log = getAgentLog(id);
+  // Coalesce a run of identical refusals into one entry, so refusal floods don't fill the log.
+  const top = log[0];
+  if (e.action === 'refused' && top && top.action === 'refused' && top.detail === e.detail && top.rule === e.rule) {
+    write(LOG(id), [{ ...top, at: e.at, repeat: (top.repeat ?? 1) + 1 }, ...log.slice(1)]);
+    return;
+  }
+  write(LOG(id), trimLog([e, ...log]));
 };
 
 /** Dollars agents have spent from this account today (UTC). */
