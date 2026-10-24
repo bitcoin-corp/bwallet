@@ -52,6 +52,7 @@ const P = (pay: (potId: string, outputs: Outs) => Promise<string>) => ({
     return { rawTx: `raw:${txid}`, txid };
   },
   broadcast: async () => undefined,
+  spendingPaused: async () => false,
 });
 const DAY = 86_400_000;
 const sub = (p: Partial<Subscription> = {}): Subscription => ({
@@ -344,6 +345,27 @@ describe('store: pots, orders, pause/resume, pay-on-open', () => {
     expect((await payDue(deps, NOW))[0].ok).toBe(false);
     setAllAgentsStopped(false);
     expect(signed).toBe(0);
+  });
+
+  test('the spending pause stops pot payments: nothing signed or broadcast, paid once lifted', async () => {
+    const s = setup();
+    let signed = 0;
+    let sent = 0;
+    let paused = true;
+    const deps = {
+      bsvUsd: 50,
+      resolve: async () => '1L',
+      ...P(async () => (signed++, 't')),
+      broadcast: async () => void sent++,
+      spendingPaused: async () => paused,
+    };
+    expect(await payDue(deps, NOW)).toEqual([]);
+    expect(signed).toBe(0);
+    expect(sent).toBe(0);
+    paused = false;
+    await payDue(deps, NOW);
+    expect(signed).toBe(1);
+    expect(getSub(s.id)?.paidCount).toBeGreaterThan(0);
   });
 
   test('not enough in the pot → lowFunds, retried next open', async () => {
