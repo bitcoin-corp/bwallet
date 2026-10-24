@@ -18,6 +18,8 @@ import {
 import { preserveOriginalErrors } from './services/permissionAbortGuard';
 import { guardReservedBaskets, revokeReservedBasketGrants } from './services/reservedBaskets';
 import { guardReservedProtocols, revokeReservedProtocolGrants } from './services/reservedProtocols';
+import { guardAllowance } from './services/allowanceGuard';
+import { normalizeOriginator } from '@1sat/wallet';
 import { guardSpending } from './mobile/config/killSwitch';
 import {
   syncAddresses,
@@ -385,11 +387,16 @@ export const initWallet = async (
     guardReservedProtocols(
       preserveOriginalErrors(
         withLocalSpendLedger(
-          new LocalWalletPermissionsManager(
-            baseWallet,
-            ADMIN_ORIGINATOR,
-            { permissionModules: assetModules },
-            { store: permissionStore },
+          // A monthly allowance asks for any one payment over its per-payment cap, or to a payee outside its
+          // optional allowlist (services/allowanceGuard.ts, payment-safety audit 24 Oct 2026 B2).
+          guardAllowance(
+            new LocalWalletPermissionsManager(
+              baseWallet,
+              ADMIN_ORIGINATOR,
+              { permissionModules: assetModules },
+              { store: permissionStore },
+            ),
+            { store: permissionStore, adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
           ),
           spendLedger,
         ),

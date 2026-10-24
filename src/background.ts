@@ -133,6 +133,7 @@ import {
   type BundleRequest,
 } from './services/permissionBundle';
 import { normalizeOriginator } from '@1sat/wallet';
+import { markPayeeMismatch, parsePayees, payeesAllowed } from './services/allowanceGuard';
 import { ADMIN_ORIGINATOR, initWallet, openAccountStorageForBackup, type AccountContext } from './initWallet';
 import { isExtensionSender, reservedOriginatorRefusal } from './services/adminOriginator';
 import { isReservedBasket, RESERVED_BASKET_REFUSAL, revokeBasketGrantsForOriginator } from './services/reservedBaskets';
@@ -1914,6 +1915,8 @@ if (!(
               bundleID: string;
               decisions: Record<string, boolean>;
               allowanceUsd?: number;
+              allowancePerPaymentUsd?: number;
+              allowancePayees?: string[];
               remember?: boolean;
               trustSite?: boolean;
             },
@@ -3301,6 +3304,7 @@ if (!(
         expiresAt: req.expiresAt,
         createdAt: Date.now(),
         description: req.description,
+        ...(req.payees ? { payees: req.payees } : {}),
         spends: [],
         totalSats: 0,
       };
@@ -3410,6 +3414,10 @@ if (!(
       bundleID: string;
       decisions: Record<string, boolean>;
       allowanceUsd?: number;
+      /** Optional: the most one payment may take without asking (default: a quarter of the month). */
+      allowancePerPaymentUsd?: number;
+      /** Optional: the only output locking scripts (hex) the allowance pays without asking. */
+      allowancePayees?: string[];
       remember?: boolean;
       trustSite?: boolean;
     },
@@ -3440,15 +3448,22 @@ if (!(
     const work = (async () => {
       const usd = Number(response.allowanceUsd ?? 0);
       if (result.granted.length > 0 && usd > 0 && accountContext?.permissionStore) {
-        const sats = allowanceSats(usd, await cachedUsdPerBsv());
+        const usdPerBsv = await cachedUsdPerBsv();
+        const sats = allowanceSats(usd, usdPerBsv);
         if (sats > 0) {
+          const perUsd = Number(response.allowancePerPaymentUsd ?? 0);
+          const perPaymentSats = perUsd > 0 ? Math.min(sats, allowanceSats(perUsd, usdPerBsv)) : undefined;
+          const payees = parsePayees(response.allowancePayees);
           await accountContext.permissionStore.putGrant({
             key: { type: 'spending', originator: normalizeOriginator(bundle.originator) },
             expiry,
             grantedAt: Date.now(),
             authorizedAmount: sats,
             reason: `Up to $${usd} a month without asking`,
-          });
+            // Per-payment cap and payee list (services/allowanceGuard.ts, audit 24 Oct B2).
+            ...(perPaymentSats !== undefined ? { perPaymentSats } : {}),
+            ...(payees ? { payees } : {}),
+          } as Parameters<typeof accountContext.permissionStore.putGrant>[0]);
         }
       }
       // "Don't ask again": routine requests from this site are granted without a sheet from now on.
@@ -4462,9 +4477,20 @@ if (!(
     let fundingSnap: FundingSnapshot | undefined;
     let streamPass: (StreamPass & { done: Promise<void>; finish: () => void }) | undefined;
     let spentHeal: HealReport | null | undefined;
+    let releasePayeeMark: (() => void) | undefined;
     try {
       const w = await ensureWallet();
       await ensureUsbSeen('build and sign a transaction', message.originator);
+      // A monthly allowance with a payee allowlist covers only payments to those payees; this call asks otherwise
+      // (services/allowanceGuard.ts, payment-safety audit 24 Oct 2026 B2).
+      if (message.originator && message.originator !== ADMIN_ORIGINATOR && accountContext?.permissionStore) {
+        const site = normalizeOriginator(message.originator);
+        const allowance = (await accountContext.permissionStore
+          .findGrant({ type: 'spending', originator: site })
+          .catch(() => null)) as { payees?: string[] } | null;
+        if (allowance?.payees?.length && !payeesAllowed(allowance.payees, message.params.outputs))
+          releasePayeeMark = markPayeeMismatch(site);
+      }
 
       console.log('[createAction] Starting with originator:', message.originator);
       console.log(
@@ -4493,6 +4519,7 @@ if (!(
           labels: [...(message.params.labels ?? []), ...streamProtocolOption(message.params)],
           sats: outputSats(message.params.outputs),
           now: Date.now(),
+          outputs: message.params.outputs,
         });
         if (decision.approve) {
           let finish = () => undefined as void;
@@ -4663,6 +4690,7 @@ if (!(
         error: withHealMessage(friendly ?? errorMessage, heal),
       });
     } finally {
+      releasePayeeMark?.();
       if (streamPass) {
         if (streamPasses.get(streamPass.originator) === streamPass) streamPasses.delete(streamPass.originator);
         streamPass.finish();

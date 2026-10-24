@@ -14,7 +14,11 @@
  *
  * Pure functions on a plain state object, so the rules are unit tested (streamGrants.test.ts); background.ts
  * owns persistence (chrome.storage.local, key STREAM_GRANTS_KEY) and the wiring.
+ * - Optional payee allowlist (audit 24 Oct 2026, B2): a grant asked for with `payees` (output locking scripts)
+ *   covers only calls whose every paid output goes to one of them; anything else falls back to the sheet.
  */
+
+import { parsePayees, payeesAllowed } from './allowanceGuard';
 
 export const STREAM_GRANTS_KEY = 'bwxStreamGrants';
 
@@ -55,6 +59,8 @@ export interface StreamGrant {
   expiresAt: number;
   createdAt: number;
   description?: string;
+  /** When set, the only output locking scripts (hex) this grant pays without a sheet. */
+  payees?: string[];
   revokedAt?: number;
   /** Spends inside the last hour (older ones are pruned); `totalSats` keeps the lifetime count. */
   spends: StreamSpend[];
@@ -95,6 +101,7 @@ export interface SpendingAuthRequest {
   /** ms since epoch, already clamped. */
   expiresAt: number;
   description?: string;
+  payees?: string[];
 }
 
 /** BRC-100 protocol name rules (5-400 chars, lowercase letters, digits, spaces). */
@@ -126,7 +133,21 @@ export const parseSpendingAuthRequest = (
   if (expiresAt <= now) return { ok: false, error: 'expiry is in the past' };
   expiresAt = Math.min(expiresAt, now + MAX_GRANT_MS);
   const description = typeof p.description === 'string' ? p.description.trim().slice(0, 140) || undefined : undefined;
-  return { ok: true, request: { protocolID: [2, name], capSatsPerHour: Math.floor(cap), expiresAt, description } };
+  if (p.payees !== undefined && p.payees !== null && !Array.isArray(p.payees))
+    return { ok: false, error: 'payees must be a list of locking scripts (hex)' };
+  const payees = parsePayees(p.payees);
+  if (Array.isArray(p.payees) && p.payees.length > 0 && !payees)
+    return { ok: false, error: 'payees must be a list of locking scripts (hex)' };
+  return {
+    ok: true,
+    request: {
+      protocolID: [2, name],
+      capSatsPerHour: Math.floor(cap),
+      expiresAt,
+      description,
+      ...(payees ? { payees } : {}),
+    },
+  };
 };
 
 const inWindow = (s: StreamSpend, now: number) => now - s.at < HOUR_MS && s.at <= now;
@@ -161,7 +182,7 @@ export type StreamDecision =
   | { approve: true; grant: StreamGrant; budget: number }
   | {
       approve: false;
-      reason: 'paused' | 'no-label' | 'no-grant' | 'over-budget';
+      reason: 'paused' | 'no-label' | 'no-grant' | 'over-budget' | 'payee';
     };
 
 /**
@@ -170,7 +191,13 @@ export type StreamDecision =
  */
 export const decide = (
   state: StreamState,
-  q: { originator: string | undefined; labels: readonly string[] | undefined; sats: number; now: number },
+  q: {
+    originator: string | undefined;
+    labels: readonly string[] | undefined;
+    sats: number;
+    now: number;
+    outputs?: readonly { satoshis?: number; lockingScript?: string }[];
+  },
 ): StreamDecision => {
   if (state.paused) return { approve: false, reason: 'paused' };
   if (!q.originator) return { approve: false, reason: 'no-grant' };
@@ -179,6 +206,7 @@ export const decide = (
   if (!candidates.length) return { approve: false, reason: 'no-grant' };
   const grant = candidates.find((g) => labels.includes(g.label));
   if (!grant) return { approve: false, reason: 'no-label' };
+  if (!payeesAllowed(grant.payees, q.outputs)) return { approve: false, reason: 'payee' };
   const budget = budgetLeft(state, grant, q.now);
   if (!(q.sats >= 0) || q.sats > budget) return { approve: false, reason: 'over-budget' };
   return { approve: true, grant, budget };

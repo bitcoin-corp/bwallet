@@ -195,3 +195,44 @@ test('options.spendingAuthorization names the protocol, and is stripped before s
   expect(withoutStreamOption(args).options).toEqual({ noSend: true });
   expect(streamProtocolOption({})).toEqual([]);
 });
+
+describe('payee allowlist (audit 24 Oct B2)', () => {
+  const A = '76a914' + 'aa'.repeat(20) + '88ac';
+  const B = '76a914' + 'bb'.repeat(20) + '88ac';
+  test('a request may carry payees; junk is refused, case is folded', () => {
+    const ok = parseSpendingAuthRequest(
+      { protocolID: [2, LABEL], capSatsPerHour: 1000, payees: [A.toUpperCase(), A] },
+      T0,
+    );
+    expect(ok.ok && ok.request.payees).toEqual([A]);
+    expect(parseSpendingAuthRequest({ protocolID: [2, LABEL], capSatsPerHour: 1000, payees: 'x' }, T0).ok).toBe(false);
+    expect(parseSpendingAuthRequest({ protocolID: [2, LABEL], capSatsPerHour: 1000, payees: ['zz'] }, T0).ok).toBe(
+      false,
+    );
+    const none = parseSpendingAuthRequest({ protocolID: [2, LABEL], capSatsPerHour: 1000 }, T0);
+    expect(none.ok && none.request.payees).toBeUndefined();
+  });
+  test('a grant with payees covers only calls paying them', () => {
+    const s = withGrant(grant({ payees: [A] }));
+    expect(decide(s, q({ outputs: [{ satoshis: 100, lockingScript: A }] })).approve).toBe(true);
+    expect(decide(s, q({ outputs: [{ satoshis: 100, lockingScript: B }] }))).toEqual({
+      approve: false,
+      reason: 'payee',
+    });
+    // A zero-sat data output (OP_RETURN) needs no listing.
+    expect(
+      decide(
+        s,
+        q({
+          outputs: [
+            { satoshis: 100, lockingScript: A },
+            { satoshis: 0, lockingScript: '006a' },
+          ],
+        }),
+      ).approve,
+    ).toBe(true);
+  });
+  test('a grant without payees behaves as before', () => {
+    expect(decide(withGrant(), q({ outputs: [{ satoshis: 100, lockingScript: B }] })).approve).toBe(true);
+  });
+});
