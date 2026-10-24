@@ -18,6 +18,7 @@ import {
 import { liveDomains, withDomain } from './paymailDomains';
 import { BWALLET_PAYMAIL_DOMAIN } from './config';
 import { payeeDetail, recipientHint } from './payeeText';
+import { PLAIN_KEY_WARNING } from './pubkeyRecipient';
 
 /**
  * Recipient box for the Send screens (build-time swap for upstream's address <Input>, see
@@ -227,7 +228,9 @@ export const NameInput = ({ theme, value, onChange, asset, placeholder, style, a
                     {payeeDetail(r.input, d.ok ? d.to : r.target, short)}
                   </div>
                   <div className="text-[10px]" style={{ color: gray }}>
-                    {asset === 'token' && d.ok && r.via !== 'opns-owner' ? 'Paymail ordinal address' : VIA_LABEL[r.via]}
+                    {asset === 'token' && d.ok && r.via !== 'opns-owner' && r.via !== 'pubkey'
+                      ? 'Paymail ordinal address'
+                      : VIA_LABEL[r.via]}
                   </div>
                   {r.external && (
                     <div
@@ -236,6 +239,11 @@ export const NameInput = ({ theme, value, onChange, asset, placeholder, style, a
                       style={{ color: '#FEC84B' }}
                     >
                       {externalLabel(r)}
+                    </div>
+                  )}
+                  {r.via === 'pubkey' && (
+                    <div data-testid="pubkey-warning" className="text-[11px] mt-1" style={{ color: '#FEC84B' }}>
+                      {PLAIN_KEY_WARNING}
                     </div>
                   )}
                   {r.didYouMean && (
@@ -296,7 +304,7 @@ export const NameInput = ({ theme, value, onChange, asset, placeholder, style, a
                   className="w-full py-2 rounded-lg text-sm font-semibold border-0 cursor-pointer"
                   style={{ background: 'var(--bw-accent-hi)', color: '#000' }}
                 >
-                  Send to this name
+                  {r.via === 'pubkey' ? 'Send to this key' : 'Send to this name'}
                 </button>
               )}
             </div>

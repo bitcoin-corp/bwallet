@@ -61,7 +61,19 @@ export type Sealed = {
    * independent of the Bureau; older clients drop it and still read subject + body, which always say what it is.
    */
   agreement?: unknown;
+  /**
+   * An NFT sent to this identity key (send to a public key, 24 Oct 2026): the transfer txid and sendOrdinals'
+   * BRC-29 delivery details, so the recipient's wallet can derive the key and internalize the output.
+   */
+  ordinal?: SealedOrdinal;
 };
+export type SealedOrdinal = { txid: string; deliveries: unknown[] };
+const ordinalOk = (o: unknown): o is SealedOrdinal =>
+  !!o &&
+  typeof o === 'object' &&
+  typeof (o as SealedOrdinal).txid === 'string' &&
+  Array.isArray((o as SealedOrdinal).deliveries) &&
+  JSON.stringify(o).length <= 4000;
 /** The agreement part's JSON may use at most this many characters (the whole envelope must stay under 64 000). */
 export const AGREEMENT_JSON_MAX = 40_000;
 
@@ -79,6 +91,7 @@ export const sealedToBytes = (s: Sealed): number[] => {
         subject: s.subject.slice(0, SUBJECT_MAX),
         body: s.body.slice(0, BODY_MAX),
         ...(s.agreement !== undefined ? { agreement: s.agreement } : {}),
+        ...(ordinalOk(s.ordinal) ? { ordinal: s.ordinal } : {}),
       }),
     ),
   ];
@@ -90,6 +103,7 @@ export const bytesToSealed = (b: number[] | Uint8Array): Sealed => {
     body: typeof j.body === 'string' ? j.body.slice(0, BODY_MAX) : '',
   };
   if (agreementOk(j.agreement)) out.agreement = j.agreement;
+  if (ordinalOk(j.ordinal)) out.ordinal = j.ordinal;
   return out;
 };
 

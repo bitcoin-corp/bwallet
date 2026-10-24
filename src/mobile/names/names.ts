@@ -6,6 +6,7 @@ import { BWALLET_PAYMAIL_DOMAIN, LEGACY_PAYMAIL_DOMAINS, SIBLING_PAYMAIL_DOMAINS
 /** Other domains every name answers on (legacy bwallet.space, sibling bmailx.com). Tolerates mocked config. */
 const alsoOurs = (): string[] => [...(LEGACY_PAYMAIL_DOMAINS ?? []), ...(SIBLING_PAYMAIL_DOMAINS ?? [])];
 import { isPlaceholderName } from './handlePrompt';
+import { compressedKey, keyAddress, knownKeyLabel, parsePubKey, shortKey } from './pubkeyRecipient';
 
 /**
  * "Send to a name": classify what the user typed in a recipient box and resolve it to
@@ -32,6 +33,7 @@ export type Parsed =
   | { kind: 'handle'; handle: string }
   | { kind: 'paymail'; paymail: string }
   | { kind: 'opns'; name: string }
+  | { kind: 'pubkey'; key: string; compressed: boolean }
   | { kind: 'invalid'; reason: string };
 
 const PAYMAIL_RE = /^([a-z0-9._+-]{1,64})@([a-z0-9-]+(\.[a-z0-9-]+)+)$/i;
@@ -43,6 +45,10 @@ export const parseRecipient = (raw: string): Parsed => {
   const s = cleanRecipient(raw);
   if (!s) return { kind: 'empty' };
   if (isMainnetAddress(s)) return { kind: 'address', address: s };
+  // A raw public key (send to any key, 24 Oct 2026): checked before names, since hex also fits the OpNS charset.
+  const k = parsePubKey(s);
+  if (k && 'error' in k) return { kind: 'invalid', reason: k.error };
+  if (k) return { kind: 'pubkey', key: k.hex, compressed: k.compressed };
   // "$0.01" / "5" / "£1": an amount in the wrong box, never a $handle or OpNS name.
   if (looksLikeAmount(s)) return { kind: 'invalid', reason: AMOUNT_HINT };
   const h = s.match(HANDLE_RE);
@@ -68,13 +74,14 @@ export const parseRecipient = (raw: string): Parsed => {
   return { kind: 'invalid', reason: 'Enter an address, $handle, paymail or name' };
 };
 
-export type Via = 'address' | 'p2p-paymail' | 'paymail-address' | 'opns-owner';
+export type Via = 'address' | 'p2p-paymail' | 'paymail-address' | 'opns-owner' | 'pubkey';
 
 export const VIA_LABEL: Record<Via, string> = {
   address: 'Bitcoin address',
   'p2p-paymail': 'Paymail P2P (fresh derived address each payment)',
   'paymail-address': 'Paymail address',
   'opns-owner': 'OpNS name owner address',
+  pubkey: "Public key (the key's plain address)",
 };
 
 export type Resolved = {
@@ -98,6 +105,8 @@ export type Resolved = {
    * Only ever set for a full name@domain the user typed; a $handle never resolves outside bWalletX.
    */
   external?: string;
+  /** A raw public key exactly as typed (via 'pubkey'); `pubkey` holds its compressed form. */
+  rawKey?: string;
 };
 
 export class ResolveError extends Error {}
@@ -362,6 +371,21 @@ export const ourLookalike = async (f: Fetch, handle: string, domain: string): Pr
   return found.find(Boolean);
 };
 
+/** A raw public key: shown as "Public key 04678a…1d5f" (or its known label), paying the key's own P2PKH address. */
+export const resolvePubKey = (key: string): Resolved => {
+  const address = keyAddress(key);
+  return {
+    input: key,
+    target: address,
+    targetKind: 'address',
+    via: 'pubkey',
+    displayName: knownKeyLabel(key) ?? `Public key ${shortKey(key)}`,
+    pubkey: compressedKey(key),
+    rawKey: key,
+    ordAddress: address,
+  };
+};
+
 export const resolveRecipient = async (
   f: Fetch,
   p: Parsed,
@@ -370,6 +394,8 @@ export const resolveRecipient = async (
   switch (p.kind) {
     case 'address':
       return { input: p.address, target: p.address, targetKind: 'address', via: 'address', ordAddress: p.address };
+    case 'pubkey':
+      return resolvePubKey(p.key);
     case 'handle':
       return resolveHandle(f, p, domain);
     case 'paymail':
