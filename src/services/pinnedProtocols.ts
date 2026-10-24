@@ -43,6 +43,9 @@ export const pinnedProtocol = (protocolID: unknown): PinnedProtocol | undefined 
   return p ? BY_KEY.get(key(p)) : undefined;
 };
 
+/** Advertised in getVersion's result so a site can check the wallet pins its protocol (bmintx.com checks it). */
+export const PINNED_PROTOCOLS_VERSION = 1;
+
 export const PINNED_REFUSAL = 'This protocol belongs to another site';
 
 /** Methods whose args carry a protocolID that selects a derived key (same set as reservedProtocols.ts). */

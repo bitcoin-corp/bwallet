@@ -138,7 +138,7 @@ import { markPayeeMismatch, parsePayees, payeesAllowed } from './services/allowa
 import { ADMIN_ORIGINATOR, initWallet, openAccountStorageForBackup, type AccountContext } from './initWallet';
 import { isExtensionSender, reservedOriginatorRefusal } from './services/adminOriginator';
 import { isReservedBasket, RESERVED_BASKET_REFUSAL, revokeBasketGrantsForOriginator } from './services/reservedBaskets';
-import { pinnedProtocolRefusal } from './services/pinnedProtocols';
+import { pinnedProtocolRefusal, PINNED_PROTOCOLS_VERSION } from './services/pinnedProtocols';
 import { isReservedProtocol, reservedProtocolRefusal, RESERVED_REFUSAL, withoutReservedProtocols } from './services/reservedProtocols';
 import { healIndexFundActions } from './mobile/tokens/indexFundHeal';
 import { continuesChain, endChain, isAlreadyProcessedAbort, markChainStep, startsChain } from './services/dappChain';
@@ -1919,7 +1919,8 @@ if (!(
           sendResponse({
             type: CWIEventName.GET_VERSION,
             success: true,
-            data: { version: `yours-wallet-${chrome.runtime.getManifest().version}` },
+            // pinnedProtocols: sites can tell this wallet keeps pinned protocols (services/pinnedProtocols.ts) to their home site.
+            data: { version: `yours-wallet-${chrome.runtime.getManifest().version}`, pinnedProtocols: PINNED_PROTOCOLS_VERSION },
           });
           return true;
         // Permission responses from popup UI
