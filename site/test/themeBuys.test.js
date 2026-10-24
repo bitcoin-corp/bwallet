@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { P2PKH, PrivateKey, ProtoWallet, Script, Transaction, Utils } from '@bsv/sdk';
 import pm from '../lib/paymail.js';
+import ptx from '../lib/paidTxids.js';
 import tb from '../lib/themeBuys.js';
 
 const NOW = 1_800_000_000_000;
@@ -44,6 +45,7 @@ const setup = (env = { THEME_ORDER_PAY_ADDRESS: PAY }) => {
   const broadcasts = [];
   const h = tb.makeThemeBuyHandlers({
     store,
+    ledger: ptx.memoryPaidTxids(),
     rate: async () => 50,
     broadcast: async (tx) => broadcasts.push(tx.id('hex')),
     env,

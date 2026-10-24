@@ -149,7 +149,8 @@ const publicRow = (r) => ({
 });
 
 /** Handlers return [status, body]. Deps injected for tests: store, rate() USD per BSV, broadcast(tx, beefHex), env, now(). */
-function makeThemeDepositHandlers({ store, rate, broadcast, env = process.env, now = () => Date.now() }) {
+function makeThemeDepositHandlers({ store, ledger, rate, broadcast, env = process.env, now = () => Date.now() }) {
+  if (!ledger || typeof ledger.reserve !== 'function') throw new Error('paid-txid ledger required');
   const config = async () => {
     const usd = depositUsd(env);
     return [200, { configured: !!(usd && payAddress(env)), usd: usd || null }];
@@ -223,6 +224,8 @@ function makeThemeDepositHandlers({ store, rate, broadcast, env = process.env, n
     if (bad) return [402, { error: bad }];
     const other = await store.getByTxid(txid);
     if (other && other.id !== row.id) return [409, { error: 'tx_used' }];
+    // One txid, one paid record across orders, purchases and deposits (site/lib/paidTxids.js).
+    if ((await ledger.reserve(txid, 'deposit', row.id)) !== 'ok') return [409, { error: 'tx_used' }];
     try {
       await broadcast(tx, beefHex);
     } catch {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { P2PKH, PrivateKey, ProtoWallet, Script, Transaction, Utils } from '@bsv/sdk';
 import pm from '../lib/paymail.js';
+import ptx from '../lib/paidTxids.js';
 import tb from '../lib/themeBuys.js';
 import sr from '../lib/storeReceipt.js';
 
@@ -22,6 +23,7 @@ const quoteFor = async (env) => {
   });
   const rows = [];
   const h = tb.makeThemeBuyHandlers({
+    ledger: ptx.memoryPaidTxids(),
     store: {
       insert: async (r) => (rows.push({ id: 'a', ...r }), rows[0]),
       owned: async () => [],

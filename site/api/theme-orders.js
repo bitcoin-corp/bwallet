@@ -10,6 +10,7 @@ const { depositUsd, makeThemeDepositHandlers, themeDepositStore } = require('../
 const { arcBroadcast } = require('../lib/paymailStore');
 const { chain } = require('../lib/nameFee');
 const { storeKey } = require('../lib/storeReceipt');
+const { paidTxidStore } = require('../lib/paidTxids');
 
 // buy-quote / buy-claim / owned: Store theme purchases, $1 each (site/lib/themeBuys.js).
 // store-key (GET): the public key Store receipts are signed with (site/lib/storeReceipt.js), null if unsigned.
@@ -82,8 +83,9 @@ module.exports = async function handler(req, res) {
     const store = themeOrderStore();
     const buyStore = themeBuyStore();
     const depositStore = themeDepositStore();
-    if (!store || !buyStore || !depositStore) return send(res, 503, { error: 'not_configured' });
-    const deps = { rate: () => chain.bsvUsd(), broadcast: arcBroadcast() };
+    const ledger = paidTxidStore();
+    if (!store || !buyStore || !depositStore || !ledger) return send(res, 503, { error: 'not_configured' });
+    const deps = { ledger, rate: () => chain.bsvUsd(), broadcast: arcBroadcast() };
     handlers = {
       ...makeThemeOrderHandlers({ store, ...deps }),
       buy: makeThemeBuyHandlers({ store: buyStore, ...deps }),

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { P2PKH, PrivateKey, ProtoWallet, Script, Transaction, Utils } from '@bsv/sdk';
 import pm from '../lib/paymail.js';
+import ptx from '../lib/paidTxids.js';
 import td from '../lib/themeDeposits.js';
 
 const NOW = 1_800_000_000_000;
@@ -43,11 +44,12 @@ const memStore = () => {
   };
 };
 
-const setup = (env = ENV) => {
+const setup = (env = ENV, ledger = ptx.memoryPaidTxids()) => {
   const store = memStore();
   const broadcasts = [];
   const h = td.makeThemeDepositHandlers({
     store,
+    ledger,
     rate: async () => 50,
     broadcast: async (tx) => broadcasts.push(tx.id('hex')),
     env,
@@ -159,5 +161,49 @@ describe('deposits', () => {
     // a theme-order signature can't be replayed as a deposit
     expect((await h.quote(await u.sign('theme-orders-quote', brief())))[0]).toBe(401);
     expect(broadcasts).toEqual([]);
+  });
+});
+
+describe('one payment, one paid record (shared pay address)', () => {
+  const payFor = (q, { sats = q.sats, extraMemo = null } = {}) => {
+    const tx = new Transaction();
+    tx.addOutput({ lockingScript: new P2PKH().lock(PAY), satoshis: sats });
+    tx.addOutput({ lockingScript: Script.fromHex(td.memoScript(q.quote_id).toHex()), satoshis: 0 });
+    if (extraMemo) tx.addOutput({ lockingScript: Script.fromHex(extraMemo), satoshis: 0 });
+    return tx;
+  };
+  const claim = async (h, u, q, tx) =>
+    h.claim(await u.sign('theme-deposit-claim', { quote_id: q.quote_id, txid: tx.id('hex') }, { rawtx: tx.toHex() }));
+
+  test('a txid already recorded by an order or a purchase is refused, nothing broadcast', async () => {
+    const ledger = ptx.memoryPaidTxids();
+    const u = user();
+    const { h, broadcasts, store } = setup(ENV, ledger);
+    const [, q] = await h.quote(await u.sign('theme-deposit-quote', brief()));
+    const tx = payFor(q);
+    expect(await ledger.reserve(tx.id('hex'), 'buy', 'p0')).toBe('ok');
+    expect(await claim(h, u, q, tx)).toEqual([409, { error: 'tx_used' }]);
+    expect(broadcasts).toEqual([]);
+    expect(store.rows[0].status).toBe('quoted');
+  });
+
+  test('a tx carrying a second memo, or paying a different amount, is refused', async () => {
+    const u = user();
+    const { h, broadcasts } = setup();
+    const [, q] = await h.quote(await u.sign('theme-deposit-quote', brief()));
+    const otherMemo = td.memoScript('f'.repeat(32)).toHex();
+    expect(await claim(h, u, q, payFor(q, { extraMemo: otherMemo }))).toEqual([402, { error: 'extra_memo' }]);
+    expect(await claim(h, u, q, payFor(q, { sats: q.sats + 1 }))).toEqual([402, { error: 'amount_mismatch' }]);
+    expect(broadcasts).toEqual([]);
+  });
+
+  test('the ledger lets the same kind + row retry and refuses everyone else', async () => {
+    const l = ptx.memoryPaidTxids();
+    const t = 'a'.repeat(64);
+    expect(await l.reserve(t, 'order', 'o1')).toBe('ok');
+    expect(await l.reserve(t, 'order', 'o1')).toBe('ok');
+    expect(await l.reserve(t, 'order', 'o2')).toBe('used');
+    expect(await l.reserve(t, 'deposit', 'o1')).toBe('used');
+    expect(await l.reserve(t, 'buy', 'b1')).toBe('used');
   });
 });

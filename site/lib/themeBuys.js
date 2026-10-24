@@ -101,7 +101,8 @@ function themeBuyStore(env = process.env, f = fetch) {
  * Handlers: each returns [status, body]. Deps injected so tests run without a network:
  * store (themeBuyStore shape), rate() → USD per BSV, broadcast(tx, beefHex) (throws if rejected), env, now().
  */
-function makeThemeBuyHandlers({ store, rate, broadcast, env = process.env, now = () => Date.now() }) {
+function makeThemeBuyHandlers({ store, ledger, rate, broadcast, env = process.env, now = () => Date.now() }) {
+  if (!ledger || typeof ledger.reserve !== 'function') throw new Error('paid-txid ledger required');
   const quote = async (body) => {
     const pay = payAddress(env);
     if (!pay) return [503, { error: 'not_configured' }];
@@ -191,6 +192,8 @@ function makeThemeBuyHandlers({ store, rate, broadcast, env = process.env, now =
     if (bad) return [402, { error: bad }];
     const other = await store.getByTxid(txid);
     if (other && other.id !== row.id) return [409, { error: 'tx_used' }];
+    // One txid, one paid record across orders, purchases and deposits (site/lib/paidTxids.js).
+    if ((await ledger.reserve(txid, 'buy', row.id)) !== 'ok') return [409, { error: 'tx_used' }];
     try {
       await broadcast(tx, beefHex);
     } catch {

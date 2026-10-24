@@ -157,14 +157,19 @@ function payAddress(env = process.env) {
 }
 
 /**
- * Does `tx` pay the quote? The P2PKH output to the pay address must carry at least the quoted sats and
- * an OP_RETURN output must be exactly the memo. Returns null when it does, else an error code.
+ * Does `tx` pay exactly this quote? The P2PKH outputs to the pay address must total exactly the quoted sats, and
+ * the tx must carry exactly one OP_RETURN output, which is this quote's memo. One tx can't pay several quotes
+ * (orders, purchases and deposits share the pay address). Returns null when it does, else an error code.
  */
 function checkPayment(tx, { address, sats, memoHex }) {
   const script = new P2PKH().lock(address).toHex();
   const paid = tx.outputs.filter((o) => o.lockingScript.toHex() === script).reduce((s, o) => s + Number(o.satoshis), 0);
   if (paid < Number(sats)) return 'underpaid';
-  if (!tx.outputs.some((o) => o.lockingScript.toHex() === memoHex)) return 'memo_missing';
+  if (paid !== Number(sats)) return 'amount_mismatch';
+  const isReturn = (h) => h.startsWith('6a') || h.startsWith('006a');
+  const memos = tx.outputs.map((o) => o.lockingScript.toHex()).filter(isReturn);
+  if (!memos.includes(memoHex)) return 'memo_missing';
+  if (memos.length !== 1) return 'extra_memo';
   return null;
 }
 
@@ -256,7 +261,8 @@ const live = (row, now) =>
  * Handlers: each returns [status, body]. Deps are injected so tests run without a network:
  * store (themeOrderStore shape), rate() → USD per BSV, broadcast(tx, beefHex) (throws if rejected), env, now().
  */
-function makeThemeOrderHandlers({ store, rate, broadcast, env = process.env, now = () => Date.now() }) {
+function makeThemeOrderHandlers({ store, ledger, rate, broadcast, env = process.env, now = () => Date.now() }) {
+  if (!ledger || typeof ledger.reserve !== 'function') throw new Error('paid-txid ledger required');
   const address = () => payAddress(env);
 
   const upload = async (body) => {
@@ -372,6 +378,8 @@ function makeThemeOrderHandlers({ store, rate, broadcast, env = process.env, now
     if (bad) return [402, { error: bad }];
     const other = await store.getByTxid(txid);
     if (other && other.id !== row.id) return [409, { error: 'tx_used' }];
+    // One txid, one paid record across orders, purchases and deposits (site/lib/paidTxids.js).
+    if ((await ledger.reserve(txid, 'order', row.id)) !== 'ok') return [409, { error: 'tx_used' }];
     // The tx must be on the network: our broadcast is accepted (or already known), else nothing is recorded.
     try {
       await broadcast(tx, beefHex);

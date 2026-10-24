@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import crypto from 'crypto';
 import { P2PKH, PrivateKey, ProtoWallet, Script, Transaction, Utils } from '@bsv/sdk';
 import pm from '../lib/paymail.js';
+import ptx from '../lib/paidTxids.js';
 import to from '../lib/themeOrders.js';
 
 const NOW = 1_800_000_000_000;
@@ -57,6 +58,7 @@ const setup = (env = { THEME_ORDER_PAY_ADDRESS: PAY }) => {
   const broadcasts = [];
   const h = to.makeThemeOrderHandlers({
     store,
+    ledger: ptx.memoryPaidTxids(),
     rate: async () => 50,
     broadcast: async (tx) => broadcasts.push(tx.id('hex')),
     env,
@@ -230,6 +232,7 @@ describe('claim', () => {
     expect((await h.claim(await claimBody(thief, q, tx)))[0]).toBe(404);
     const bad = to.makeThemeOrderHandlers({
       store,
+      ledger: ptx.memoryPaidTxids(),
       rate: async () => 50,
       broadcast: async () => {
         throw new Error('arc 400');
