@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { pinnedAllowed, pinnedProtocolRefusal, PINNED_REFUSAL, PINNED_PROTOCOLS_VERSION } from './pinnedProtocols';
+import {
+  pinnedAllowed,
+  pinnedProtocolRefusal,
+  PINNED_REFUSAL,
+  PINNED_PROTOCOLS_VERSION,
+  versionWithPins,
+} from './pinnedProtocols';
 import { guardReservedProtocols } from './reservedProtocols';
 import { knownProtocol } from '../utils/protocols';
 
@@ -67,5 +73,26 @@ describe('pinned protocols', () => {
   });
   test('the advertised version covers bvideox records (bvideox.com checks >= 2)', () => {
     expect(PINNED_PROTOCOLS_VERSION).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('versionWithPins', () => {
+  const PIN = /\+p(\d+)\b/;
+  test('carries the pin level in the version string', () => {
+    const v = versionWithPins('bwalletx-5.2.40');
+    expect(v).toBe(`bwalletx-5.2.40+p${PINNED_PROTOCOLS_VERSION}`);
+    expect(Number(v.match(PIN)?.[1])).toBe(PINNED_PROTOCOLS_VERSION);
+  });
+  test('every branded name fits the SDK limit (7–30 chars)', () => {
+    for (const base of [
+      'bwalletx-5.2.40',
+      'bwallet-mobile-5.2.40',
+      'yours-wallet-5.2.40',
+      'bwallet-mobile-55.55.555',
+    ]) {
+      const v = versionWithPins(base);
+      expect(v.length).toBeGreaterThanOrEqual(7);
+      expect(v.length).toBeLessThanOrEqual(30);
+    }
   });
 });

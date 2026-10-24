@@ -57,6 +57,13 @@ export const pinnedProtocol = (protocolID: unknown): PinnedProtocol | undefined 
  */
 export const PINNED_PROTOCOLS_VERSION = 2;
 
+/**
+ * The getVersion string with the pin level appended (`bwalletx-5.2.40+p2`). Some transports (e.g. the
+ * @bwalletx/connect binary wire) carry only `version`, so the pin level must live in the string itself.
+ * Sites parse it with /\+p(\d+)\b/. Stays within the SDK's 7–30 character limit.
+ */
+export const versionWithPins = (base: string): string => `${base}+p${PINNED_PROTOCOLS_VERSION}`;
+
 export const PINNED_REFUSAL = 'This protocol belongs to another site';
 
 /** Methods whose args carry a protocolID that selects a derived key (same set as reservedProtocols.ts). */
