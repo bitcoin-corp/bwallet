@@ -440,11 +440,12 @@ const WideShell = ({ children }: { children: ReactNode }) => {
             <PersonPic className="ww-av" handle={names.handle || account?.name || 'b'} />
           )}
           <div className="ww-grow">
-            <div className="ww-clip">{names.displayName || account?.name || 'Account'}</div>
+            {/* Owner, 24 Oct 2026: the account chip shows the FULL paymail (b0asex@bwalletx.com) when there is one. */}
+            <div className="ww-clip">{names.paymail || names.displayName || account?.name || 'Account'}</div>
             <div className="ww-muted ww-small ww-clip">
-              {names.handle ? `$${names.handle}` : ''}
+              {!names.paymail && names.handle ? `$${names.handle}` : ''}
               {feed
-                ? `${names.handle ? ' · ' : ''}${feed.bsvBalance.toLocaleString('en-GB', { maximumFractionDigits: 4 })} BSV`
+                ? `${!names.paymail && names.handle ? ' · ' : ''}${feed.bsvBalance.toLocaleString('en-GB', { maximumFractionDigits: 4 })} BSV`
                 : ''}
             </div>
           </div>

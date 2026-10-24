@@ -38,8 +38,9 @@ export const AccountStrip = () => {
   }, []);
 
   const tag = current ? accountTag(current, names.displayName, names.paymail, names.handle) : '';
-  const name = names.displayName || names.label || account?.name || 'Account';
-  const showTag = !!tag && tag.length <= 16 && tag.toLowerCase() !== `$${name.toLowerCase()}`;
+  // Owner, 24 Oct 2026: signed in, the strip names the account by its FULL paymail (b0asex@bwalletx.com).
+  const name = names.paymail || names.displayName || names.label || account?.name || 'Account';
+  const showTag = !names.paymail && !!tag && tag.length <= 16 && tag.toLowerCase() !== `$${name.toLowerCase()}`;
 
   return (
     <>

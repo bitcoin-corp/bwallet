@@ -79,7 +79,8 @@ export const AccountRow = ({
         )}
         <div className="min-w-0 flex-1">
           <div className={`flex items-center gap-1 text-sm font-semibold text-white ${ELLIPSIS}`}>
-            <span className={ELLIPSIS}>{tag || n.displayName || n.label}</span>
+            {/* Full paymail first (owner, 24 Oct 2026), never the bare $handle when a paymail exists. */}
+            <span className={ELLIPSIS}>{n.paymail || tag || n.displayName || n.label}</span>
             {id === current && verified && <Check size={13} strokeWidth={3} color="#2ecc71" />}
             <AgentMark id={id} />
             {tint && origin && (
