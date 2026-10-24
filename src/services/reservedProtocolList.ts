@@ -59,7 +59,8 @@ export const RESERVED_PROTOCOLS: readonly Protocol[] = [
  */
 export const EXTERNAL_OK: readonly (readonly [number, string, string])[] = [
   [2, 'bwallet sign in', 'Sign in with bWalletX (bwalletx-connect, bit-sign, bChatX)'],
-  [0, 'fwetch identity', 'bit-sign fwetch feed signatures'],
+  // Level 0: apps may read/verify it, but createSignature at level 0 is refused for apps (bit-sign is retired).
+  [0, 'fwetch identity', 'bit-sign fwetch feed signatures (verify only for apps)'],
   [2, '3241645161d8', 'BRC-29 payments: every BRC-100 payer derives these keys'],
   [2, 'bmintx archive', 'bMintX private archive: pinned to bmintx.com only (pinnedProtocols.ts)'],
   [2, 'bvideox records', 'bVideoX private video records: pinned to bvideox.com only (pinnedProtocols.ts)'],

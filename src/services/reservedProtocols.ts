@@ -51,6 +51,20 @@ export const isReservedProtocol = (protocolID: unknown): boolean => {
 };
 
 export const RESERVED_REFUSAL = 'This protocol is reserved for bWalletX itself';
+export const LEVEL0_SIGN_REFUSAL =
+  'Level-0 keys are shared by every app and are never asked about; bWalletX does not sign with them for apps';
+export const HISTORY_REFUSAL = 'Name at least one label: bWalletX does not share your whole history with apps';
+
+/** BRC-114 time-range labels (toolbox parseBrc114ActionTimeLabels): they filter by time, not by label. */
+const isTimeLabel = (l: unknown) =>
+  typeof l === 'string' && (l.startsWith('action time from ') || l.startsWith('action time to '));
+
+/** True when an outside app's listActions names no real label (the toolbox then checks nothing). */
+export const listActionsNamesNoLabel = (args: unknown): boolean => {
+  const labels = (args as { labels?: unknown } | null)?.labels;
+  return !Array.isArray(labels) || labels.filter((l) => !isTimeLabel(l)).length === 0;
+};
+
 export const RAW_HASH_REFUSAL =
   'Signing a raw hash with these keys could move your money; bWalletX refuses it for apps';
 
@@ -77,9 +91,13 @@ export const reservedProtocolRefusal = (method: string, args: unknown): string |
   const p = asProtocol(a.protocolID);
   if (!p) return 'Invalid protocolID';
   if (RESERVED_HASHES.has(protocolHash(p))) return `${RESERVED_REFUSAL}: "${p[1]}"`;
-  if (method === 'createSignature' && a.hashToDirectlySign !== undefined && a.hashToDirectlySign !== null) {
-    // Level-0 keys are shared by every app and the wallet; BRC-29 keys receive the user's payments.
-    if (p[0] === 0 || RAW_HASH_REFUSED.has(key(p))) return RAW_HASH_REFUSAL;
+  if (method === 'createSignature') {
+    // Level-0 keys are shared by every app and the wallet, and the permissions manager never asks for level 0, so
+    // any site could get signatures with no sheet. BRC-29 keys receive the user's payments. Both paths are refused:
+    // the data path signs sha256(data), so data = sha256(preimage) yields a transaction sighash just like
+    // hashToDirectlySign (b-Aware report, 24 Oct 2026). verifySignature stays open.
+    if (p[0] === 0) return LEVEL0_SIGN_REFUSAL;
+    if (RAW_HASH_REFUSED.has(key(p))) return RAW_HASH_REFUSAL;
   }
   return null;
 };
@@ -130,6 +148,14 @@ export function guardReservedProtocols<T extends object>(manager: T, adminOrigin
         if (refusal) throw new Error(refusal);
       }
       return (original as (a: unknown, o?: string) => Promise<unknown>).call(manager, args, originator);
+    };
+  }
+  // listActions with no labels returns the whole history without a prompt (b-Aware report, 24 Oct 2026).
+  const listActions = m.listActions;
+  if (typeof listActions === 'function') {
+    m.listActions = async (args: unknown, originator?: string) => {
+      if (isOutside(originator) && listActionsNamesNoLabel(args)) throw new Error(HISTORY_REFUSAL);
+      return (listActions as (a: unknown, o?: string) => Promise<unknown>).call(manager, args, originator);
     };
   }
   const ensure = m.ensureProtocolPermission;

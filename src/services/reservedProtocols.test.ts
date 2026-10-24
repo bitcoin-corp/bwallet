@@ -6,6 +6,9 @@ import {
   guardReservedProtocols,
   isReservedProtocol,
   protocolHash,
+  HISTORY_REFUSAL,
+  LEVEL0_SIGN_REFUSAL,
+  listActionsNamesNoLabel,
   RAW_HASH_REFUSAL,
   reservedProtocolRefusal,
   revokeReservedProtocolGrants,
@@ -128,8 +131,16 @@ describe('reserved protocols (audit C1)', () => {
 
   test('raw-hash signing is refused for shared level-0 keys and BRC-29 payment keys', () => {
     expect(reservedProtocolRefusal('createSignature', { protocolID: [0, 'some app'], hashToDirectlySign: [1] })).toBe(
-      RAW_HASH_REFUSAL,
+      LEVEL0_SIGN_REFUSAL,
     );
+    // The data path too: sha256(data) with data = sha256(preimage) is a sighash.
+    expect(reservedProtocolRefusal('createSignature', { protocolID: [0, 'some app'], data: [1] })).toBe(
+      LEVEL0_SIGN_REFUSAL,
+    );
+    expect(reservedProtocolRefusal('createSignature', { protocolID: [0, 'fwetch identity'], data: [1] })).toBe(
+      LEVEL0_SIGN_REFUSAL,
+    );
+    expect(reservedProtocolRefusal('verifySignature', { protocolID: [0, 'some app'], data: [1] })).toBeNull();
     expect(
       reservedProtocolRefusal('createSignature', {
         protocolID: [2, '3241645161d8'],
@@ -138,7 +149,9 @@ describe('reserved protocols (audit C1)', () => {
         hashToDirectlySign: [1],
       }),
     ).toBe(RAW_HASH_REFUSAL);
-    expect(reservedProtocolRefusal('createSignature', { protocolID: [2, '3241645161d8'], data: [1] })).toBeNull();
+    expect(reservedProtocolRefusal('createSignature', { protocolID: [2, '3241645161d8'], data: [1] })).toBe(
+      RAW_HASH_REFUSAL,
+    );
     expect(reservedProtocolRefusal('getPublicKey', { protocolID: [2, '3241645161d8'], keyID: 'a b' })).toBeNull();
   });
 
@@ -148,6 +161,24 @@ describe('reserved protocols (audit C1)', () => {
     const src = readFileSync(join(import.meta.dir, 'reservedProtocols.ts'), 'utf8');
     const listed = [...src.matchAll(/0x([0-9a-f]{8}),/g)].map((m) => parseInt(m[1], 16));
     expect(listed.sort()).toEqual(RESERVED_PROTOCOLS.map((p) => protocolHash(p)).sort());
+  });
+
+  test('listActions from an app must name a label (time labels do not count)', async () => {
+    const base = fakeManager() as Record<string, unknown> & { calls: string[] };
+    base.listActions = async (a: unknown) => {
+      base.calls.push('listActions');
+      return a;
+    };
+    const m = guardReservedProtocols(base, ADMIN) as Record<string, (...a: unknown[]) => Promise<unknown>>;
+    await expect(m.listActions({ labels: [] }, 'evil.example')).rejects.toThrow(HISTORY_REFUSAL);
+    await expect(m.listActions({}, 'evil.example')).rejects.toThrow(HISTORY_REFUSAL);
+    await expect(
+      m.listActions({ labels: ['action time from 2026-01-01T00:00:00Z'] }, 'evil.example'),
+    ).rejects.toThrow(HISTORY_REFUSAL);
+    await m.listActions({ labels: ['my app'] }, 'good.example');
+    await m.listActions({ labels: [] }, ADMIN);
+    expect(base.calls.filter((c) => c === 'listActions')).toHaveLength(2);
+    expect(listActionsNamesNoLabel({ labels: ['x'] })).toBe(false);
   });
 
   test('a malformed protocolID is refused', () => {
