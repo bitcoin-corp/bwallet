@@ -24,6 +24,8 @@ describe('crossSiteSignRefusal (audit 24 Oct B1)', () => {
     expect(crossSiteSignRefusal('app.bchatx.com', sig(msg))).toBeNull();
     expect(crossSiteSignRefusal('bchatx.com:8443', sig(msg))).toBeNull();
     expect(crossSiteSignRefusal('bchatx.com.paired.invalid', sig(msg))).toBeNull();
+    expect(crossSiteSignRefusal(`bchatx.com.c${'ab'.repeat(22)}.paired.invalid`, sig(msg))).toBeNull();
+    expect(crossSiteSignRefusal(`evil.com.c${'ab'.repeat(22)}.paired.invalid`, sig(msg))).not.toBeNull();
   });
 
   test('one matching field cannot launder a second, foreign one', () => {
