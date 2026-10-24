@@ -45,6 +45,36 @@ export const PINNED_PROTOCOLS: readonly PinnedProtocol[] = [
     // bvideox.com mint/records.js: description `bVideoX: 3 private video records`.
     mint: { verb: 'Mint', noun: 'video', countFrom: /(\d+) private video records?/i },
   },
+  {
+    // bjobsx.com (24 Oct 2026): imported LinkedIn profile sections, encrypted with these keys (counterparty self).
+    protocolID: [2, 'bjobsx records'],
+    origins: ['bjobsx.com', 'www.bjobsx.com'],
+    label: 'Your work records (bJobsX)',
+    description:
+      'bJobsX wants to lock your profile records with your own keys before they go on chain. Only your 12 words can open them; nothing is made public unless you choose.',
+    // bjobsx.com mint: description `bJobsX: 3 private profile records`.
+    mint: { verb: 'Mint', noun: 'profile record', countFrom: /(\d+) private profile records?/i },
+  },
+  {
+    // bdrivex.com (24 Oct 2026): records of the user's files (name, type, size, fingerprint), encrypted with these keys.
+    protocolID: [2, 'bdrivex records'],
+    origins: ['bdrivex.com', 'www.bdrivex.com'],
+    label: 'Your file records (bDriveX)',
+    description:
+      'bDriveX wants to lock your file records with your own keys before they go on chain. Only your 12 words can open them; nothing is made public unless you choose.',
+    // bdrivex.com mint: description `bDriveX: 3 private file records`.
+    mint: { verb: 'Mint', noun: 'file record', countFrom: /(\d+) private file records?/i },
+  },
+  {
+    // bcalx.com (24 Oct 2026): imported calendar events, encrypted with these keys (bx-starter-kit).
+    protocolID: [2, 'bcalx records'],
+    origins: ['bcalx.com', 'www.bcalx.com'],
+    label: 'Your calendar records (bCalX)',
+    description:
+      'bCalX wants to lock your calendar records with your own keys before they go on chain. Only your 12 words can open them; nothing is made public unless you choose.',
+    // bx-starter-kit mint: description `bCalX: 3 private calendar records`.
+    mint: { verb: 'Mint', noun: 'calendar record', countFrom: /(\d+) private (?:calendar )?records?/i },
+  },
 ];
 
 const key = (p: Protocol) => `${p[0]}:${p[1].trim().toLowerCase()}`;
@@ -60,9 +90,10 @@ export const pinnedProtocol = (protocolID: unknown): PinnedProtocol | undefined 
 
 /**
  * Advertised in getVersion's result so a site can check the wallet pins its protocol. Bumped whenever a protocol is
- * added: 1 = bmintx archive (bmintx.com checks >= 1), 2 = + bvideox records (bvideox.com checks >= 2).
+ * added: 1 = bmintx archive (bmintx.com checks >= 1), 2 = + bvideox records (bvideox.com checks >= 2),
+ * 3 = + bjobsx, bdrivex, bcalx records (those sites check >= 3).
  */
-export const PINNED_PROTOCOLS_VERSION = 2;
+export const PINNED_PROTOCOLS_VERSION = 3;
 
 /**
  * The getVersion string with the pin level appended (`bwalletx-5.2.40+p2`). Some transports (e.g. the
