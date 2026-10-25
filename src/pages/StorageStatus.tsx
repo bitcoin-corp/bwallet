@@ -24,6 +24,7 @@ import { useSnackbar } from '../hooks/useSnackbar';
 import { useServiceContext } from '../hooks/useServiceContext';
 import { useRemoteStatus, type RemoteStatus } from '../hooks/useRemoteStatus';
 import { fetchExchangeRate } from '../utils/wallet';
+import { RemoteBackupLine } from '../components/RemoteBackupBanner';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -554,6 +555,9 @@ export const StorageStatus = ({ onBack }: StorageStatusProps) => {
           Remote Backup
         </h2>
       </div>
+
+      {/* Online backup watch: last successful push, or why it isn't connected (services/remoteBackup.ts). */}
+      <RemoteBackupLine />
 
       {/* Empty remotes: local-only, no backup configured. */}
       {localIsActive && remotes.length === 0 && (

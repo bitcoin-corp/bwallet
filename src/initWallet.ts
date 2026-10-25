@@ -85,6 +85,7 @@ import { makePostageReconcileWiring, makeTxidRecoverDeps, sweepCandidateTxids } 
 import { reconcilePostage, wocIsMined, type PostageReconcileReport } from './services/postageReconcile';
 import { chainActive } from './services/dappChain';
 import { healthStatus, SYNC_HEALTH_KEY } from './services/storageHealth';
+import { REMOTE_BACKUP_KEY, safeError, startRemoteBackupKeeper, type RemoteBackupKeeper } from './services/remoteBackup';
 import type { TokenRecoveryOptions, TokenRecoveryResult } from './services/tokenRecovery';
 
 // Admin originator for the extension (bypasses all permission checks). The bare
@@ -337,6 +338,7 @@ export const initWallet = async (
 
   const t0 = Date.now();
   const mark = (step: string) => console.log(`[initWallet] +${Date.now() - t0}ms ${step}`);
+  let backupFellBack = false;
   mark(`createWebWallet start (activeRemote=${activeRemote ?? 'local'}, backups=${backups?.length ?? 0})`);
   const {
     wallet: baseWallet,
@@ -348,11 +350,14 @@ export const initWallet = async (
     monitor: walletMonitor,
     services: toolboxServices,
   } = await createWebWallet(walletConfig).catch(async (err: unknown) => {
-    // A backup that won't connect (e.g. 1Sat answering HTTP 400 to the iPhone WebView's auth
-    // handshake) must not take the whole wallet down: the device's own copy is authoritative when
-    // it's active. Open without backups; the address sync still finds funds on chain.
+    // A backup that won't sync at boot must not take the whole wallet down: the device's own copy is
+    // authoritative when it's active. Open without it, but never silently: the remote-backup keeper below
+    // shows a warning, retries with back-off and pushes the records up once it reconnects. (The cause on
+    // iPhone was not the WebView origin: setActive's boot merge pushed ~10 MB sync chunks that
+    // wallet.1sat.app refuses. See the maxRoughSize swap in vite.brand.ts.)
     if (activeRemote || !backups?.length) throw err;
-    console.warn('[initWallet] backup storage failed to connect; opening without it:', err);
+    console.warn('[initWallet] backup storage failed to connect; opening without it:', safeError(err));
+    backupFellBack = true;
     return createWebWallet({ ...walletConfig, backups: [] });
   });
   mark(
@@ -1006,7 +1011,29 @@ export const initWallet = async (
     available: () => storage.isActiveStorageProvider(),
   };
 
+  // Online backup watch: local-active wallets with a remote backup (services/remoteBackup.ts).
+  const backupUrl = !activeRemote ? backups?.[0] : undefined;
+  let backupKeeper: RemoteBackupKeeper | undefined;
+  if (backupUrl) {
+    const backupKey = REMOTE_BACKUP_KEY(keys.identityAddress);
+    const registered = !backupFellBack && !!remoteStorage;
+    backupKeeper = startRemoteBackupKeeper(
+      {
+        url: backupUrl,
+        connect: () => addRemote(backupUrl),
+        push: async () => {
+          await storage.updateBackups();
+        },
+        save: (state) => chrome.storage.local.set({ [backupKey]: state }),
+        load: async () => (await chrome.storage.local.get(backupKey))[backupKey],
+        firstDelayMs: registered ? 20_000 : 5_000,
+      },
+      registered,
+    );
+  }
+
   const close = async () => {
+    backupKeeper?.stop();
     await destroyWallet();
   };
 
