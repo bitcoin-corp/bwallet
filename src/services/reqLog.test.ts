@@ -3,7 +3,11 @@ import { reqLogLine } from './reqLog';
 
 describe('[bwx-req] lines', () => {
   test('prefix, method, host only', () => {
-    const l = reqLogLine('received', { method: 'createAction', origin: 'https://tokenblaster.lol/arcade/terrornode?x=1', locked: true });
+    const l = reqLogLine('received', {
+      method: 'createAction',
+      origin: 'https://tokenblaster.lol/arcade/terrornode?x=1',
+      locked: true,
+    });
     expect(l).toBe('[bwx-req] received method=createAction origin=tokenblaster.lol locked');
   });
   test('surface and error, cut short', () => {

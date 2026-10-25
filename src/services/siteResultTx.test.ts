@@ -9,7 +9,11 @@ const BEEF = [1, 1, 1, 1, ...Array(32).fill(0xab), 9, 9];
 describe('site createAction answer carries the signed tx', () => {
   it('approved outputs-only createAction returns tx and txid even when pending', async () => {
     const load = vi.fn(async () => BEEF);
-    const r = await withSignedTx({ txid: TXID, pending: true as const }, { acceptDelayedBroadcast: false } as never, load);
+    const r = await withSignedTx(
+      { txid: TXID, pending: true as const },
+      { acceptDelayedBroadcast: false } as never,
+      load,
+    );
     expect(r.txid).toBe(TXID);
     expect(r.tx).toEqual(BEEF);
     expect(load).toHaveBeenCalledWith(TXID);
