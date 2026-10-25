@@ -242,6 +242,20 @@ type Issued = { keyID: string; at: number };
 export type ListConsentStore = {
   has(site: string, tokenId: string): Promise<boolean>;
   add(site: string, tokenId: string): Promise<void>;
+  /** Every site's remembered "see my balance" answers: site -> token ids (Connections). */
+  list(): Promise<Record<string, string[]>>;
+  /** Forget a site's answers (Forget site / Revoke all / Connections), so it must ask again. */
+  forget(site: string): Promise<void>;
+};
+
+const groupConsents = (keys: Iterable<string>): Record<string, string[]> => {
+  const out: Record<string, string[]> = {};
+  for (const k of keys) {
+    const i = k.lastIndexOf('|');
+    if (i <= 0) continue;
+    (out[k.slice(0, i)] ??= []).push(k.slice(i + 1));
+  }
+  return out;
 };
 
 export const memoryConsentStore = (): ListConsentStore => {
@@ -249,11 +263,19 @@ export const memoryConsentStore = (): ListConsentStore => {
   return {
     has: async (site, id) => s.has(`${site}|${id}`),
     add: async (site, id) => void s.add(`${site}|${id}`),
+    list: async () => groupConsents(s),
+    forget: async (site) => {
+      for (const k of [...s]) if (k.startsWith(`${site}|`)) s.delete(k);
+    },
   };
 };
 
+let sharedChromeStore: ListConsentStore | undefined;
+
 /** chrome.storage.local where it exists (extension, mobile shim), else memory. Failures fall back to asking again. */
-export const chromeConsentStore = (): ListConsentStore => {
+export const chromeConsentStore = (): ListConsentStore => (sharedChromeStore ??= makeChromeConsentStore());
+
+const makeChromeConsentStore = (): ListConsentStore => {
   const KEY = 'bwalletx.siteTokenListConsent';
   const mem = memoryConsentStore();
   type Area = {
@@ -279,6 +301,22 @@ export const chromeConsentStore = (): ListConsentStore => {
         await local.set({ [KEY]: [...all.filter((x) => x !== `${site}|${id}`), `${site}|${id}`].slice(-2000) });
       } catch {
         /* memory only */
+      }
+    },
+    list: async () =>
+      groupConsents(
+        new Set([
+          ...(await read()),
+          ...Object.entries(await mem.list()).flatMap(([site, ids]) => ids.map((id) => `${site}|${id}`)),
+        ]),
+      ),
+    forget: async (site) => {
+      await mem.forget(site);
+      try {
+        const all = await read();
+        await local.set({ [KEY]: all.filter((x) => !x.startsWith(`${site}|`)) });
+      } catch {
+        /* nothing stored */
       }
     },
   };

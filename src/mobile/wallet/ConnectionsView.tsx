@@ -42,6 +42,8 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
   const [groups, setGroups] = useState<Group[]>([]);
   // Each site's envelope (services/envelopes.ts), with Coin return on its row.
   const [envelopes, setEnvelopes] = useState<{ list: Envelope[]; usdPerBsv?: number }>({ list: [] });
+  // Sites that may see token balances (services/siteTokens.ts "see my balance"), by site.
+  const [tokenViews, setTokenViews] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -50,14 +52,16 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [l, g, e] = await Promise.all([
+    const [l, g, e, tv] = await Promise.all([
       loadConnectionLog(),
       send<{ groups: Group[] }>({ action: 'PERMISSIONS_LIST_ALL' }).catch(() => null),
       // Envelopes are bWalletX only (storeBuild.ts ENVELOPES_ENABLED).
       ENVELOPES_ENABLED
         ? send<{ envelopes: Envelope[]; usdPerBsv?: number }>({ action: 'ENVELOPES_LIST' }).catch(() => null)
         : null,
+      send<Record<string, string[]>>({ action: 'SITE_TOKEN_CONSENT_LIST' }).catch(() => null),
     ]);
+    setTokenViews(tv?.success ? (tv.data ?? {}) : {});
     setLog(l);
     setGroups(g?.success ? (g.data?.groups ?? []) : []);
     setEnvelopes(e?.success ? { list: e.data?.envelopes ?? [], usdPerBsv: e.data?.usdPerBsv } : { list: [] });
@@ -84,6 +88,19 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
       // Revoking everything also closes its envelope: what is left stays yours.
       if (ENVELOPES_ENABLED) await send({ action: 'ENVELOPE_COIN_RETURN', originator: r.originator }).catch(() => null);
     }
+    setBusy('');
+    await load();
+  };
+
+  const tokenViewsFor = (r: ConnectionRow) =>
+    tokenViews[r.host] ?? (r.originator ? tokenViews[r.originator] : undefined);
+  const revokeTokenViews = async (r: ConnectionRow) => {
+    setBusy(`tv:${r.host}`);
+    setError('');
+    const res = await send({ action: 'SITE_TOKEN_CONSENT_REVOKE', originator: r.originator ?? r.host }).catch(
+      (e) => ({ success: false, error: String(e) }) as { success: boolean; error?: string },
+    );
+    if (!res.success) setError(res.error || 'Could not revoke');
     setBusy('');
     await load();
   };
@@ -177,6 +194,26 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
               />
               Use this site&apos;s theme
             </label>
+            {(() => {
+              const ids = tokenViewsFor(r);
+              if (!ids?.length) return null;
+              return (
+                <div className="flex items-center gap-2 mt-2" data-testid="connection-token-views">
+                  <span className="text-xs flex-1" style={{ color: '#fff' }}>
+                    Sees your balance of {ids.length} {ids.length === 1 ? 'token' : 'tokens'}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={busy === `tv:${r.host}`}
+                    onClick={() => void revokeTokenViews(r)}
+                    className="text-xs px-3 py-1 rounded-full cursor-pointer bg-transparent"
+                    style={{ color: GOLD, border: `1px solid ${LINE}`, minHeight: 32 }}
+                  >
+                    {busy === `tv:${r.host}` ? 'Revoking…' : 'Revoke'}
+                  </button>
+                </div>
+              );
+            })()}
             {ENVELOPES_ENABLED &&
               (() => {
                 const env = envelopeFor(r);

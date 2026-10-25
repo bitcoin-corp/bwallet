@@ -26,6 +26,7 @@ import {
   SITE_TOKEN_RECEIVE,
   _ticketsFor,
   guardSiteTokens,
+  memoryConsentStore,
   parseReceiveKeyID,
   readTokenTransfer,
 } from './siteTokens';
@@ -721,5 +722,18 @@ describe('site tokens: deploy + icon', () => {
       address: a,
     });
     expect(readImageInscription(inscribe('text/html', [9], a).toHex())).toBeNull();
+  });
+});
+
+describe('site tokens: list consent can be revoked', () => {
+  test('memory store lists and forgets one site only', async () => {
+    const st = memoryConsentStore();
+    await st.add('a.com', 'x');
+    await st.add('a.com', 'y');
+    await st.add('b.com', 'x');
+    expect(await st.list()).toEqual({ 'a.com': ['x', 'y'], 'b.com': ['x'] });
+    await st.forget('a.com');
+    expect(await st.has('a.com', 'x')).toBe(false);
+    expect(await st.has('b.com', 'x')).toBe(true);
   });
 });

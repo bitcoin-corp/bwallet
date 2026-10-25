@@ -1,4 +1,5 @@
 /* global chrome */
+import { chromeConsentStore } from './services/siteTokens';
 import {
   RECONNECT_ID_PREFIX,
   RECONNECT_STATE_KEY,
@@ -2271,6 +2272,8 @@ if (!(
       'PERMISSIONS_QUERY_SPENT',
       'PERMISSIONS_REVOKE_ONE',
       'PERMISSIONS_REVOKE_ALL',
+      'SITE_TOKEN_CONSENT_LIST',
+      'SITE_TOKEN_CONSENT_REVOKE',
       // Settings (popup internal)
       'UPDATE_FEE_RATE',
       // Address management (popup internal)
@@ -2692,6 +2695,25 @@ if (!(
         case 'PERMISSIONS_REVOKE_ALL':
           processPermissionsRevokeAll(message, sendResponse);
           return true;
+        // Connections: which sites may see which token balances (services/siteTokens.ts), and revoking that alone.
+        case 'SITE_TOKEN_CONSENT_LIST':
+          chromeConsentStore()
+            .list()
+            .then((data) => sendResponse({ type: message.action, success: true, data }))
+            .catch((e: unknown) => sendResponse({ type: message.action, success: false, error: String(e) }));
+          return true;
+        case 'SITE_TOKEN_CONSENT_REVOKE': {
+          const o = (message as { originator?: unknown }).originator;
+          if (typeof o !== 'string' || !o) {
+            sendResponse({ type: message.action, success: false, error: 'No site' });
+            return true;
+          }
+          chromeConsentStore()
+            .forget(normalizeOriginator(o))
+            .then(() => sendResponse({ type: message.action, success: true }))
+            .catch((e: unknown) => sendResponse({ type: message.action, success: false, error: String(e) }));
+          return true;
+        }
         case 'GET_DEPOSIT_ADDRESSES': {
           startupInitPromise.then(() => {
             if (!accountContext) {
@@ -3606,6 +3628,8 @@ if (!(
       // Session memory too: its basket-read No's and its manifest sheet (services/sessionDenials.ts).
       await basketDenials.forget(site);
       manifestOnce.forget(site);
+      // "Let this site see my $SYM balance" answers (services/siteTokens.ts) go too: it must ask again.
+      await chromeConsentStore().forget(site);
       await accountContext?.envelopes.close(site);
       await updateStreamState((st) => ({ state: revokeGrantsForOriginator(st, site, Date.now()), result: undefined }));
       // Grants are per account; a device-wide pairing is withdrawn from the other accounts' stores too.
