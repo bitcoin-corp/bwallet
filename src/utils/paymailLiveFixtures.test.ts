@@ -43,15 +43,25 @@ test('bwalletX.X@bwalletX.com (any case) resolves with a signed binding and pass
   expect(destinationFor(r, 'bsv')).toEqual({ ok: true, to: 'bwalletx.x@bwalletx.com' });
 
   globalThis.fetch = live as never;
-  const wallet = { createAction: async () => { throw new Error('reached-signing'); } };
-  const res = await sendBsv.execute({ wallet } as never, { requests: [{ paymail: 'bwalletx.x@bwalletx.com', satoshis: 1000 }] });
+  const wallet = {
+    createAction: async () => {
+      throw new Error('reached-signing');
+    },
+  };
+  const res = await sendBsv.execute({ wallet } as never, {
+    requests: [{ paymail: 'bwalletx.x@bwalletx.com', satoshis: 1000 }],
+  });
   expect(res.error).toBe('reached-signing'); // every #97 check passed; only the (fake) wallet stopped it
 });
 
 test('an alias our host does not know is "no such user" at lookup, not a 404 at send', async () => {
-  await expect(resolvePaymail(live as never, 'bwalletx@bwalletx.com')).rejects.toThrow('No bWalletX user called bwalletx@bwalletx.com');
+  await expect(resolvePaymail(live as never, 'bwalletx@bwalletx.com')).rejects.toThrow(
+    'No bWalletX user called bwalletx@bwalletx.com',
+  );
   globalThis.fetch = live as never;
-  const res = await sendBsv.execute({ wallet: {} } as never, { requests: [{ paymail: 'bwalletx@bwalletx.com', satoshis: 1000 }] });
+  const res = await sendBsv.execute({ wallet: {} } as never, {
+    requests: [{ paymail: 'bwalletx@bwalletx.com', satoshis: 1000 }],
+  });
   expect(res.error).toBe('Payment refused: No bWalletX user called bwalletx@bwalletx.com. Nothing was sent.');
   expect(posts).toEqual([]); // never asked the host for a destination
 });

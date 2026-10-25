@@ -1,1 +1,13 @@
-{"bsvalias":"1.0","handle":"bwalletx.x@bwalletx.com","pubkey":"029c1abd9470d485719c512c0d704e6ccf6c1533461eb5884a5d09a6dc3dca55b7","binding":{"alias":"bwalletx.x","identityKey":"029c1abd9470d485719c512c0d704e6ccf6c1533461eb5884a5d09a6dc3dca55b7","seq":1,"timestamp":"1792544194215","signature":"3045022100aed668265b5cd55f3a20ee539d11e154a86c59174c822ff096443680c4d23dfd022054c2a2ca3bbf6d8ac20da8751775c2c5fc2a9ea86855bcc609241d6cf9badffc","scheme":"bwallet-paymail/v1 bind; BRC-43 protocol [2,\"bwallet paymail\"] keyID \"1\", counterparty anyone"}}
+{
+  "bsvalias": "1.0",
+  "handle": "bwalletx.x@bwalletx.com",
+  "pubkey": "029c1abd9470d485719c512c0d704e6ccf6c1533461eb5884a5d09a6dc3dca55b7",
+  "binding": {
+    "alias": "bwalletx.x",
+    "identityKey": "029c1abd9470d485719c512c0d704e6ccf6c1533461eb5884a5d09a6dc3dca55b7",
+    "seq": 1,
+    "timestamp": "1792544194215",
+    "signature": "3045022100aed668265b5cd55f3a20ee539d11e154a86c59174c822ff096443680c4d23dfd022054c2a2ca3bbf6d8ac20da8751775c2c5fc2a9ea86855bcc609241d6cf9badffc",
+    "scheme": "bwallet-paymail/v1 bind; BRC-43 protocol [2,\"bwallet paymail\"] keyID \"1\", counterparty anyone"
+  }
+}

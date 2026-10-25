@@ -1,1 +1,12 @@
-{"bsvalias":"1.0","capabilities":{"pki":"https://pay.bwallet.space/api/paymail/id/{alias}@{domain.tld}","f12f968c92d6":"https://pay.bwallet.space/api/paymail/profile/{alias}@{domain.tld}","a9f510c16bde":"https://pay.bwallet.space/api/paymail/verify/{alias}@{domain.tld}/{pubkey}","2a40af698840":"https://pay.bwallet.space/api/paymail/p2p-destination/{alias}@{domain.tld}","5f1323cddf31":"https://pay.bwallet.space/api/paymail/receive-tx/{alias}@{domain.tld}","5c55a7fdb7bb":"https://pay.bwallet.space/api/paymail/receive-beef/{alias}@{domain.tld}","ordAddress":"https://pay.bwallet.space/api/paymail/ord/{alias}@{domain.tld}"}}
+{
+  "bsvalias": "1.0",
+  "capabilities": {
+    "pki": "https://pay.bwallet.space/api/paymail/id/{alias}@{domain.tld}",
+    "f12f968c92d6": "https://pay.bwallet.space/api/paymail/profile/{alias}@{domain.tld}",
+    "a9f510c16bde": "https://pay.bwallet.space/api/paymail/verify/{alias}@{domain.tld}/{pubkey}",
+    "2a40af698840": "https://pay.bwallet.space/api/paymail/p2p-destination/{alias}@{domain.tld}",
+    "5f1323cddf31": "https://pay.bwallet.space/api/paymail/receive-tx/{alias}@{domain.tld}",
+    "5c55a7fdb7bb": "https://pay.bwallet.space/api/paymail/receive-beef/{alias}@{domain.tld}",
+    "ordAddress": "https://pay.bwallet.space/api/paymail/ord/{alias}@{domain.tld}"
+  }
+}

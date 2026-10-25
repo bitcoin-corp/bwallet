@@ -150,7 +150,10 @@ const payeeKey = async (paymail: string, ours: boolean): Promise<string | undefi
     if (!d.ok) throw refused(d.error.replace(/\.$/, ''));
     return r.pubkey;
   } catch (e) {
-    if (e instanceof PaymentOutputMismatch || ours) throw e instanceof PaymentOutputMismatch ? e : refused((e instanceof Error ? e.message : String(e)).replace(/\.$/, ''));
+    if (e instanceof PaymentOutputMismatch || ours)
+      throw e instanceof PaymentOutputMismatch
+        ? e
+        : refused((e instanceof Error ? e.message : String(e)).replace(/\.$/, ''));
     return undefined; // a third-party host we can't look up: only its derivation (if any) could be checked
   }
 };
