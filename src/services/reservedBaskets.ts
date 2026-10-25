@@ -6,6 +6,8 @@
  *
  * The permissions manager upstream reserves only 'default' and names starting 'admin'.
  */
+import { takeTokenInsertionTicket } from './siteTokens';
+
 /** Same value as permissionBundle.TRUST_SITE_BASKET (not imported: permissionBundle imports this file). */
 const TRUST_SITE_BASKET = 'bwalletx.trust-site';
 /** The "Block this site" record: kept in the same store so "Forget site" in Settings removes it (unblocks). */
@@ -69,7 +71,14 @@ export function guardReservedBaskets<T extends object>(manager: T, adminOriginat
   const m = manager as Record<string, unknown>;
   const ensure = m.ensureBasketAccess;
   if (typeof ensure === 'function') {
-    m.ensureBasketAccess = async (args: { originator?: string; basket?: unknown }) => {
+    m.ensureBasketAccess = async (args: { originator?: string; basket?: unknown; usageType?: unknown }) => {
+      // A token delivery siteTokens.ts checked and rewrote (to a receive key the wallet gave this site): this one
+      // insertion only, no grant stored, no sheet (docs/SITE-TOKENS.md). Listing and relinquishing stay refused.
+      if (
+        args?.originator !== adminOriginator &&
+        takeTokenInsertionTicket(args?.originator, args?.basket, args?.usageType)
+      )
+        return true;
       if (args?.originator !== adminOriginator && isReservedBasket(args?.basket))
         throw new Error(`${RESERVED_BASKET_REFUSAL}: "${String(args.basket)}"`);
       return (ensure as (a: unknown) => Promise<boolean>).call(manager, args);
