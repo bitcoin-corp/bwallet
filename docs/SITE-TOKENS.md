@@ -84,11 +84,13 @@ Delivering later (graduation, airdrop, a refund):
 await wallet.internalizeAction({
   tx: atomicBeef,
   description: 'Your $SYM',
-  outputs: [{
-    outputIndex: 0,
-    protocol: 'basket insertion',
-    insertionRemittance: { basket: 'bsv21', customInstructions: JSON.stringify({ keyID }) },
-  }],
+  outputs: [
+    {
+      outputIndex: 0,
+      protocol: 'basket insertion',
+      insertionRemittance: { basket: 'bsv21', customInstructions: JSON.stringify({ keyID }) },
+    },
+  ],
 });
 ```
 
@@ -101,9 +103,9 @@ The site proposes the transaction and lists the user's token coins as inputs by 
 ```ts
 const { signableTransaction } = await wallet.createAction({
   description: 'Sell 1,000 $SYM to the TokenBlaster curve for 0.00012 BSV',
-  inputBEEF,                                   // your pool coins' BEEF; the wallet has its own coins
+  inputBEEF, // your pool coins' BEEF; the wallet has its own coins
   inputs: [
-    ...poolInputs,                             // your inputs, you unlock them
+    ...poolInputs, // your inputs, you unlock them
     { outpoint: '<txid>.<vout>', unlockingScriptLength: 108, inputDescription: 'your 1,000 $SYM' },
   ],
   outputs: [
@@ -129,15 +131,15 @@ await wallet.signAction({ reference: signableTransaction.reference, spends: pool
 
 ## What a site still cannot do
 
-| Attempt | Answer |
-| --- | --- |
-| `getPublicKey` / `createSignature` / any crypto call with `[0,'onesat']` | `This protocol is reserved for bWalletX itself: "onesat"` |
-| `createSignature` (or encrypt, HMAC, linkage) with `[1,'bwalletx token receive']` | `bwalletx token receive is for getPublicKey only` |
-| `listOutputs` / `relinquishOutput` on `bsv21` | `This basket is reserved for bWalletX itself: "bsv21"` |
+| Attempt                                                                                                             | Answer                                                                            |
+| ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `getPublicKey` / `createSignature` / any crypto call with `[0,'onesat']`                                            | `This protocol is reserved for bWalletX itself: "onesat"`                         |
+| `createSignature` (or encrypt, HMAC, linkage) with `[1,'bwalletx token receive']`                                   | `bwalletx token receive is for getPublicKey only`                                 |
+| `listOutputs` / `relinquishOutput` on `bsv21`                                                                       | `This basket is reserved for bWalletX itself: "bsv21"`                            |
 | Output into `bsv21` to an address the wallet did not give this site, a different token id, 2+ sats, or extra script | `bWalletX takes a token into your wallet only to a receive key it gave this site` |
-| Fake symbol, icon, amount or key in `customInstructions` | Ignored: the wallet writes the record from the script and its own key |
-| Outputs into `1sat`, `lock`, `opns`, `default`… | Refused as before (`reservedBaskets.ts`) |
-| Signing the wallet's token inputs itself | Refused; the wallet signs them after the sheet |
+| Fake symbol, icon, amount or key in `customInstructions`                                                            | Ignored: the wallet writes the record from the script and its own key             |
+| Outputs into `1sat`, `lock`, `opns`, `default`…                                                                     | Refused as before (`reservedBaskets.ts`)                                          |
+| Signing the wallet's token inputs itself                                                                            | Refused; the wallet signs them after the sheet                                    |
 
 ## Other BRC-100 wallets
 
