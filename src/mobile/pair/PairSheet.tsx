@@ -26,7 +26,16 @@ type Stage =
  * "Scan to connect": point the camera at a site's bWallet QR, check the site, compare the 4-digit
  * code, Connect. After that the site's requests appear as normal bWallet approval prompts.
  */
-export default function PairSheet({ onClose, initial }: { onClose: () => void; initial?: string }) {
+export default function PairSheet({
+  onClose,
+  initial,
+  allowCli = false,
+}: {
+  onClose: () => void;
+  initial?: string;
+  /** Only screens where the owner chose to pair the CLI (Agents, Settings) may accept a CLI link. */
+  allowCli?: boolean;
+}) {
   const [stage, setStage] = useState<Stage>(initial ? { k: 'joining' } : { k: 'scan' });
   const [paste, setPaste] = useState('');
   // Extension: a desktop can't scan its own screen, so paste comes first; the webcam is opt-in.
@@ -40,7 +49,7 @@ export default function PairSheet({ onClose, initial }: { onClose: () => void; i
 
   const start = (text: string) => {
     setStage({ k: 'joining' });
-    beginPairing(text)
+    beginPairing(text, { allowCli })
       .then((p) => setStage({ k: 'confirm', p }))
       .catch((e: unknown) => setStage({ k: 'error', m: e instanceof Error ? e.message : String(e) }));
   };

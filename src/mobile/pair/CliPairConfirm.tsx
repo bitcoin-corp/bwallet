@@ -113,6 +113,10 @@ export const CliPairConfirm = ({
       <p className="mt-1 text-sm" style={{ color: MUTED }}>
         A program on a computer (CLI or an AI agent through MCP)
       </p>
+      <p className="mt-3 text-sm font-semibold" style={{ color: '#FDA29B' }}>
+        Only pair if you just ran <span className="font-mono">bwalletx login</span> on your own computer. Any program
+        can call itself the CLI; a website or a stranger asking you to scan this is a scam.
+      </p>
       <p className="mt-5 text-sm" style={{ color: MUTED }}>
         Check the terminal shows the same code:
       </p>

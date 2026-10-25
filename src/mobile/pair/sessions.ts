@@ -37,6 +37,8 @@ import { PAIR_MIRROR_KEY, toPairMirror } from '../../services/pairedPromptGuard'
  * site must show its QR again. Distinct from ERR_PERMISSION_DENIED, which only ever means the user said no.
  * Sent as a call's error `{ code: 'REPAIR_NEEDED', message }` and as the reason of the phone's close frame.
  */
+export const CLI_ONLY_FROM_SETTINGS =
+  'To pair the bWalletX CLI, open Agents › Pair the CLI (or Settings › Paired websites) and scan from there. Only do this if you just ran `bwalletx login` on your own computer.';
 export const REPAIR_NEEDED_CODE = 'REPAIR_NEEDED';
 export const REPAIR_NEEDED_MESSAGE = 'This pairing has ended. Scan the QR code on the site again to reconnect.';
 
@@ -520,13 +522,17 @@ export function forget(c: string, notify = true) {
  * Start pairing from a scanned QR. Resolves with what the confirm screen needs; the session is
  * stored only when the user taps Connect.
  */
-export function beginPairing(scanned: string): Promise<PendingPair> {
+export function beginPairing(scanned: string, opts: { allowCli?: boolean } = {}): Promise<PendingPair> {
   let link: PairLink;
   try {
     link = parsePairUrl(scanned, undefined, { allowLocalRelay: ALLOW_LOCAL_RELAY });
   } catch (e) {
     return Promise.reject(e);
   }
+  // b-Aware 25 Oct 2026: the CLI origin is only a claim (any program can send that Origin header to the relay), so
+  // a link that says "CLI" proves nothing. A CLI pairing is accepted only from the screens where the owner chose to
+  // pair the CLI themselves (Agents, Settings), never from the general scanner or a link that opened the app.
+  if (link.o === CLI_ORIGIN && !opts.allowCli) return Promise.reject(new Error(CLI_ONLY_FROM_SETTINGS));
   const P = PrivateKey.fromRandom();
   const claim = newClaim();
   return new Promise((resolve, reject) => {
@@ -569,10 +575,11 @@ export function beginPairing(scanned: string): Promise<PendingPair> {
       resolve({
         origin: f.verifiedOrigin,
         code,
-        cli: f.verifiedOrigin === CLI_ORIGIN,
+        cli: f.verifiedOrigin === CLI_ORIGIN && !!opts.allowCli,
         proven,
         confirm: (agent?: AgentGrant) => {
-          if (f.verifiedOrigin === CLI_ORIGIN && !agent) return ws.close(); // a CLI must be bound to an agent account
+          if (f.verifiedOrigin === CLI_ORIGIN && (!agent || !opts.allowCli)) return ws.close(); // a CLI must be bound to an agent account
+          if (agent && f.verifiedOrigin !== CLI_ORIGIN) return ws.close(); // only a CLI pairing carries an agent grant
           const stored: StoredSession = {
             c: link.c,
             r: link.r,

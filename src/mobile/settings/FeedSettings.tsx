@@ -1254,7 +1254,7 @@ export const FeedSettings = ({ Section, Row, Divider, part }: Props) => {
       )}
       {screen === 'scan' && (
         <Suspense fallback={null}>
-          <PairSheet onClose={() => setScreen('paired')} />
+          <PairSheet allowCli onClose={() => setScreen('paired')} />
         </Suspense>
       )}
     </>

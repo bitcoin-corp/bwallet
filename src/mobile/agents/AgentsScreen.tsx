@@ -436,7 +436,7 @@ const AgentAccountScreen = ({ id, onClose }: { id: string; onClose: () => void }
         }
         {scanning && (
           <Suspense fallback={null}>
-            <PairSheet onClose={() => setScanning(false)} />
+            <PairSheet allowCli onClose={() => setScanning(false)} />
           </Suspense>
         )}
 
