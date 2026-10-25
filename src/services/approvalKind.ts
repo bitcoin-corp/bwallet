@@ -34,14 +34,18 @@ const isSignInLine = (l: SheetModel['lines'][number]): boolean => l.signIn === t
 export const privateTitleLabel = (model: Pick<SheetModel, 'lines'>): string =>
   model.lines.find((l) => l.privateLabel)?.privateLabel ?? 'data';
 
-/** "bchatx.com" → "bchatx"; "www.app.example.co.uk" → "app.example". Display only. */
+/**
+ * "bchatx.com" → "bchatx"; "example.co.uk" → "example". Display only.
+ * Anything with more labels is shown whole: dropping two labels whenever the second-last was short let
+ * "tokenblaster.com.ab1.io" read as "tokenblaster.com" in a sheet's headline (bridge audit 25 Oct 2026).
+ */
 export const siteName = (originator: string): string => {
   const host = originator
     .replace(/^[a-z]+:\/\//i, '')
     .split(/[/:?#]/)[0]
     .replace(/^www\./i, '');
   const parts = host.split('.');
-  if (parts.length <= 1) return host;
-  const drop = parts.length > 2 && parts[parts.length - 2].length <= 3 ? 2 : 1;
-  return parts.slice(0, parts.length - drop).join('.') || host;
+  if (parts.length === 2) return parts[0] || host;
+  if (parts.length === 3 && parts[1].length <= 3 && parts[2].length === 2) return parts[0] || host;
+  return host;
 };

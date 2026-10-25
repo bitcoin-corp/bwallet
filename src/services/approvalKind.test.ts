@@ -113,7 +113,12 @@ describe('siteName', () => {
   test('strips scheme, www and TLD', () => {
     expect(siteName('bchatx.com')).toBe('bchatx');
     expect(siteName('https://www.twetch.com/path')).toBe('twetch');
-    expect(siteName('shop.example.co.uk')).toBe('shop.example');
+    expect(siteName('example.co.uk')).toBe('example');
+    expect(siteName('shop.example.co.uk')).toBe('shop.example.co.uk');
     expect(siteName('localhost:3000')).toBe('localhost');
+  });
+  test('never shortens a lookalike host to another site', () => {
+    expect(siteName('tokenblaster.com.ab1.io')).toBe('tokenblaster.com.ab1.io');
+    expect(siteName('bchatx.com.co.uk')).toBe('bchatx.com.co.uk');
   });
 });
