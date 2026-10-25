@@ -15,6 +15,7 @@ import {
   paymailConfig,
   nameChangeBlocked,
   paymailAvailable,
+  paymailAvailability,
   paymailEnabled,
   PAYMAIL_ALIAS_RE,
   SOCIAL_ALIAS_RE,
@@ -74,7 +75,7 @@ const BORDER = '#2b2f36';
 const GRAY = '#98A2B3';
 
 const f = (u: string, i?: RequestInit) => fetch(u, i);
-type AliasState = 'idle' | 'checking' | 'free' | 'mine' | 'taken' | 'invalid' | 'error';
+type AliasState = 'idle' | 'checking' | 'free' | 'mine' | 'taken' | 'reserved' | 'invalid' | 'error';
 
 export const HandleFlow = ({
   onClose,
@@ -275,11 +276,13 @@ export const HandleFlow = ({
     setState('checking');
     let live = true;
     const t = setTimeout(() => {
-      paymailAvailable(f, alias)
-        .then(async (free) => {
-          if (free) return live && setState('free');
+      apiContext.wallet
+        .getPublicKey({ identityKey: true })
+        .then(async ({ publicKey }) => {
+          const a = await paymailAvailability(f, alias, publicKey);
+          if (a.state === 'free' || a.state === 'mine' || a.state === 'reserved') return live && setState(a.state);
+          if (a.state === 'invalid') return live && setState('invalid');
           // Taken — by this wallet? Then it's ours (e.g. claimed a moment ago, or a restored wallet).
-          const { publicKey } = await apiContext.wallet.getPublicKey({ identityKey: true });
           const mine =
             (await lookupPaymail(f, publicKey).catch(() => undefined))?.split('@')[0] === alias ||
             (await fetch(`${BWALLET_PAYMAIL_API}/api/paymail/id/${alias}@${BWALLET_PAYMAIL_DOMAIN}`)
@@ -353,6 +356,7 @@ export const HandleFlow = ({
     free: owned ? 'Yours ✓' : 'Available',
     mine: 'Yours ✓',
     taken: 'Taken. Try another.',
+    reserved: 'Reserved. This name is kept for the bWalletX team. Try another.',
     invalid: 'Use a-z, 0-9, - or _',
     error: "Couldn't check. Check your connection.",
   };
@@ -497,7 +501,7 @@ export const HandleFlow = ({
             >
               {stateText[state]}
             </span>
-            {!!alias && SIBLING_PAYMAIL_DOMAINS.length > 0 && (
+            {!!alias && (state === 'free' || state === 'mine') && SIBLING_PAYMAIL_DOMAINS.length > 0 && (
               <span className="text-[11px]" style={{ color: GRAY }}>
                 Also yours, same key: {SIBLING_PAYMAIL_DOMAINS.map((d) => `${alias}@${d}`).join(', ')}
               </span>

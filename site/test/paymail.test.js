@@ -798,3 +798,65 @@ describe('b_feedback 67: destinations the payer can check', () => {
     expect((await h.ord({ handle: 'eve@pay.test' }))[1].ordProof).toBeUndefined();
   });
 });
+
+describe('reserved alias held for a designated key', () => {
+  const setup = () => {
+    const owner = user();
+    const store = memStore();
+    const h = pm.makeHandlers({ store, env: ENV, reservedOwners: { bwalletx: owner.identityKey } });
+    return { owner, store, h };
+  };
+  test('the real allowlist maps bwalletx to the brand key only', () => {
+    expect(pm.RESERVED_OWNERS).toEqual({
+      bwalletx: '029c1abd9470d485719c512c0d704e6ccf6c1533461eb5884a5d09a6dc3dca55b7',
+    });
+  });
+  test('availability shows Reserved for everyone else, and for no key at all', async () => {
+    const { h } = setup();
+    const other = user();
+    for (const key of [undefined, other.identityKey]) {
+      const [s, r] = await h.available({ alias: 'bwalletx', key });
+      expect(s).toBe(200);
+      expect(r.available).toBe(false);
+      expect(r.reason).toBe('reserved');
+      expect(r.message).toContain('kept for the bWalletX team');
+    }
+    expect((await h.available({ alias: 'admin', key: other.identityKey }))[1].reason).toBe('reserved');
+    expect((await h.available({ alias: 'freename', key: other.identityKey }))[1].available).toBe(true);
+    expect((await h.available({ alias: 'a.b', key: other.identityKey }))[1].reason).toBe('invalid');
+  });
+  test('availability is open for the designated key', async () => {
+    const { h, owner } = setup();
+    expect((await h.available({ alias: 'bwalletx', key: owner.identityKey }))[1]).toEqual({
+      alias: 'bwalletx',
+      available: true,
+      reason: null,
+    });
+  });
+  test('the designated key claims it with a valid signature; others are refused', async () => {
+    const { h, owner, store } = setup();
+    const other = user();
+    expect((await h.register({}, await other.sign('register', { alias: 'bwalletx' })))[1].error).toBe(
+      'That alias is reserved',
+    );
+    const [s, r] = await h.register({}, await owner.sign('register', { alias: 'bwalletx' }));
+    expect(s).toBe(200);
+    expect(r.paymail).toBe('bwalletx@pay.test');
+    expect(store.aliases.get('bwalletx').identity_key).toBe(owner.identityKey);
+    expect((await h.available({ alias: 'bwalletx', key: owner.identityKey }))[1].reason).toBe('mine');
+    expect((await h.available({ alias: 'bwalletx', key: other.identityKey }))[1].reason).toBe('reserved');
+  });
+  test('a forged signature for the designated key fails', async () => {
+    const { h, owner, store } = setup();
+    const forger = user();
+    const body = await forger.sign('register', { alias: 'bwalletx' });
+    const [s, r] = await h.register({}, { ...body, identityKey: owner.identityKey });
+    expect(s).toBe(401);
+    expect(r.error).toBe('Bad signature');
+    expect(store.aliases.has('bwalletx')).toBe(false);
+  });
+  test('the social form bwalletx.x stays reserved even for the designated key', async () => {
+    const { h, owner } = setup();
+    expect((await h.register({}, await owner.sign('register', { alias: 'bwalletx.x' })))[0]).toBe(400);
+  });
+});

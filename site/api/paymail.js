@@ -21,6 +21,7 @@ const ROUTES = {
   'receive-beef': ['POST', 'receive'],
   register: ['POST', 'register'],
   lookup: ['GET', 'lookup'],
+  available: ['GET', 'available'],
   social: ['GET', 'social'],
   inbox: ['POST', 'inbox'],
   ack: ['POST', 'ack'],

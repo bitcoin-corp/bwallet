@@ -219,6 +219,15 @@ function parseHandle(handle, env = process.env) {
 
 const RESERVED_MSG = 'That alias is reserved';
 /**
+ * A reserved plain alias that one designated identity key may claim (owner, 25 Oct 2026). The claim still
+ * needs the normal signed register from that key; nobody else can take the name. Identity keys are public.
+ */
+const RESERVED_OWNERS = Object.freeze({
+  // The bWalletX brand account.
+  bwalletx: '029c1abd9470d485719c512c0d704e6ccf6c1533461eb5884a5d09a6dc3dca55b7',
+});
+const RESERVED_EXPLAIN = 'This name is kept for the bWalletX team, so it can’t be claimed.';
+/**
  * Everything after a dot is the system's (owner, 12 Oct 2026; same rule as bit-sign lib/handle-tld.ts).
  * A person never claims a dotted name. The only dotted aliases here are `.x` / `.gmail`, issued by the
  * Continue with X / Google path (ticket-gated below). `.agent` (token agents) and `.bot` (system bots)
@@ -421,6 +430,7 @@ function makeHandlers({
   broadcast,
   now = () => Date.now(),
   socialCheck = ticketSocialCheck,
+  reservedOwners = RESERVED_OWNERS,
   // Off under `bun test` (NODE_ENV=test) so unit tests never call the network; tests inject their own.
   renamed = env.NODE_ENV === 'test' || process.env.NODE_ENV === 'test'
     ? async () => null
@@ -876,7 +886,8 @@ function makeHandlers({
         f.ordAddress && body.ordProof ? await checkOrdProof(identityKey, f.ordAddress, body.ordProof) : null;
       if (ordProof === false) return [400, { error: 'Bad ordAddress proof' }];
       const taken = await store.getAlias(alias);
-      if (bad === RESERVED_MSG && !(taken && String(taken.identity_key).toLowerCase() === identityKey))
+      const designated = reservedOwners[alias] === identityKey;
+      if (bad === RESERVED_MSG && !designated && !(taken && String(taken.identity_key).toLowerCase() === identityKey))
         return [400, { error: bad }];
       // A verified name needs proof only to claim it; its owner can update the profile without signing in again.
       const ownsIt = taken && String(taken.identity_key).toLowerCase() === identityKey;
@@ -1010,6 +1021,24 @@ function makeHandlers({
       for (const k of kinds)
         for (const r of store.listSocial ? await store.listSocial(k) : []) rows.push({ ...r, kind: k });
       return [200, { accounts: rows.map((r) => ({ alias: r.alias, name: r.display_name || null, kind: r.kind })) }];
+    },
+
+    // Same rules as register: what the claim screen shows. `key` (optional) is the asking wallet.
+    available: async (q) => {
+      const alias = String(q.alias || '').toLowerCase();
+      const key = String(q.key || '').toLowerCase();
+      const bad = validAlias(alias);
+      const taken = aliasOk(alias) ? await store.getAlias(alias) : null;
+      const mine = !!taken && String(taken.identity_key).toLowerCase() === key;
+      if (mine) return [200, { alias, available: true, reason: 'mine' }];
+      if (bad === RESERVED_MSG) {
+        if (!(PUBKEY_RE.test(key) && reservedOwners[alias] === key))
+          return [200, { alias, available: false, reason: 'reserved', message: RESERVED_EXPLAIN }];
+      } else if (bad) return [200, { alias, available: false, reason: 'invalid', message: bad }];
+      if (taken) return [200, { alias, available: false, reason: 'taken' }];
+      const fwd = await liveForward(alias);
+      if (fwd && fwd.identity_key !== key) return [200, { alias, available: false, reason: 'taken' }];
+      return [200, { alias, available: true, reason: null }];
     },
 
     lookup: async (q) => {
@@ -1386,6 +1415,7 @@ module.exports = {
   parseHandle,
   parseHandleParts,
   validAlias,
+  RESERVED_OWNERS,
   TOMB_RE,
   MAX_PLAIN_NAMES,
   bitsignHandleOwner,
