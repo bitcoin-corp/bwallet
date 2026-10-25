@@ -10,6 +10,11 @@ describe('siteThemeFor', () => {
   it('refuses an edition on any other site', () => {
     expect(siteThemeFor('https://evil.example', 'npgx')).toBeNull();
     expect(siteThemeFor('https://ninjapunkgirlsx.com.evil.example', 'npgx')).toBeNull();
+    expect(siteThemeFor('https://leannethedark.website', 'leannethedark')).toBe('leannethedark');
+    expect(siteThemeFor('https://www.bchatx.com', 'leannethedark')).toBe('leannethedark');
+    expect(siteThemeFor('https://bmovies.app', 'leannethedark')).toBe('leannethedark');
+    expect(siteThemeFor('https://leannethedark.website.evil.example', 'leannethedark')).toBeNull();
+    expect(siteThemeFor('https://bdnsx.com', 'leannethedark')).toBeNull();
     expect(siteThemeFor('https://bdnsx.com', 'vexvoid')).toBeNull();
   });
 

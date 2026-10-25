@@ -18,6 +18,9 @@ export const EDITION_HOSTS: Readonly<Record<string, readonly string[]>> = {
   npgx: ['ninjapunkgirlsx.com', 'npg-x.com', 'npgx.website'],
   npg: ['ninjapunkgirls.com', 'ninjapunkgirls.store'],
   vexvoid: ['vexvoid.com', 'vexvoid.store', 'v01d.store'],
+  // Hosts only (the meta has no path scope): on bChatX and bMovies only her own pages (/u/leannethedark, her store)
+  // put the meta up; every other page there declares its own pack or none.
+  leannethedark: ['leannethedark.website', 'bchatx.com', 'chat.bwalletx.com', 'bmovies.app'],
 };
 
 const ID = /^[a-z0-9-]{1,32}$/;

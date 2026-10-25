@@ -6,6 +6,7 @@ import npgLogo from './editionArt/npg-card-logo.webp';
 import npgx1 from './editionArt/npgx-card-1.webp';
 import npgx2 from './editionArt/npgx-card-2.webp';
 import scammersCard from './editionArt/scammerscartel-dj-card.webp';
+import leanneCard from './editionArt/leannethedark-card.webp';
 import { TOKENBLASTER_CARD_ART } from '../theme/tokenblasterShopX';
 
 /**
@@ -19,6 +20,7 @@ export const EDITION_PATTERN_IDS = [
   'npg',
   'npgx',
   'scammerscartel',
+  'leannethedark',
   'tokenblaster',
   'terrornode',
   ...EMOJI_PACK_IDS,
@@ -62,12 +64,14 @@ export function vexFieldSvg(variant = 0): string {
   );
 }
 
-const RASTER: Record<'npg' | 'npgx' | 'scammerscartel' | 'tokenblaster' | 'terrornode', readonly string[]> = {
+const RASTER: Record<'npg' | 'npgx' | 'scammerscartel' | 'leannethedark' | 'tokenblaster' | 'terrornode', readonly string[]> = {
   // TokenBlaster's own card art (tokenblaster.lol/brand), empty in a store build.
   tokenblaster: TOKENBLASTER_CARD_ART.tokenblaster ?? [],
   terrornode: TOKENBLASTER_CARD_ART.terrornode ?? [],
   // Scammers Cartel: a crop of the community's own DJ raccoon banner (scammerscartel.com hero-poster).
   scammerscartel: [scammersCard],
+  // Leanne The Dark: a crop of her bChatX profile banner (bchatx.com/api/public/banner/leannethedark), bundled.
+  leannethedark: [leanneCard],
   // Owner 17 Oct 2026: the NPG card is the pink NPG logo. Characters come later as 3,334 one-per-character NFT packs.
   npg: [npgLogo],
   npgx: [npgx1, npgx2],

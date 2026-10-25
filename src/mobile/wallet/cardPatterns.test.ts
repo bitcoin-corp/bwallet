@@ -48,7 +48,7 @@ describe('edition card art', () => {
     const { readdirSync, statSync } = await import('node:fs');
     const dir = new URL('./editionArt/', import.meta.url).pathname;
     const files = readdirSync(dir);
-    expect(files.length).toBe(12); // NPG logo card + 2 NPGX + Scammers Cartel card and shop banner + TokenBlaster 2 cards, logo, banner + Terrornode banner, logo, token icon
+    expect(files.length).toBe(13); // NPG logo card + 2 NPGX + Scammers Cartel card and shop banner + Leanne The Dark card + TokenBlaster 2 cards, logo, banner + Terrornode banner, logo, token icon
     for (const f of files) expect(statSync(dir + f).size).toBeLessThan(120_000);
   });
 });

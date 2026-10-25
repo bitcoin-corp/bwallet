@@ -40,6 +40,7 @@ export type PackId =
   | 'npg'
   | 'npgx'
   | 'scammerscartel'
+  | 'leannethedark'
   | 'tokenblaster'
   | 'terrornode'
   | EmojiPackId;
@@ -73,6 +74,7 @@ export type CardPatternId =
   | 'npg'
   | 'npgx'
   | 'scammerscartel'
+  | 'leannethedark'
   | 'tokenblaster'
   | 'terrornode'
   | EmojiPackId;
@@ -405,6 +407,39 @@ const EDITIONS: readonly Accent[] = [
     radius: '10px',
     radiusCard: '14px',
     pattern: 'scammerscartel',
+  },
+  {
+    // Leanne The Dark (owner, 25 Oct 2026): worn while her sites are connected (connectTheme.ts EDITION_HOSTS), never
+    // keyed to a token ($LEANNE is not minted). Her brand reds (#c81e3a, #8a0f22) are below AA on her near-black page,
+    // so they dress lines, trim and glow; buttons and text use lighter reds from her own favicon's ink.
+    ...BASE,
+    id: 'leannethedark',
+    kind: 'theme',
+    group: 'edition',
+    edition: 'Leanne The Dark edition',
+    label: 'Leanne The Dark',
+    blurb: 'Dark art, on-chain.',
+    accent: '#EF4A60',
+    hi: '#FF6B80',
+    lo: '#E8394F',
+    on: '#000000',
+    bg: '#050102',
+    surface: '#0A0203',
+    surface2: '#140508',
+    nav: '#050102',
+    text: '#F5EDEE',
+    muted: '#D9BFC3',
+    line: '#4A0F1A',
+    success: '#7EE2A8',
+    danger: '#FF8A80',
+    shadow: '0 0 24px rgb(200 30 58 / 0.16)',
+    trim: 'rgb(200 30 58 / 0.65)',
+    glow: '0 0 16px rgb(200 30 58 / 0.55), 0 0 3px rgb(138 15 34 / 0.9)',
+    fontHead: SERIF,
+    weightHead: 600,
+    radius: '4px',
+    radiusCard: '8px',
+    pattern: 'leannethedark',
   },
   // TokenBlaster (owner, 25 Oct 2026): bWalletX only, empty in a store build (tokenblasterX.store.ts).
   ...tokenblasterEditions(BASE),
@@ -837,6 +872,7 @@ export const PAID_EDITIONS: readonly string[] = [
   'npg',
   'npgx',
   'scammerscartel',
+  'leannethedark',
   'tokenblaster',
   'terrornode',
   ...EMOJI_PACK_IDS,

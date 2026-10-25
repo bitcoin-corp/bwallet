@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#150406"/>
+      <stop offset="1" stop-color="#050102"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8394f"/>
+      <stop offset="0.55" stop-color="#c81e3a"/>
+      <stop offset="1" stop-color="#8a0f22"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="86" fill="url(#bg)"/>
+  <!-- Serif L drawn as an OUTLINE (no font dependency — the old favicon relied on
+       Georgia, absent on Android/Linux). Short top bracket + long right-running
+       foot: the asymmetry is what makes it read as L, not I, at homescreen size.
+       Glyph sits inside the central 80% so a maskable crop never clips it. -->
+  <path fill="url(#ink)"
+        d="M130 122 L242 122 L242 146 L212 146 L212 344 L380 344 L380 390 L130 390 L130 366 L162 366 L162 146 L130 146 Z"/>
+</svg>

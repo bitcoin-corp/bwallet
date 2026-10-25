@@ -755,6 +755,8 @@
     [style*='background-color: rgb(10, 11, 13)'],
     [style*='background: rgb(10, 18, 28)'],
     [style*='background-color: rgb(10, 18, 28)'],
+    [style*='background: rgb(10, 2, 3)'],
+    [style*='background-color: rgb(10, 2, 3)'],
     [style*='background: rgb(10, 26, 10)'],
     [style*='background-color: rgb(10, 26, 10)'],
     [style*='background: rgb(10, 5, 9)'],
@@ -877,6 +879,8 @@
     [style*='background-color: rgb(20, 22, 26)'],
     [style*='background: rgb(20, 22, 31)'],
     [style*='background-color: rgb(20, 22, 31)'],
+    [style*='background: rgb(20, 5, 8)'],
+    [style*='background-color: rgb(20, 5, 8)'],
     [style*='background: rgb(20, 8, 16)'],
     [style*='background-color: rgb(20, 8, 16)'],
     [style*='background: rgb(21, 19, 11)'],
@@ -1087,6 +1091,8 @@
     [style*='background-color: rgb(46, 46, 46)'],
     [style*='background: rgb(49, 55, 61)'],
     [style*='background-color: rgb(49, 55, 61)'],
+    [style*='background: rgb(5, 1, 2)'],
+    [style*='background-color: rgb(5, 1, 2)'],
     [style*='background: rgb(5, 10, 4)'],
     [style*='background-color: rgb(5, 10, 4)'],
     [style*='background: rgb(5, 13, 9)'],
@@ -1171,6 +1177,8 @@
     [style*='background-color: rgb(7, 4, 15)'],
     [style*='background: rgb(7, 8, 10)'],
     [style*='background-color: rgb(7, 8, 10)'],
+    [style*='background: rgb(74, 15, 26)'],
+    [style*='background-color: rgb(74, 15, 26)'],
     [style*='background: rgb(74, 24, 52)'],
     [style*='background-color: rgb(74, 24, 52)'],
     [style*='background: rgb(74, 34, 53)'],
@@ -1317,6 +1325,20 @@
 :root[data-bw-theme='npgx'] :is(h1, h2) {
   letter-spacing: 0.04em;
   text-shadow: 0 0 10px rgb(255 45 58 / 0.55);
+}
+
+/* Leanne The Dark: serif headings, blood-red glow on near-black. */
+:root[data-bw-theme='leannethedark'] body {
+  background-image: radial-gradient(110% 55% at 0% 0%, rgb(200 30 58 / 0.12), transparent 60%);
+  background-attachment: fixed;
+}
+:root[data-bw-theme='leannethedark'] .bw-wcard-face.is-themed {
+  box-shadow:
+    0 0 20px rgb(200 30 58 / 0.3),
+    inset 0 0 0 1px var(--bw-trim);
+}
+:root[data-bw-theme='leannethedark'] :is(h1, h2) {
+  text-shadow: 0 0 10px rgb(138 15 34 / 0.7);
 }
 
 /* Media player on light packs (owner, 16 Oct 2026): track titles over the VexVoid stills banner were dark ink on

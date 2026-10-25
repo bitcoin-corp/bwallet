@@ -146,6 +146,7 @@ describe('artist editions', () => {
       'npg',
       'npgx',
       'scammerscartel',
+      'leannethedark',
       'tokenblaster',
       'terrornode',
       ...EMOJI_PACK_IDS,
@@ -155,11 +156,12 @@ describe('artist editions', () => {
       npg: 'Ninja Punk Girls edition',
       npgx: 'NPGX edition',
       scammerscartel: 'Scammers Cartel edition',
+      leannethedark: 'Leanne The Dark edition',
       tokenblaster: 'TokenBlaster edition',
       terrornode: 'TokenBlaster edition',
     };
     // TokenBlaster's packs keep the near-black page from their own theme files (tokenblaster.lol/.well-known).
-    const ownBg: Record<string, string> = { tokenblaster: '#0A0A0C', terrornode: '#05090F' };
+    const ownBg: Record<string, string> = { tokenblaster: '#0A0A0C', terrornode: '#05090F', leannethedark: '#050102' };
     for (const a of EDITION_PACKS.filter((x) => !isEmojiPack(x.id))) {
       expect(a.edition).toBe(credits[a.id as keyof typeof credits]);
       expect(a.scheme).toBe('dark');
