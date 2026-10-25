@@ -40,6 +40,14 @@ frame (XDM reply `{ status: 'error', code: 'ERR_PERMISSION_DENIED', description:
 phone-paired sessions (`{ t: 'res', error: { code: 'ERR_PERMISSION_DENIED', message: 'Permission denied.' } }`).
 Anything else (insufficient funds, locked wallet, network) never carries this code.
 
+Phone-paired sessions have one more code: `REPAIR_NEEDED`. It means the pairing itself has ended (24 hours idle, an
+agent grant expired, Disconnect on the phone, or a different wallet account), not that the user said no. A call on such
+a session answers `{ t: 'res', error: { code: 'REPAIR_NEEDED', message: 'This pairing has ended. Scan the QR code on the
+site again to reconnect.' } }` and the phone then sends `{ t: 'close', reason: 'REPAIR_NEEDED' }`. Show the QR code
+again; don't retry the call. A pairing that is still current keeps its grants across the phone sleeping: the phone
+reopens its relay socket when it comes back to the foreground, so a call that got no answer while it slept can be
+re-sent with the same id (it is answered, never run twice).
+
 ```ts
 try {
   await window.CWI.createAction(args);

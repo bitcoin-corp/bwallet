@@ -28,7 +28,7 @@ import { createMasterBackupGate } from './services/masterBackupGate';
 import { promptsShowInPanel } from './services/panelPrompt';
 import { isSessionExpired } from './utils/lockTimeout';
 import { originatorForOrigin } from './services/originKey';
-import { pairedGrantAllowed, takePendingFor } from './services/pairedPromptGuard';
+import { PAIR_MIRROR_KEY, pairedGrantAllowed, setPairMirror, takePendingFor } from './services/pairedPromptGuard';
 import {
   addGrant,
   isSpendingAuthAction,
@@ -1016,6 +1016,16 @@ const permissionBundler = new PermissionBundler<BundledRequest & BundleRequest>(
   onUpdate: (bundle) => notifyPromptUpdated('bundle', bundle.id),
 });
 let notifyPromptUpdated: (kind: PromptKind, requestID: string) => void = () => undefined;
+
+// Phone pairings (services/pairedPromptGuard.ts): the phone's background is a worker with no localStorage, so it reads
+// the page's session mirror from chrome.storage.local. Without it every Allow for a paired site was denied.
+void chrome.storage.local
+  .get(PAIR_MIRROR_KEY)
+  .then((got) => setPairMirror((got as Record<string, unknown>)[PAIR_MIRROR_KEY]))
+  .catch(() => undefined);
+chrome.storage.onChanged?.addListener((changes, area) => {
+  if (area === 'local' && changes[PAIR_MIRROR_KEY]) setPairMirror(changes[PAIR_MIRROR_KEY].newValue);
+});
 
 // Re-ask on reconnect (services/reconnectGate.ts): after a site's Disconnect, or a day of silence, its next
 // identity-key request opens the reconnect sheet instead of being answered silently.
