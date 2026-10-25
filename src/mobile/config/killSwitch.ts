@@ -106,6 +106,14 @@ export function guardSpending<T extends object>(
       return (original as (...a: unknown[]) => Promise<unknown>).apply(wallet, args);
     };
   }
+  // A signature over a tx digest (hashToDirectlySign) is how escrow, memepool, launchpad and bTrust sign their own
+  // transactions outside createAction: while spending is paused those signatures are refused too (b-Aware 25 Oct).
+  const sign = w.createSignature;
+  if (typeof sign === 'function')
+    w.createSignature = async (...args: unknown[]) => {
+      if ((args[0] as { hashToDirectlySign?: unknown } | undefined)?.hashToDirectlySign !== undefined) await check();
+      return (sign as (...a: unknown[]) => Promise<unknown>).apply(wallet, args);
+    };
   return wallet;
 }
 

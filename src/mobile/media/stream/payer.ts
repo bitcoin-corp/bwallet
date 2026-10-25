@@ -32,6 +32,8 @@ export type PayerDeps = {
   }) => Promise<KeyResponse>;
   now?: () => number;
   onChange?: (s: PayerSnapshot) => void;
+  /** Throws while spending is paused (killSwitch assertNotPaused): checked before every segment payment. */
+  checkSpending: () => Promise<void>;
 };
 
 export class SessionPayer {
@@ -68,6 +70,8 @@ export class SessionPayer {
     const tag = `${trackId}:${segment}`;
     let built: Coin | null = null;
     try {
+      // Session-key payments never pass through createAction: the spending pause is checked here, every segment.
+      await this.deps.checkSpending();
       const payTo = this.next.get(tag) ?? (await this.deps.getPayTo(trackId, segment));
       this.next.delete(tag);
       built = await buildSegmentTx(this.deps.key, this.lastAccepted, payTo.lockingScript, payTo.sats);

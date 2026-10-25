@@ -142,6 +142,7 @@ describe('payer state machine', () => {
     let fail: StreamHttpError | Error | null = null;
     let payToCalls = 0;
     const payer = new SessionPayer({
+      checkSpending: async () => {},
       key,
       coin,
       getPayTo: async (_t, n) => (payToCalls++, payTo(n)),
@@ -178,9 +179,29 @@ describe('payer state machine', () => {
     expect(retried.inputs[0].sourceTXID).toBe(accepted.tx.id('hex'));
   });
 
+  test('b-Aware 25 Oct: paused mid-session, the next segment is never signed or sent', async () => {
+    const key = PrivateKey.fromRandom();
+    let paused = false;
+    const posted: unknown[] = [];
+    const payer = new SessionPayer({
+      checkSpending: async () => {
+        if (paused) throw new Error('Paused for a fix');
+      },
+      key,
+      coin: fund(key, 1000),
+      getPayTo: async (_t, n) => payTo(n),
+      post: async (b) => (posted.push(b), okResponse(b.segment)),
+    });
+    await payer.pay('t', 0);
+    paused = true;
+    await expect(payer.pay('t', 1)).rejects.toThrow('Paused');
+    expect(posted).toHaveLength(1);
+  });
+
   test('a network failure keeps the maybe-broadcast tx as the first sweep candidate', async () => {
     const key = PrivateKey.fromRandom();
     const payer = new SessionPayer({
+      checkSpending: async () => {},
       key,
       coin: fund(key, 1000),
       getPayTo: async (_t, n) => payTo(n),
@@ -197,6 +218,7 @@ describe('payer state machine', () => {
   test('budget used up → out', async () => {
     const key = PrivateKey.fromRandom();
     const payer = new SessionPayer({
+      checkSpending: async () => {},
       key,
       coin: fund(key, SEGMENT_FEE + 1),
       getPayTo: async (_t, n) => payTo(n),
@@ -304,6 +326,7 @@ describe('segment decrypt', () => {
     expect(Array.from(got)).toEqual(segKey);
 
     const payer = new SessionPayer({
+      checkSpending: async () => {},
       key: session,
       coin: fund(session, 1000),
       getPayTo: async (_t, n) => payTo(n),

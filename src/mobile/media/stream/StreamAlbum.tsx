@@ -26,6 +26,7 @@ import { BMUSIC_FUNNEL } from '../../onboarding/funnel/products';
 import { AddFundsSheet } from '../../onboarding/funnel/FunnelSheets';
 import { TipButton } from '../../tip/TipButton';
 import { SHARE_ALBUMS } from '../shareAlbums';
+import { assertNotPaused } from '../../config/killSwitch';
 
 /** The album's free headline track, played from the wallet's own copy (featured.ts) by the page. */
 export type Headline = { playing: boolean; duration?: number; onPlay: () => void };
@@ -205,6 +206,7 @@ export default function StreamAlbum({ headline, autoplay }: { headline: Headline
         getPayTo: (t, n) => getPayTo(t, n),
         post: (b) => postSegment(b),
         onChange: setSnap,
+        checkSpending: () => assertNotPaused('spending'),
       });
       const keys = pickKeySource({ perSecond: new PerSecondKeySource(payer, key) })!;
       const engine = new StreamEngine(m, keys, {

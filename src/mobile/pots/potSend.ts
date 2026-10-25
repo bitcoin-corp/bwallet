@@ -292,6 +292,9 @@ const REFUSED = new Set(['REJECTED', 'DOUBLE_SPEND_ATTEMPTED', 'INVALID', 'MALFO
  * so payDue can safely retry a payment whose first broadcast outcome it never recorded.
  */
 export const broadcastRaw = async (rawTx: string): Promise<void> => {
+  // Checked at broadcast time, not only when the payment started: escrow, partnership, business-agent and pot
+  // payments are signed outside createAction, so this is where the spending pause stops them (b-Aware 25 Oct 2026).
+  await assertNotPaused('spending');
   const r = await svc().submitToStack(Utils.toArray(rawTx, 'hex'));
   if (REFUSED.has(r.txStatus))
     throw new Error(`Payment refused by the network (${r.txStatus}${r.extraInfo ? `: ${r.extraInfo}` : ''})`);

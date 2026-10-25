@@ -74,4 +74,17 @@ describe('guardSpending', () => {
     const g = guardSpending(wallet, async () => {});
     expect(await g.createAction({ n: 3 }, 'admin')).toBe('w:3:admin');
   });
+  test('b-Aware 25 Oct: a tx-digest signature (hashToDirectlySign) is refused while paused; plain signing is not', async () => {
+    let paused = false;
+    const wallet = {
+      createSignature: async (a: { hashToDirectlySign?: number[] }) => (a.hashToDirectlySign ? 'tx' : 'msg'),
+    };
+    const g = guardSpending(wallet, async () => {
+      if (paused) throw new FeaturePausedError('spending');
+    });
+    expect(await g.createSignature({ hashToDirectlySign: [1] })).toBe('tx');
+    paused = true; // switched on after the flow started
+    await expect(g.createSignature({ hashToDirectlySign: [1] })).rejects.toThrow(PAUSED_MESSAGE);
+    expect(await g.createSignature({})).toBe('msg'); // sign-in and message signatures are not payments
+  });
 });

@@ -5,6 +5,7 @@
  *  - open: BRC-2 decrypt.
  */
 import { MessageBoxClient } from '@bsv/message-box-client';
+import { assertNotPaused } from '../config/killSwitch';
 import { Beef, P2PKH, PublicKey, Transaction, Utils, type WalletInterface } from '@bsv/sdk';
 import {
   BMAIL_BOX,
@@ -120,6 +121,8 @@ export const broadcastPostage = async (
   } catch (e) {
     console.warn('[bMail] wallet postage broadcast failed', e);
   }
+  // The fallback sends a stamp signed earlier: the spending pause must hold here too (b-Aware 25 Oct 2026).
+  await assertNotPaused('spending');
   const beef = Beef.fromBinary(Utils.toArray(postage.beef, 'hex')).toBinary();
   const res = await fetchImpl(ARC_URL, {
     method: 'POST',
