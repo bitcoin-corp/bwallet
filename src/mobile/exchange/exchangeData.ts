@@ -132,6 +132,7 @@ export type ExchangeView =
   | { tab: 'orders' }
   | { tab: 'names' }
   | { tab: 'podcasts' }
+  | { tab: 'memepool' }
   | { tab: 'movies' }
   | { tab: 'launchpad' }
   | { tab: 'launch' }
@@ -155,6 +156,7 @@ export const exchangeView = (rest: string): ExchangeView => {
   if (seg === 'orders') return { tab: 'orders' };
   if (seg === 'names') return { tab: 'names' };
   if (seg === 'podcasts') return { tab: 'podcasts' };
+  if (seg === 'memepool') return { tab: 'memepool' };
   if (seg === 'movies') return { tab: 'movies' };
   if (seg === 'launchpad') return segs[1] === 'new' ? { tab: 'launch' } : { tab: 'launchpad' };
   if (seg === 'collectibles') return { tab: 'more' };

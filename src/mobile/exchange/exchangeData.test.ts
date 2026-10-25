@@ -46,6 +46,7 @@ describe('exchange data', () => {
     expect(exchangeView('collectibles')).toEqual({ tab: 'more' });
     expect(exchangeView('/names')).toEqual({ tab: 'names' });
     expect(exchangeView('/podcasts')).toEqual({ tab: 'podcasts' });
+    expect(exchangeView('/memepool')).toEqual({ tab: 'memepool' });
     expect(exchangeView('/movies')).toEqual({ tab: 'movies' });
     expect(exchangeView(ID)).toEqual({ tab: 'trade', id: ID });
     expect(exchangeView(`${'A'.repeat(64)}.1`)).toEqual({ tab: 'trade', id: `${'a'.repeat(64)}_1` });

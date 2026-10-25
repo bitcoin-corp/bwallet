@@ -33,6 +33,7 @@ import { chartSeries } from './chartSeries';
 import { OpnsMarket } from './OpnsMarket';
 import { PodcastMarket } from './PodcastMarket';
 import { MoviesMarket } from './MoviesMarket';
+import { MemepoolMarket } from './MemepoolMarket';
 import { LaunchpadPanel } from '../market/launchpad/LaunchpadPanel';
 import { LaunchCoin } from './launch/LaunchCoin';
 import { FilterBar, PlatformPage, PlatformsView } from './Categories';
@@ -556,6 +557,7 @@ const ExchangePage = () => {
     { id: 'names', label: 'Names', to: `${EXCHANGE_ROUTE}/names` },
     { id: 'movies', label: 'Movies', to: `${EXCHANGE_ROUTE}/movies` },
     { id: 'podcasts', label: 'Podcasts', to: `${EXCHANGE_ROUTE}/podcasts` },
+    { id: 'memepool', label: 'Memepool', to: `${EXCHANGE_ROUTE}/memepool` },
     { id: 'launchpad', label: 'Launchpad', to: `${EXCHANGE_ROUTE}/launchpad` },
     { id: 'orders', label: 'My orders', to: `${EXCHANGE_ROUTE}/orders` },
     { id: 'more', label: 'Collectibles', to: `${EXCHANGE_ROUTE}/collectibles` },
@@ -635,6 +637,7 @@ const ExchangePage = () => {
         {view.tab === 'names' && <OpnsMarket rate={rate} />}
         {view.tab === 'movies' && <MoviesMarket rate={rate} />}
         {view.tab === 'podcasts' && <PodcastMarket rate={rate} />}
+        {view.tab === 'memepool' && <MemepoolMarket rate={rate} />}
         {/* In-app launchpad (owner, 14 Oct 2026: the Exchange must not send people to tokenblaster.lol). */}
         {view.tab === 'launchpad' && <LaunchpadPanel />}
         {view.tab === 'launch' && <LaunchCoin />}
