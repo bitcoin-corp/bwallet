@@ -28,7 +28,7 @@ import { createMasterBackupGate } from './services/masterBackupGate';
 import { promptsShowInPanel } from './services/panelPrompt';
 import { isSessionExpired } from './utils/lockTimeout';
 import { originatorForOrigin } from './services/originKey';
-import { PAIR_MIRROR_KEY, pairedGrantAllowed, setPairMirror, takePendingFor } from './services/pairedPromptGuard';
+import { PAIR_MIRROR_KEY, isPairedOriginator, pairedGrantAllowed, setPairMirror, takePendingFor } from './services/pairedPromptGuard';
 import {
   addGrant,
   isSpendingAuthAction,
@@ -1042,8 +1042,10 @@ const updateReconnectState = <T>(fn: (s: ReconnectState) => { state?: ReconnectS
 };
 /** Records a site's call; true when it is an identity-key request that must ask first. */
 const reconnectGate = (originator: string, action: string, params: unknown): Promise<boolean> => {
-  // Only a real connect may ask; every other call just keeps the site's "last seen" fresh.
-  const identity = gatesConnect(action, params);
+  // Only a real connect may ask; every other call just keeps the site's "last seen" fresh. A phone pairing is never
+  // gated: the pairing is the connection (it lapses after 24 h idle and Disconnect forgets it), so an approved paired
+  // session's identity-key request is answered by its grant, with no sheet.
+  const identity = gatesConnect(action, params) && !isPairedOriginator(originator);
   const now = Date.now();
   return updateReconnectState((s) => ({
     state: noteCall(s, originator, now),

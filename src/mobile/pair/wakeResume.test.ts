@@ -157,6 +157,9 @@ describe('phone pairing after the phone sleeps', () => {
     const after = FakeWS.all.at(-1)!;
     expect(after).not.toBe(before);
     expect(after.url).toContain('/v1/c/WAKEBBBBBBBBBBBBBBBBBB');
+    await settle();
+    // The rejoin announces itself so the site resends.
+    expect((await readAll(phone, after)).map((m) => m.t)).toContain('ready');
     const id = await ask(site, after);
     const res = (await readAll(phone, after)).find((m) => m.t === 'res' && m.id === id);
     expect(res).toEqual({ t: 'res', id, result: { publicKey: '02ab' } });

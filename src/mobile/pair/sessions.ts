@@ -311,7 +311,14 @@ const save = (all: StoredSession[]) => {
 };
 export const pairedSites = () => load();
 
-type Live = { ws: WebSocket; sealer: Sealer; stored: StoredSession; retry?: ReturnType<typeof setTimeout> };
+type Live = {
+  ws: WebSocket;
+  sealer: Sealer;
+  stored: StoredSession;
+  retry?: ReturnType<typeof setTimeout>;
+  /** Reopened for a stored session (connect), not a fresh pairing. */
+  resumed?: boolean;
+};
 const live = new Map<string, Live>();
 
 const update = (c: string, patch: Partial<StoredSession>) =>
@@ -436,8 +443,14 @@ function attach(l: Live) {
     else if (msg.t === 'close') forget(stored.c, false);
   });
   ws.onerror = null;
-  if (ws.readyState === WebSocket.OPEN) flush(stored.c);
-  else ws.onopen = () => flush(stored.c);
+  // A rejoin (not the first attach, which sends its own ready) says `ready` again, so the site resends anything that
+  // got no answer while the phone was away.
+  const opened = () => {
+    flush(stored.c);
+    if (l.resumed) void reply(l, { t: 'ready' });
+  };
+  if (ws.readyState === WebSocket.OPEN) opened();
+  else ws.onopen = opened;
   ws.onclose = () => {
     if (live.get(stored.c) !== l) return;
     live.delete(stored.c);
@@ -474,6 +487,7 @@ function connect(c: string) {
         ws: new WebSocket(relaySocketUrl(stored.r, stored.c, 'wallet', undefined, claim)),
         sealer,
         stored: { ...stored, claim },
+        resumed: true,
       });
     } finally {
       connecting.delete(c);

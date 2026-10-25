@@ -189,8 +189,11 @@ test('sessions: never re-runs an answered call; holds a reply while the socket i
   await settle();
   expect(FakeWS.all).toHaveLength(2); // initPairing + the foreground listener open ONE socket between them
   ws2.open();
-  await until('held reply sent', () => ws2.sent.length >= 1);
+  await until('held reply and ready sent', () => ws2.sent.length >= 2);
   expect(await open(ws2.sent[0])).toEqual({ t: 'res', id: 'r1', result: { txid: 'tx1' } });
+  // The rejoin then says ready, so the site resends anything else it is waiting on.
+  expect(await open(ws2.sent[1])).toEqual({ t: 'ready' });
+  ws2.sent.splice(1, 1);
 
   // The site, unsure, re-sends the same request id: answered again (freshly sealed), not re-run.
   ws2.deliver(await siteSealer.seal({ t: 'req', id: 'r1', action: 'createAction', params: {} }));
