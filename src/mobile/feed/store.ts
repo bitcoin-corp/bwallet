@@ -2,6 +2,7 @@ import { safety, type SafetyFilter } from '../market/safety';
 import { mediaSafety } from './media';
 import type { PostLock } from './locks';
 import type { FeedPost } from './post';
+import type { Source } from './sources';
 
 /**
  * Feed per-device state: who you follow (mirrored on-chain by follow txs), who you muted,
@@ -14,6 +15,7 @@ const LS = {
   locks: 'bwallet.feed.locks',
   blocks: 'bwallet.feed.blocks',
   bookmarks: 'bwallet.feed.bookmarks',
+  favourites: 'bwallet.feed.favourites',
 };
 
 export type Follow = { bapId: string | null; address: string; name: string };
@@ -149,3 +151,42 @@ export function visiblePosts(posts: FeedPost[], mutes: string[], s: SafetyFilter
     return !s.check({ ids: [p.txid, ...m.ids], texts: [p.text, p.author.name, ...m.texts] }).blocked;
   });
 }
+
+/**
+ * Favourites (owner, 25 Oct 2026): sources and people the user picked. The Favourites filter shows
+ * only posts from these. Per device, like mutes and bookmarks.
+ */
+export type Favourite =
+  | { kind: 'source'; id: Source }
+  | { kind: 'author'; address: string; bapId: string | null; name: string };
+
+const validFavourite = (f: unknown): f is Favourite => {
+  const x = f as Favourite | null;
+  if (!x || typeof x !== 'object') return false;
+  if (x.kind === 'source') return typeof x.id === 'string';
+  return x.kind === 'author' && typeof x.address === 'string' && !!x.address;
+};
+const sameFavourite = (a: Favourite, b: Favourite) =>
+  a.kind === 'source'
+    ? b.kind === 'source' && a.id === b.id
+    : b.kind === 'author' && (a.address === b.address || (!!a.bapId && a.bapId === b.bapId));
+
+export const loadFavourites = (): Favourite[] => {
+  const v = read<unknown>(LS.favourites, []);
+  return Array.isArray(v) ? v.filter(validFavourite) : [];
+};
+export const isFavourite = (favs: Favourite[], f: Favourite) => favs.some((x) => sameFavourite(x, f));
+export const toggleFavourite = (favs: Favourite[], f: Favourite): Favourite[] => {
+  const next = isFavourite(favs, f) ? favs.filter((x) => !sameFavourite(x, f)) : [...favs, f];
+  write(LS.favourites, next);
+  return next;
+};
+/** Posts from a favourite source or a favourite author; nothing when the list is empty. */
+export const filterFavourites = (posts: FeedPost[], favs: Favourite[]): FeedPost[] =>
+  posts.filter((p) =>
+    favs.some((f) =>
+      f.kind === 'source'
+        ? p.source === f.id
+        : p.author.address === f.address || (!!f.bapId && p.author.bapId === f.bapId),
+    ),
+  );

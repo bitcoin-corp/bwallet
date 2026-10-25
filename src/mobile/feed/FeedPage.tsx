@@ -48,6 +48,8 @@ import {
   Clock,
   Trophy,
   EyeOff,
+  Plus,
+  Star,
 } from 'lucide-react';
 import { inscribe } from '@1sat/actions';
 import { SendConfirmation } from '../../components/SendConfirmation';
@@ -151,6 +153,11 @@ import {
   loadMutes,
   toggleFollow,
   visiblePosts,
+  filterFavourites,
+  isFavourite,
+  loadFavourites,
+  toggleFavourite,
+  type Favourite,
   type Follow,
 } from './store';
 import { bookmarkClient, syncBookmarks, toggleSyncedBookmark } from './bookmarkSync';
@@ -303,6 +310,7 @@ const Via = ({ post }: { post: FeedPost }) => {
 
 /** Selected source chip colour: the source's brand colour ("All" is gold). */
 const chipColor = (id: Source | 'all') => (id === 'all' ? GOLD : (SOURCE_REGISTRY[id].color ?? GOLD));
+const chipOff = { background: PANEL, color: MUTED, border: `1px solid ${LINE}` };
 
 type FeedSort = 'latest' | 'popular' | 'locked';
 
@@ -313,7 +321,7 @@ const SORT_OPTIONS: { id: FeedSort; label: string; hint: string; icon: ReactNode
 ];
 
 /** Feed sort: a gold pill left of the source chips that opens a small styled popover. */
-const SortMenu = ({ sort, onChange }: { sort: FeedSort; onChange: (s: FeedSort) => void }) => {
+const SortMenu = ({ sort, onChange, on = true }: { sort: FeedSort; onChange: (s: FeedSort) => void; on?: boolean }) => {
   const btn = useRef<HTMLButtonElement>(null);
   const [at, setAt] = useState<{ left: number; top: number } | null>(null);
   useBackClose(!!at, () => setAt(null));
@@ -330,12 +338,20 @@ const SortMenu = ({ sort, onChange }: { sort: FeedSort; onChange: (s: FeedSort) 
         aria-haspopup="menu"
         aria-expanded={!!at}
         aria-label={`Sort: ${current.label}`}
-        className="bw-feed-sort shrink-0 flex items-center gap-1 rounded-full pl-3 pr-2 py-1 text-[12px] font-semibold"
-        style={{ background: '#1a1408', color: GOLD, border: `1px solid ${GOLD}` }}
+        className="bw-feed-sort flex w-full min-w-0 items-center justify-center gap-1 rounded-full px-1.5 py-1 text-[12px] font-semibold"
+        style={
+          on
+            ? { background: '#1a1408', color: GOLD, border: `1px solid ${GOLD}` }
+            : { background: PANEL, color: MUTED, border: `1px solid ${LINE}` }
+        }
       >
-        {sort === 'locked' && <Lock size={12} />}
-        {current.label}
-        <ChevronDown size={12} style={{ transform: at ? 'rotate(180deg)' : undefined, transition: 'transform .15s' }} />
+        {sort === 'locked' && <Lock size={12} className="shrink-0" />}
+        <span className="truncate">{current.label}</span>
+        <ChevronDown
+          size={12}
+          className="shrink-0"
+          style={{ transform: at ? 'rotate(180deg)' : undefined, transition: 'transform .15s' }}
+        />
       </button>
       {at &&
         createPortal(
@@ -1709,6 +1725,16 @@ export const FeedPage = ({ header }: { header?: ReactNode }) => {
   const [blocks, setBlocks] = useState<HiddenAccount[]>(loadBlocks);
   const [bookmarks, setBookmarks] = useState<FeedPost[]>(loadBookmarks);
   const [showBookmarks, setShowBookmarks] = useState(false);
+  // Row-1 filters (owner, 25 Oct 2026): Favourites (sources + people the user picked) and
+  // Leaderboard (the 'Most locked' ranking as one tap). 'feed' = the normal source chips.
+  const [view, setView] = useState<'feed' | 'favourites' | 'leaderboard'>('feed');
+  const [favs, setFavs] = useState<Favourite[]>(loadFavourites);
+  const [pickingFavs, setPickingFavs] = useState(false);
+  const toggleFav = (f: Favourite) => {
+    const on = isFavourite(favs, f);
+    setFavs((x) => toggleFavourite(x, f));
+    addSnackbar(on ? 'Removed from favourites' : 'Added to favourites', 'success');
+  };
   // Pull bookmarks saved on this account's other devices when the Feed opens and when the list opens.
   useEffect(() => {
     void syncBookmarks(bookmarkClient()).then(setBookmarks);
@@ -1753,10 +1779,12 @@ export const FeedPage = ({ header }: { header?: ReactNode }) => {
   const shown = useMemo(
     () =>
       raw[tab]
-        ? filterFeed(visiblePosts(raw[tab]!, hidden), source, (a) => tab === 'foryou' && isFollowing(follows, a))
+        ? view === 'favourites'
+          ? filterFavourites(visiblePosts(raw[tab]!, hidden), favs)
+          : filterFeed(visiblePosts(raw[tab]!, hidden), source, (a) => tab === 'foryou' && isFollowing(follows, a))
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [raw, tab, hidden, safetyTick, source, follows],
+    [raw, tab, hidden, safetyTick, source, follows, view, favs],
   );
   const likedSet = useMemo(() => new Set(liked), [liked]);
 
@@ -1808,12 +1836,12 @@ export const FeedPage = ({ header }: { header?: ReactNode }) => {
   const knownPosts = useMemo(() => [...(raw.foryou ?? []), ...(raw.following ?? [])], [raw]);
   const sorted = useMemo(
     () =>
-      shown && tab === 'foryou' && sort === 'locked'
+      shown && (view === 'leaderboard' || (tab === 'foryou' && sort === 'locked'))
         ? rankByLocked(shown, lockSummaries)
         : shown && tab === 'foryou' && sort === 'popular'
           ? [...shown].sort((a, b) => b.likes + b.replies - (a.likes + a.replies) || b.at - a.at)
           : shown,
-    [shown, tab, sort, lockSummaries],
+    [shown, tab, sort, lockSummaries, view],
   );
 
   const like = async (p: FeedPost) => {
@@ -2031,26 +2059,79 @@ export const FeedPage = ({ header }: { header?: ReactNode }) => {
           </div>
         )}
         {feed === 'home' && (
-          <div className="flex flex-wrap items-center gap-2 px-4 py-2">
-            {tab === 'foryou' && <SortMenu sort={sort} onChange={setSort} />}
-            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Source">
-              {SOURCES.map((s) => (
+          <div className="flex flex-col gap-2 px-4 py-2">
+            {/* Row 1: All, sort, Favourites, Leaderboard in four equal cells. */}
+            <div className="grid grid-cols-4 gap-2">
+              <button
+                onClick={() => {
+                  setView('feed');
+                  setSource('all');
+                  saveSource('all');
+                }}
+                className={`bw-feed-chip min-w-0 truncate rounded-full px-1.5 py-1 text-[12px] font-semibold${view === 'feed' && source === 'all' ? ' is-on' : ''}`}
+                style={view === 'feed' && source === 'all' ? { background: GOLD, color: '#1a1300' } : chipOff}
+              >
+                All
+              </button>
+              <SortMenu
+                sort={sort}
+                on={view === 'feed'}
+                onChange={(s) => {
+                  setSort(s);
+                  setView('feed');
+                }}
+              />
+              <div
+                className={`bw-feed-chip flex min-w-0 items-center rounded-full text-[12px] font-semibold${view === 'favourites' ? ' is-on' : ''}`}
+                style={view === 'favourites' ? { background: GOLD, color: '#1a1300' } : chipOff}
+              >
                 <button
-                  key={s.id}
-                  onClick={() => {
-                    setSource(s.id);
-                    saveSource(s.id);
-                  }}
-                  className={`bw-feed-chip shrink-0 rounded-full px-3 py-1 text-[12px] font-semibold${source === s.id ? ' is-on' : ''}`}
-                  style={
-                    source === s.id
-                      ? { background: chipColor(s.id), color: textOn(chipColor(s.id)) }
-                      : { background: PANEL, color: MUTED, border: `1px solid ${LINE}` }
-                  }
+                  onClick={() => setView('favourites')}
+                  className="min-w-0 flex-1 truncate py-1 pl-2 text-left"
+                  aria-pressed={view === 'favourites'}
                 >
-                  {s.label}
+                  Favourites
                 </button>
-              ))}
+                <button
+                  onClick={() => setPickingFavs(true)}
+                  aria-label="Add favourites"
+                  className="shrink-0 py-1 pl-0.5 pr-1.5"
+                >
+                  <Plus size={13} />
+                </button>
+              </div>
+              <button
+                onClick={() => setView('leaderboard')}
+                aria-pressed={view === 'leaderboard'}
+                aria-label="Leaderboard: most BSV locked"
+                className={`bw-feed-chip flex min-w-0 items-center justify-center gap-1 rounded-full px-1.5 py-1 text-[12px] font-semibold${view === 'leaderboard' ? ' is-on' : ''}`}
+                style={view === 'leaderboard' ? { background: GOLD, color: '#1a1300' } : chipOff}
+              >
+                <span className="truncate">Leaderboard</span>
+                <Lock size={12} className="shrink-0" />
+              </button>
+            </div>
+            {/* Two rows of four source chips. */}
+            <div className="grid grid-cols-4 gap-2" role="tablist" aria-label="Source">
+              {SOURCES.filter((s) => s.id !== 'all').map((s) => {
+                const on = view === 'feed' && source === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    role="tab"
+                    aria-selected={on}
+                    onClick={() => {
+                      setView('feed');
+                      setSource(s.id);
+                      saveSource(s.id);
+                    }}
+                    className={`bw-feed-chip min-w-0 truncate rounded-full px-1.5 py-1 text-[12px] font-semibold${on ? ' is-on' : ''}`}
+                    style={on ? { background: chipColor(s.id), color: textOn(chipColor(s.id)) } : chipOff}
+                  >
+                    {s.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -2111,12 +2192,29 @@ export const FeedPage = ({ header }: { header?: ReactNode }) => {
               a={actions}
               empty={
                 <div className="px-8 pt-14 text-center">
-                  <p className="text-sm text-white font-semibold">
-                    {tab === 'following' && !follows.length ? 'Nobody followed yet' : 'Nothing here yet'}
-                  </p>
-                  <p className="text-xs mt-1" style={{ color: MUTED }}>
-                    {tab === 'following' ? 'Tap a name in For you and follow them.' : 'Pull refresh in a moment.'}
-                  </p>
+                  {view === 'favourites' ? (
+                    <>
+                      <p className="text-sm text-white font-semibold">
+                        {favs.length ? 'Nothing from your favourites yet' : 'No favourites yet'}
+                      </p>
+                      <button
+                        onClick={() => setPickingFavs(true)}
+                        className="text-xs mt-1 inline-flex items-center gap-1"
+                        style={{ color: MUTED }}
+                      >
+                        <Plus size={12} /> Tap + to add feeds or people you like
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-white font-semibold">
+                        {tab === 'following' && !follows.length ? 'Nobody followed yet' : 'Nothing here yet'}
+                      </p>
+                      <p className="text-xs mt-1" style={{ color: MUTED }}>
+                        {tab === 'following' ? 'Tap a name in For you and follow them.' : 'Pull refresh in a moment.'}
+                      </p>
+                    </>
+                  )}
                 </div>
               }
             />
@@ -2246,6 +2344,28 @@ export const FeedPage = ({ header }: { header?: ReactNode }) => {
             )}
             {isBookmarked(bookmarks, more.txid) ? 'Remove bookmark' : 'Save to bookmarks'}
           </button>
+          {more.author.address &&
+            (() => {
+              const fav: Favourite = {
+                kind: 'author',
+                address: more.author.address,
+                bapId: more.author.bapId,
+                name: more.author.name,
+              };
+              const on = isFavourite(favs, fav);
+              return (
+                <button
+                  onClick={() => {
+                    toggleFav(fav);
+                    setMore(null);
+                  }}
+                  className="w-full flex items-center gap-3 py-3 text-sm text-white"
+                >
+                  <Star size={18} color={on ? GOLD : MUTED} fill={on ? GOLD : 'none'} />
+                  {on ? 'Remove from favourites' : 'Add to favourites'}
+                </button>
+              );
+            })()}
           {more.author.address && (
             <button
               onClick={() => block(more)}
@@ -2277,6 +2397,42 @@ export const FeedPage = ({ header }: { header?: ReactNode }) => {
             />
           )}
         />
+      )}
+      {pickingFavs && (
+        <Sheet title="Favourites" onClose={() => setPickingFavs(false)}>
+          {SOURCES.filter((x) => x.id !== 'all').map((x) => {
+            const f: Favourite = { kind: 'source', id: x.id as Source };
+            const on = isFavourite(favs, f);
+            return (
+              <button
+                key={x.id}
+                onClick={() => setFavs((v) => toggleFavourite(v, f))}
+                aria-pressed={on}
+                className="w-full flex items-center gap-3 py-3 text-sm text-white"
+              >
+                <Star size={18} color={on ? GOLD : MUTED} fill={on ? GOLD : 'none'} />
+                <span className="flex-1 text-left">{x.label}</span>
+                {on && <Check size={16} color={GOLD} />}
+              </button>
+            );
+          })}
+          {favs
+            .filter((f): f is Extract<Favourite, { kind: 'author' }> => f.kind === 'author')
+            .map((f) => (
+              <button
+                key={f.address}
+                onClick={() => setFavs((v) => toggleFavourite(v, f))}
+                className="w-full flex items-center gap-3 py-3 text-sm text-white"
+              >
+                <Star size={18} color={GOLD} fill={GOLD} />
+                <span className="min-w-0 flex-1 truncate text-left">{safeName(f.name)}</span>
+                <Check size={16} color={GOLD} />
+              </button>
+            ))}
+          <p className="pt-2 text-xs" style={{ color: MUTED }}>
+            Add people from a post's ••• menu.
+          </p>
+        </Sheet>
       )}
       {showBookmarks && (
         <Layer title="Bookmarks" onBack={() => setShowBookmarks(false)}>
