@@ -3,6 +3,7 @@ import {
   CONNECT_THEME_EVENT,
   loadConnectTheme,
   shouldWearSiteTheme,
+  themeOrigin,
   trueHost,
   type WornTheme,
 } from '../theme/connectSiteTheme';
@@ -127,31 +128,52 @@ export const roomSite = (ticker: string, s: Store | null = local()): Entry | nul
 };
 
 /** The room's look right now: the remembered site must still be connected with its theme on, and still name it. */
+/**
+ * Ownership: a site may only dress a room that names that site as its own. The room's owner sets `metadata.site`
+ * (its https origin) on bChatX; the theme's origin must equal it. A room with no `metadata.site`, or another
+ * site's, is never dressed, so one site can never dress another's token room.
+ */
+export function roomOwnerOrigin(metadata: unknown): string | null {
+  const v = (metadata as { site?: unknown } | null | undefined)?.site;
+  if (typeof v !== 'string' || !/^https?:\/\//.test(v)) return null;
+  try {
+    const u = new URL(v);
+    return themeOrigin(u.origin);
+  } catch {
+    return null;
+  }
+}
+
 export async function loadRoomLook(
   ticker: string,
-  opts: { s?: Store | null; load?: typeof loadConnectTheme } = {},
+  opts: { s?: Store | null; load?: typeof loadConnectTheme; owner?: string | null } = {},
 ): Promise<RoomLook | null> {
-  const { s = local(), load = loadConnectTheme } = opts;
+  const { s = local(), load = loadConnectTheme, owner = null } = opts;
   const site = roomSite(ticker, s);
-  if (!site || !shouldWearSiteTheme(site.origin, s)) return null;
+  if (!site || !owner || themeOrigin(site.origin) !== owner || !shouldWearSiteTheme(site.origin, s)) return null;
   const t = await load(site.origin, { s, path: site.path }).catch(() => null);
   return roomLookFrom(t, ticker);
 }
 
 /** React: the look for an open room (null for no ticker, a disabled room, or no themed site). */
-export function useRoomLook(ticker: string | null | undefined, enabled = true): RoomLook | null {
+export function useRoomLook(
+  ticker: string | null | undefined,
+  enabled = true,
+  /** The room's own site (roomOwnerOrigin of its metadata); no owner, no look. */
+  owner: string | null = null,
+): RoomLook | null {
   const [look, setLook] = useState<RoomLook | null>(null);
   useEffect(() => {
     setLook(null);
-    if (!ticker || !enabled) return;
+    if (!ticker || !enabled || !owner) return;
     let live = true;
-    const refresh = () => void loadRoomLook(ticker).then((l) => live && setLook(l));
+    const refresh = () => void loadRoomLook(ticker, { owner }).then((l) => live && setLook(l));
     refresh();
     window.addEventListener(CONNECT_THEME_EVENT, refresh);
     return () => {
       live = false;
       window.removeEventListener(CONNECT_THEME_EVENT, refresh);
     };
-  }, [ticker, enabled]);
+  }, [ticker, enabled, owner]);
   return look;
 }

@@ -6,7 +6,14 @@ import {
   setSiteThemesOn,
   type WornTheme,
 } from '../theme/connectSiteTheme';
-import { loadRoomLook, rememberRoomSite, roomHeaderBackground, roomLookFrom, roomSite } from './roomLook';
+import {
+  loadRoomLook,
+  rememberRoomSite,
+  roomOwnerOrigin,
+  roomHeaderBackground,
+  roomLookFrom,
+  roomSite,
+} from './roomLook';
 
 const O = 'https://www.tokenblaster.lol';
 const mem = () => {
@@ -72,15 +79,29 @@ describe('room → site memory', () => {
       seen.push(o.path);
       return worn({ room: 'ASSAULT' });
     }) as never;
-    expect((await loadRoomLook('ASSAULT', { s, load }))?.name).toBe('TokenBlaster');
+    // No owner on the room, or another site as owner: never dressed.
+    expect(await loadRoomLook('ASSAULT', { s, load })).toBeNull();
+    expect(await loadRoomLook('ASSAULT', { s, load, owner: 'https://other.example' })).toBeNull();
+    seen.length = 0;
+    expect((await loadRoomLook('ASSAULT', { s, load, owner: O }))?.name).toBe('TokenBlaster');
     expect(seen).toEqual(['/arcade/terrornode']);
     setSiteThemesOn(false, s);
-    expect(await loadRoomLook('ASSAULT', { s, load })).toBeNull();
+    expect(await loadRoomLook('ASSAULT', { s, load, owner: O })).toBeNull();
   });
   it('an unknown room or an unconnected site gets no look', async () => {
     const s = mem();
     expect(await loadRoomLook('NOPE', { s })).toBeNull();
     rememberRoomSite('ASSAULT', 'https://other.example', null, s);
     expect(await loadRoomLook('ASSAULT', { s })).toBeNull();
+  });
+});
+
+describe('room ownership', () => {
+  it('reads the room owner from metadata.site as an origin', () => {
+    expect(roomOwnerOrigin({ site: 'https://www.tokenblaster.lol/arcade' })).toBe(O);
+    expect(roomOwnerOrigin({ site: 'tokenblaster.lol' })).toBeNull();
+    expect(roomOwnerOrigin({ site: 'javascript:alert(1)' })).toBeNull();
+    expect(roomOwnerOrigin(null)).toBeNull();
+    expect(roomOwnerOrigin({ site: 'https://abc.paired.invalid' })).toBeNull();
   });
 });

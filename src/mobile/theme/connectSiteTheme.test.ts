@@ -63,8 +63,14 @@ describe('parseConnectTheme', () => {
       expect(parseConnectTheme({ ...GOOD, accent: bad }, O).theme).toBeUndefined();
   });
 
-  it('refuses unknown keys, CSS strings and names that carry links', () => {
-    expect(parseConnectTheme({ ...GOOD, css: 'body{}' }, O).theme).toBeUndefined();
+  it('ignores unknown keys (future fields never break older wallets) and never passes them through', () => {
+    const p = parseConnectTheme({ ...GOOD, css: 'body{}', futureField: { x: 1 } }, O);
+    expect(p.theme?.name).toBe('Ember & Bean');
+    expect(p.theme && 'css' in p.theme).toBe(false);
+    expect(p.theme && 'futureField' in p.theme).toBe(false);
+  });
+
+  it('refuses CSS strings and names that carry links', () => {
     expect(parseConnectTheme({ ...GOOD, name: 'Visit https://evil.example' }, O).theme).toBeUndefined();
     expect(parseConnectTheme({ ...GOOD, name: '<b>x</b>' }, O).theme).toBeUndefined();
     expect(parseConnectTheme({ ...GOOD, mode: 'auto' }, O).theme).toBeUndefined();

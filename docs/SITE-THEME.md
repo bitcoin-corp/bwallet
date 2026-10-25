@@ -43,7 +43,9 @@ Either file, served over https from the site's own origin, `Access-Control-Allow
 | `paths` | optional, root file only; see "Path sub-themes" below |
 | `room` | optional; the site's chat room ticker (`ASSAULT` or `$ASSAULT`, 1-20 letters/digits); see "The game's room" |
 
-No other keys. No CSS, fonts, scripts, gradients or arbitrary values. File ≤ 8 KB.
+Unknown keys are ignored (never read), so a field added later never breaks a newer wallet; known keys are checked
+strictly. **Wallets 5.2.41 and earlier refuse the whole theme if it has any key they don't know** (e.g. `roomArt`):
+add new keys only once the users you care about have updated. No CSS, fonts, scripts, gradients or arbitrary values. File ≤ 8 KB.
 
 ### Path sub-themes
 
@@ -127,6 +129,11 @@ as the game maker updates the theme file. Code: `src/mobile/chat/roomLook.ts`.
 | `logo`              | the room's picture (room list and header) and the room agent's picture, when they have none |
 | `name`              | "<name> look · from <host>" under the room name, and the agent's label ("<NAME> · AI")      |
 
+- **Ownership: a site only dresses a room it owns.** The room must name the site as its own in its bChatX room
+  metadata, `site: "https://www.tokenblaster.lol"` (set by the room's owner), and the theme file must come from
+  exactly that origin (`www.` and the bare domain differ). A room with no `site`, or another site's, is never dressed,
+  so no site can dress another's token room by putting its ticker in `room`. (The wallet's own room-to-site memory
+  can't prove ownership, because it is learned from the theme itself.)
 - The art always sits under an overlay in the theme's `bg` so text stays readable. Messages, amounts and payment
   buttons keep the wallet's own styling.
 - A room's own picture (`metadata.icon`) or its token's icon wins over the theme logo.

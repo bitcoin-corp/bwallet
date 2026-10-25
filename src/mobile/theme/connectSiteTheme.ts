@@ -50,22 +50,6 @@ export type ConnectTheme = {
 /** A theme ready to paint: images already fetched and checked. */
 export type WornTheme = ConnectTheme & { origin: string; logoData?: string; artData?: string; roomArtData?: string };
 
-const KEYS = new Set([
-  '$schema',
-  'v',
-  'name',
-  'mode',
-  'accent',
-  'accentHi',
-  'bg',
-  'surface',
-  'text',
-  'logo',
-  'cardArt',
-  'roomArt',
-  'paths',
-  'room',
-]);
 const HEX = /^#[0-9a-f]{6}$/i;
 // Plain words: no markup, links or addresses.
 const PLAIN = /^[\p{L}\p{N} .,'&!·:+-]+$/u;
@@ -170,8 +154,7 @@ export type ParseResult = { theme: ConnectTheme; fixed: string[] } | { theme?: u
 export function parseConnectTheme(v: unknown, origin: string): ParseResult {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return { error: 'not an object' };
   const t = v as Record<string, unknown>;
-  const extra = Object.keys(t).find((k) => !KEYS.has(k));
-  if (extra) return { error: `unknown key ${extra}` };
+  // Unknown keys are ignored (never read), so a field added later never breaks an older wallet. Known keys stay strict.
   if (t.v !== undefined && t.v !== 2) return { error: 'v must be 2' };
   if (typeof t.name !== 'string' || !t.name.trim() || t.name.length > 32 || !PLAIN.test(t.name) || URLISH.test(t.name))
     return { error: 'name' };

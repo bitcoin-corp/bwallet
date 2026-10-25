@@ -90,7 +90,7 @@ import { BchatClient, ChatApiError, loadSession, needsHandle, saveSession, SESSI
 import { HandleFlow } from '../names/HandleFlow';
 import { avatarFor, B_AVATAR, pendingBQuestions, rememberAvatar, useAvatars } from '../chat/avatars';
 import { ChatAvatar as Avatar } from '../chat/ChatAvatar';
-import { roomHeaderBackground, useRoomLook } from '../chat/roomLook';
+import { roomHeaderBackground, roomOwnerOrigin, useRoomLook } from '../chat/roomLook';
 import { roomSetupState, shouldOfferRoomSetup } from '../chat/roomSetupPrompt';
 import type { ReplyRef } from '../chat/api';
 import {
@@ -743,7 +743,11 @@ const Conversation = ({
   const [drafting, setDrafting] = useState(false);
   const draftable = canAskBDraft(room, !!entry) && !isOfficialRoom(room);
   // A connected game's theme dresses its room (chat/roomLook.ts). Never the Help Desk, official rooms or store builds.
-  const look = useRoomLook(room.ticker, !STORE_BUILD && !isLounge(room.ticker) && !isOfficialRoom(room));
+  const look = useRoomLook(
+    room.ticker,
+    !STORE_BUILD && !isLounge(room.ticker) && !isOfficialRoom(room),
+    roomOwnerOrigin(room.metadata),
+  );
   const askB = () => {
     setDraft((d) => (/^\/b(\s|$)/i.test(d) ? d : `/b ${d}`));
     requestAnimationFrame(() => composer.current?.focus());
@@ -2298,7 +2302,11 @@ const OpenRoomRow = ({
   const key = roomKeyOf(room.ticker);
   const muted = isMuted(commands.prefs, key);
   // A connected game's room shows the game's logo when it has no picture of its own (chat/roomLook.ts).
-  const look = useRoomLook(room.ticker, !STORE_BUILD && !isLounge(room.ticker) && !info?.official);
+  const look = useRoomLook(
+    room.ticker,
+    !STORE_BUILD && !isLounge(room.ticker) && !info?.official,
+    roomOwnerOrigin(room.metadata),
+  );
   return (
     <li>
       <ChatSwipeRow
