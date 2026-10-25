@@ -3,6 +3,7 @@ import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
 import chalk from 'chalk';
+import { findNodeModulesLoops } from './lib/nodeModulesLoop';
 
 // ─── Paths ───────────────────────────────────────────────────
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -236,6 +237,16 @@ function printChain(blocks: { tag: string; bytes: number }[]) {
 async function main() {
   const { version } = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf-8'));
   const meta = loadMeta();
+
+  // A node_modules symlink loop makes the build run out of memory (scripts/lib/nodeModulesLoop.ts).
+  const loops = findNodeModulesLoops(root);
+  if (loops.length) {
+    console.error(fail(`\n  ✗ node_modules has a symlink back to itself: ${loops.join(', ')}`));
+    console.error(
+      dim(`    The build would duplicate every package and run out of memory. Remove it: rm ${loops.join(' ')}\n`),
+    );
+    process.exit(1);
+  }
 
   // Header
   console.log();

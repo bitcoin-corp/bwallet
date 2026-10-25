@@ -11,9 +11,10 @@
  *   RELEASE_TAG=v5.0.4 bun run verify:build    # release workflow
  */
 import { execSync } from 'child_process';
-import { existsSync, readdirSync, readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { loopedSources } from './lib/nodeModulesLoop';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 const build = resolve(root, 'build');
@@ -85,6 +86,26 @@ function main() {
 
   // The popup bakes in `git rev-parse --short=7 HEAD` (see vite.config.ts). In release mode the
   // bundle must carry exactly the commit being released, from a clean tree.
+  // Bundle guard: no module may come in through a node_modules symlink loop, and the
+  // service worker must stay near its normal size (about 4.8 MB on 5.2.x).
+  const maps = [
+    ...assets.filter((f) => f.endsWith('.js.map')).map((f) => resolve(assetsDir, f)),
+    ...['background.js.map', 'content.js.map', 'inject.js.map'].map((f) => resolve(build, f)),
+  ].filter((f) => existsSync(f));
+  for (const map of maps) {
+    const looped = loopedSources(readJson(map).sources ?? []);
+    if (looped.length)
+      fail(
+        `${map.slice(build.length + 1)} bundles ${looped.length} modules through a node_modules symlink loop (e.g. ${looped[0]})`,
+      );
+  }
+  const SW_MAX_BYTES = 8 * 1024 * 1024;
+  const sw = resolve(build, 'background.js');
+  if (existsSync(sw) && statSync(sw).size > SW_MAX_BYTES)
+    fail(
+      `background.js is ${(statSync(sw).size / 1e6).toFixed(1)} MB, over the ${SW_MAX_BYTES / 1024 / 1024} MB guard`,
+    );
+
   const head = gitShortHead();
   if (head && mainBundle) {
     const js = readFileSync(resolve(assetsDir, mainBundle), 'utf-8');
