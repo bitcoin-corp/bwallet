@@ -12,6 +12,7 @@ import {
   shouldWearSiteTheme,
   siteConnected,
   forgetSiteConnected,
+  ensureSiteConnected,
   themeOrigin,
 } from './connectSiteTheme';
 
@@ -205,5 +206,46 @@ describe('connected origins, cache and switches', () => {
     setSiteThemesOn(true, s);
     forgetSiteConnected('emberandbean.example', s);
     expect(shouldWearSiteTheme('emberandbean.example', s)).toBe(false);
+  });
+});
+
+describe('sites connected before site themes, and a site that adds its file later', () => {
+  const routes = {
+    [`${O}/.well-known/bwalletx-theme.json`]: { body: JSON.stringify({ ...GOOD, logo: undefined }) },
+  };
+
+  it('a site holding wallet permissions counts as connected (www host, any originator form)', async () => {
+    const s = mem();
+    expect(await ensureSiteConnected('https://www.tokenblaster.lol', async () => ['other.example'], s)).toBe(false);
+    expect(siteConnected('www.tokenblaster.lol', s)).toBe(false);
+    expect(
+      await ensureSiteConnected('https://www.tokenblaster.lol', async () => ['https://www.tokenblaster.lol'], s),
+    ).toBe(true);
+    expect(siteConnected('www.tokenblaster.lol', s)).toBe(true);
+    // Remembered: no second lookup needed.
+    expect(await ensureSiteConnected('https://www.tokenblaster.lol', async () => [], s)).toBe(true);
+    // The apex is a different origin and is not covered.
+    expect(await ensureSiteConnected('https://tokenblaster.lol', async () => [], s)).toBe(false);
+  });
+
+  it('a failed lookup or a paired session is never connected', async () => {
+    const s = mem();
+    expect(await ensureSiteConnected('emberandbean.example', async () => Promise.reject(new Error('locked')), s)).toBe(
+      false,
+    );
+    expect(await ensureSiteConnected('abc.paired.invalid', async () => ['abc.paired.invalid'], s)).toBe(false);
+  });
+
+  it('approving again forgets a cached "no theme" so a newly added file shows straight away', async () => {
+    const s = mem();
+    const calls: string[] = [];
+    markSiteConnected('emberandbean.example', s, fakeFetch({}, calls));
+    expect(await loadConnectTheme('emberandbean.example', { s, f: fakeFetch({}, calls) })).toBeNull();
+    // Within the hour, the miss is cached...
+    expect(await loadConnectTheme('emberandbean.example', { s, f: fakeFetch(routes, calls) })).toBeNull();
+    // ...until the user approves the site again.
+    markSiteConnected('emberandbean.example', s, fakeFetch(routes, calls));
+    const t = await loadConnectTheme('emberandbean.example', { s, f: fakeFetch(routes, calls) });
+    expect(t?.name).toBe('Ember & Bean');
   });
 });

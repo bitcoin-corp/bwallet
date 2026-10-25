@@ -411,8 +411,44 @@ export function markSiteConnected(originator: string, s: Store | null = local(),
   if (!themeOrigin(h)) return;
   const all = list(s, CONNECTED_KEY);
   if (!all.includes(h)) put(s, CONNECTED_KEY, [...all, h].slice(-500));
+  // A fresh approval asks again even if the site had no theme file an hour ago (it may have just added one).
+  dropCachedMiss(h, s);
   // Start fetching now so the next sheet is already dressed.
   void loadConnectTheme(h, { s, f });
+}
+
+/** Forget a cached "no theme" answer for a host (root and sub-themes); a cached theme is kept. */
+function dropCachedMiss(h: string, s: Store | null): void {
+  const c = (get(s, CACHE_KEY) ?? {}) as Record<string, { theme?: unknown } | undefined>;
+  let changed = false;
+  for (const k of Object.keys(c))
+    if ((k === h || k.startsWith(`${h} `)) && !c[k]?.theme) {
+      delete c[k];
+      changed = true;
+    }
+  if (changed) put(s, CACHE_KEY, c);
+}
+
+/**
+ * Whether the user has connected this site. Approving a sheet in this build marks it (markSiteConnected), but a
+ * site approved before site themes shipped, or through a sheet that doesn't mark it, still holds wallet
+ * permissions: `grantHosts` lists the hosts that do (the background's permission list), and a match counts as
+ * connected from then on. Any failure (wallet locked, no background) means "not connected".
+ */
+export async function ensureSiteConnected(
+  originator: string,
+  grantHosts: () => Promise<string[]>,
+  s: Store | null = local(),
+): Promise<boolean> {
+  if (!themeOrigin(originator)) return false;
+  if (siteConnected(originator, s)) return true;
+  const h = trueHost(originator);
+  const hosts = await grantHosts().catch(() => [] as string[]);
+  if (!hosts.some((x) => trueHost(x) === h)) return false;
+  const all = list(s, CONNECTED_KEY);
+  if (!all.includes(h)) put(s, CONNECTED_KEY, [...all, h].slice(-500));
+  dropCachedMiss(h, s);
+  return true;
 }
 export const siteConnected = (originator: string, s: Store | null = local()): boolean =>
   list(s, CONNECTED_KEY).includes(trueHost(originator));

@@ -2,9 +2,11 @@ import { BASE_LOOK, type Accent } from './accents';
 import { contrast, ensureContrast, mix } from './colour';
 import {
   CONNECT_THEME_EVENT,
+  ensureSiteConnected,
   loadConnectTheme,
   rememberSitePath,
-  shouldWearSiteTheme,
+  siteThemeAllowed,
+  siteThemesOn,
   type WornTheme,
 } from './connectSiteTheme';
 import { wearSiteLook } from './accent';
@@ -41,6 +43,18 @@ export function siteLookAccent(t: WornTheme): Accent {
   };
 }
 
+/** Hosts that hold wallet permissions (History › Connections' list), from the background. Empty on any failure. */
+async function grantHosts(): Promise<string[]> {
+  const c = (globalThis as { chrome?: { runtime?: { sendMessage?: (m: unknown) => Promise<unknown> } } }).chrome;
+  if (!c?.runtime?.sendMessage) return [];
+  const r = (await c.runtime.sendMessage({ action: 'PERMISSIONS_LIST_ALL' })) as {
+    success?: boolean;
+    data?: { groups?: { originator?: unknown }[] };
+  } | null;
+  if (!r?.success) return [];
+  return (r.data?.groups ?? []).map((g) => g.originator).filter((o): o is string => typeof o === 'string' && !!o);
+}
+
 let shown: string | null = null;
 let shownPath: string | null = null;
 let seq = 0;
@@ -54,7 +68,9 @@ export async function wearActiveSite(origin: string | null, path: string | null 
   shownPath = path;
   if (origin) rememberSitePath(origin, path);
   const mine = ++seq;
-  if (!origin || !shouldWearSiteTheme(origin)) {
+  const on = !!origin && siteThemesOn() && siteThemeAllowed(origin) && (await ensureSiteConnected(origin, grantHosts));
+  if (mine !== seq) return;
+  if (!origin || !on) {
     setActiveSiteRoom(null);
     return wearSiteLook(null);
   }

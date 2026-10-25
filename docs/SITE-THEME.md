@@ -79,7 +79,12 @@ is picked by the wallet.
   contrast-checked again). It is never saved. It reverts when the tab changes to another site, reloads, closes,
   the site disconnects (`bwallet:disconnect`, see `src/services/reconnectGate.ts`), the user revokes it, or a
   switch below is turned off. A bundled pack the page names (`<meta name="bwalletx-theme">`) wins over the file.
+- "Connected" means the user approved a sheet from that site in this build, **or** the site already holds wallet
+  permissions (History › Connections lists it). The second case covers sites approved before site themes shipped
+  (25 Oct 2026): the panel asks the background's permission list once and remembers the answer. `www.` and the apex
+  are different origins: each needs its own connection and serves its own file.
 - A site that never made a request is never fetched.
+- Approving a site again forgets a cached "no theme" answer, so a site that just added its file shows at once.
 - Fetch: no cookies, no referrer, 4 s timeout, size caps, no redirect to another origin. Images are fetched by the
   wallet and kept as `data:` URLs. Cached a day (a site with no theme: an hour). Per device (localStorage).
 - Extension: every approval (side panel, popup window, in-page sheet) is `prompt.html`, so all three wear it.
