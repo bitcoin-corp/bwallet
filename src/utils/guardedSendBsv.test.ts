@@ -186,6 +186,32 @@ describe('b_feedback 67: paymail scripts re-derived from the payee key before si
     expect((res as { unverified?: string[] }).unverified).toEqual(['ann@other.test']);
   });
 
+  test('b-Aware 25 Oct: a third-party host that drops the derivation when we hold a signed key is refused', async () => {
+    const s = setup([{ script: scriptA, satoshis: 1000 }], 'other.test');
+    const res = await sendBsv.execute(s.ctx, {
+      requests: [{ paymail: 'ann@other.test', satoshis: 1000, identityKey: KEY } as never],
+    });
+    expect(s.calls).toHaveLength(0);
+    expect(String(res.error)).toContain('did not let us check');
+  });
+
+  test('b-Aware 25 Oct: paths with no sheet (requireVerified) never pay an unchecked paymail address', async () => {
+    const s = setup([{ script: scriptA, satoshis: 1000 }], 'other.test');
+    const res = await sendBsv.execute(s.ctx, {
+      requests: [{ paymail: 'ann@other.test', satoshis: 1000 }],
+      requireVerified: true,
+    } as never);
+    expect(s.calls).toHaveLength(0);
+    expect(String(res.error)).toContain('did not let us check');
+    const ok = setup([derived(1000)], 'other.test');
+    const paid = await sendBsv.execute(ok.ctx, {
+      requests: [{ paymail: 'ann@other.test', satoshis: 1000 }],
+      requireVerified: true,
+    } as never);
+    expect(paid.error).toBeUndefined();
+    expect(ok.calls).toHaveLength(1);
+  });
+
   test('ord_address: a proof that does not verify drops it and token sends are refused', async () => {
     const ord = PrivateKey.fromRandom().toAddress();
     const f = (u: string, i?: RequestInit) => fetch(u, i);

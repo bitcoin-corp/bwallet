@@ -179,6 +179,10 @@ const checkedDestination = async (req: PaymailRequest, paymail: string) => {
   if (!check.ok) throw new PaymentOutputMismatch(check.error);
   // Our host always derives from the key: a missing derivation there means it isn't the server we deployed.
   if (!check.verified && ours) throw refused('our paymail host did not let us check the address');
+  // b-Aware 25 Oct 2026: when the payer already holds the payee's key from a signed binding (not from this same host),
+  // a host that leaves out the derivation is declining a check we can do. Refuse, as for a wrong derivation.
+  if (!check.verified && str(req.identityKey))
+    throw refused(`${domain} did not let us check the address against ${paymail}'s key`);
   if (!outputs.every((o) => isSats(o.satoshis))) throw refused('output with an invalid amount');
   if (outputs.reduce((a, o) => a + o.satoshis, 0) !== req.satoshis)
     throw refused(`${paymail} outputs do not add up to the approved amount`);
@@ -208,7 +212,7 @@ const deliver = async (d: Delivery, beefHex: string) => {
 
 const payPaymails = async (
   ctx: Ctx,
-  input: SendBsvInput,
+  input: SendBsvInput & StrictInput,
 ): Promise<Awaited<ReturnType<typeof upstreamSendBsv.execute>> & { unverified?: string[] }> => {
   if (input.from) throw refused('sending as a paymail is not supported for checked payments');
   const requests: SendBsvRequest[] = [];
@@ -226,6 +230,9 @@ const payPaymails = async (
     deliveries.push(d.delivery);
     if (!d.verified) unverified.push(pm);
   }
+  // No person sees a sheet on these paths (bPhone meter, agents), so nobody could read a "not verified" note.
+  if (unverified.length && input.requireVerified)
+    throw refused(`${unverified.join(', ')}: the paymail host did not let us check the address`);
   const res = await guardedUpstream(ctx, { ...input, requests });
   if (res.error || !res.txid) return res;
   if (res.tx) {
@@ -239,7 +246,10 @@ const payPaymails = async (
   return unverified.length ? { ...res, unverified } : res;
 };
 
-const execute: typeof upstreamSendBsv.execute = async (ctx, input) => {
+/** requireVerified: refuse any paymail whose host address could not be checked (paths with no sheet in front). */
+type StrictInput = { requireVerified?: boolean };
+
+const execute: typeof upstreamSendBsv.execute = async (ctx, input: SendBsvInput & StrictInput) => {
   const requests = input?.requests ?? [];
   try {
     const paymails = requests.map((r) => r.paymail ?? r.handle).filter((p): p is string => !!p);

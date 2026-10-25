@@ -380,7 +380,8 @@ async function pay(ctx: OneSatContext, card: RateCard, payTo: PayTo, units: numb
     if (sats === null) throw new Error('BSV price unavailable');
     const res = await sendBsv.execute(ctx, {
       requests: [{ paymail: payTo.paymail, satoshis: Math.max(sats, MIN_PAY_SATS) }],
-    });
+      requireVerified: true,
+    } as Parameters<typeof sendBsv.execute>[1]);
     if (res.error || !res.txid) throw new Error(String(res.error ?? 'send failed'));
     return res.txid;
   }

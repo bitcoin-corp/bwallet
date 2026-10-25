@@ -144,7 +144,10 @@ export const runAgentAction = async (
     if (g.paper) return { ok: true, text: `Paper send of $${a.usd.toFixed(2)} to ${a.to}` };
     const sats = Math.round((a.usd / bsvUsd) * 1e8);
     const to = a.to.includes('@') ? { paymail: a.to } : { address: a.to };
-    const res = await sendBsv.execute(ctx, { requests: [{ ...to, satoshis: sats }] });
+    const res = await sendBsv.execute(ctx, {
+      requests: [{ ...to, satoshis: sats }],
+      requireVerified: true,
+    } as Parameters<typeof sendBsv.execute>[1]);
     if (!res.txid || res.error) return { ok: false, text: `Send failed: ${String(res.error ?? 'unknown error')}` };
     appendAgentLog(id, {
       at: Date.now(),
