@@ -681,9 +681,7 @@ export function guardSiteTokens<T extends object>(wallet: T, deps: SiteTokenDeps
         });
       else {
         const p2pkh = /^76a914([0-9a-f]{40})88ac$/i.exec(hex);
-        const to = p2pkh
-          ? Utils.toBase58Check(Utils.toArray(p2pkh[1], 'hex'), [0])
-          : 'a script';
+        const to = p2pkh ? Utils.toBase58Check(Utils.toArray(p2pkh[1], 'hex'), [0]) : 'a script';
         panels.push({
           title: o.outputDescription?.slice(0, 80) || 'Output',
           subtitle: `To ${short(to)}`,
