@@ -501,11 +501,11 @@ const MOBILE_TEXT: Record<string, [string, string][]> = {
   'src/pages/BsvWallet.tsx#kinds': [
     [
       "import { ManageTokens } from '../components/ManageTokens';",
-      "import { ManageTokens } from '../components/ManageTokens';\nimport { WalletKindGate, WalletKindSwitch } from '../mobile/wallet/KindSwitch';\nimport { MediaSection } from '../mobile/media/MediaSection';\nimport { TicketsSection } from '../mobile/wallet/TicketsSection';\nimport { NamesSection } from '../mobile/wallet/NamesSection';\nimport { SharesSection } from '../mobile/wallet/SharesSection';",
+      "import { ManageTokens } from '../components/ManageTokens';\nimport { WalletKindGate, WalletKindSwitch } from '../mobile/wallet/KindSwitch';\nimport { MediaSection } from '../mobile/media/MediaSection';\nimport { TicketsSection } from '../mobile/wallet/TicketsSection';\nimport { NamesSection } from '../mobile/wallet/NamesSection';\nimport { SharesSection } from '../mobile/wallet/SharesSection';\nimport { RewardsSection } from '../mobile/wallet/rewards/RewardsSection';",
     ],
     [
       '        {/* ── Assets section ── */}',
-      '        <SectionBoundary name="Kind switch"><WalletKindSwitch /></SectionBoundary>\n        <WalletKindGate kind="tokens">\n<SectionBoundary name="Tokens">\n        {/* ── Assets section ── */}',
+      '        <SectionBoundary name="Kind switch"><WalletKindSwitch /></SectionBoundary>\n        <WalletKindGate kind="tokens">\n<SectionBoundary name="Rewards"><RewardsSection /></SectionBoundary>\n<SectionBoundary name="Tokens">\n        {/* ── Assets section ── */}',
     ],
     [
       '        {/* Bottom breathing room */}',
