@@ -7,6 +7,13 @@ import type { Shop } from '../themeStore/shops';
 import mainCard from '../wallet/editionArt/tokenblaster-main-card.webp';
 import assaultCard from '../wallet/editionArt/tokenblaster-assault-card.webp';
 import mainLogo from '../wallet/editionArt/tokenblaster-logo.webp';
+import mainBanner from '../wallet/editionArt/tokenblaster-banner.webp';
+import terrornodeBanner from '../wallet/editionArt/terrornode-banner.webp';
+import terrornodeLogo from '../wallet/editionArt/terrornode-logo.webp';
+import terrornodeIcon from '../wallet/editionArt/terrornode-token-icon.webp';
+
+/** $TERRORNODE, minted on TokenBlaster's BlastPad (owner, 25 Oct 2026): 1B supply, icon at outpoint _0. */
+export const TERRORNODE_TOKEN_ID = 'd5ffbbfd8310dcb6763c7180b8dbc725b708d0ce990f93cd27d00ff24aa0de02_1';
 
 /** Card art per pack pattern (cardPatternsEdition.ts). */
 export const TOKENBLASTER_CARD_ART: Record<string, readonly string[]> = {
@@ -22,7 +29,7 @@ export const TOKENBLASTER_SHOPS: Shop[] = [
     owner: 'bWalletX',
     blurb: 'Games on the live chain, and a place to launch your own coin',
     logo: mainLogo,
-    banner: mainCard,
+    banner: mainBanner,
     colour: '#0A0A0C',
     receiptArt: mainCard,
     themes: ['tokenblaster', 'terrornode'],
@@ -31,7 +38,22 @@ export const TOKENBLASTER_SHOPS: Shop[] = [
       { label: 'Launchpad', href: 'https://www.tokenblaster.lol/launch' },
     ],
     // Pages show live / coming status (owner rule). No merch source yet: tokenblaster.lol is adding merch_url.
-    coming: ['Merch: coming', 'Terrornode ammo: coming soon'],
+    coming: ['Merch: coming'],
+    // Bought on BlastPad, not in the wallet: outside links only, no investment wording.
+    items: [
+      {
+        id: 'terrornode-ammo',
+        name: '$TERRORNODE',
+        icon: terrornodeIcon,
+        bannerCss: `center / auto 84% no-repeat url(${terrornodeLogo}), center / cover no-repeat url(${terrornodeBanner}), #000`,
+        line: 'Ammo for Assault on Terrornode. Rounds burn when you shoot.',
+        links: [
+          { label: 'Buy on BlastPad', href: `https://www.tokenblaster.lol/launch/${TERRORNODE_TOKEN_ID}` },
+          { label: 'Play', href: 'https://www.tokenblaster.lol/arcade/terrornode' },
+        ],
+        tokenId: TERRORNODE_TOKEN_ID,
+      },
+    ],
   },
 ];
 

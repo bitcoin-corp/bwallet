@@ -32,6 +32,22 @@ export interface Shop {
   links?: readonly { label: string; href: string }[];
   /** Things on the way, shown as plain status lines with no buy button (owner rule: pages show live / coming). */
   coming?: readonly string[];
+  /**
+   * Things sold elsewhere (a token on a launchpad), shown with outside links only: no buy flow in the wallet.
+   * `tokenId` (a BSV-21 id) adds a Chat button for the token's room when token rooms are on.
+   */
+  items?: readonly ShopItem[];
+}
+
+export interface ShopItem {
+  id: string;
+  name: string;
+  icon: string;
+  /** Optional strip above the item: a CSS background (art, or a logo on art). */
+  bannerCss?: string;
+  line: string;
+  links: readonly { label: string; href: string }[];
+  tokenId?: string;
 }
 
 const ALL_SHOPS: readonly Shop[] = [

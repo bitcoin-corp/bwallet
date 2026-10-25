@@ -1808,7 +1808,8 @@ button.bw-mail-card:active {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 12px;
+  /* ~11px between the copy glyph and "ID KEY:" (button 28px, glyph 13px, so 7.5px of it is the button). */
+  gap: 4px;
   min-width: 0;
   padding: 0 14px 0 28px;
   color: #d6d3c8;
@@ -1818,7 +1819,8 @@ button.bw-mail-card:active {
   display: flex;
   flex-direction: row;
   align-items: baseline;
-  justify-content: flex-end;
+  /* Key sits just right of its copy icon, not pushed to the far end (owner, 25 Oct 2026). */
+  justify-content: flex-start;
   gap: 6px;
   min-width: 0;
   white-space: nowrap;
@@ -1846,6 +1848,8 @@ button.bw-mail-card:active {
   place-items: center;
   width: 28px;
   height: 28px;
+  /* Icon stays where it was (old shared rule pulled it 12px left). */
+  margin: 0 0 0 -12px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -2335,7 +2339,8 @@ html.ww-on .bw-cdes {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 12px;
+  /* ~11px between the copy glyph and "ID KEY:" (button 28px, glyph 13px, so 7.5px of it is the button). */
+  gap: 4px;
   min-width: 0;
   padding: 0 14px 0 28px;
   color: #d6d3c8;
@@ -2345,7 +2350,8 @@ html.ww-on .bw-cdes {
   display: flex;
   flex-direction: row;
   align-items: baseline;
-  justify-content: flex-end;
+  /* Key sits just right of its copy icon, not pushed to the far end (owner, 25 Oct 2026). */
+  justify-content: flex-start;
   gap: 6px;
   min-width: 0;
   white-space: nowrap;
@@ -2373,6 +2379,8 @@ html.ww-on .bw-cdes {
   place-items: center;
   width: 28px;
   height: 28px;
+  /* Icon stays where it was (old shared rule pulled it 12px left). */
+  margin: 0 0 0 -12px;
   padding: 0;
   border: 0;
   background: transparent;

@@ -56,6 +56,7 @@ import { DEFAULT_EXPIRY, parsePage, parseSpaceInvite } from '../spaces/invite';
 import { hasInvitePrefill, onXInvite, takeXInvite, type XInviteLink } from '../chat/xInvites';
 import { InvitesApi } from '../chat/invitesApi';
 import { BuyTokenButton } from '../chat/OpenTokenRoomButton';
+import { LinkedTokenChip } from '../chat/LinkedTokenChip';
 import { TopNav } from '../../components/TopNav';
 import { useInPeek } from '../phone/pageEl';
 import { readListCache, writeListCache } from '../ui/listCache';
@@ -828,6 +829,7 @@ const Conversation = ({
                   : `${members} member${members === 1 ? '' : 's'} · $${room.ticker}`}
           </div>
           {entry && entry.key.startsWith('bsv21:') && <IssuerBadge tokenId={entry.holding.id} compact />}
+          <LinkedTokenChip metadata={room.metadata} color={look?.text} />
         </div>
         <div className="flex basis-full items-center justify-end gap-1">
           {peer && <UserSafetyButton client={client} handle={peer} onBlocked={onBack} />}

@@ -40,6 +40,19 @@ frame (XDM reply `{ status: 'error', code: 'ERR_PERMISSION_DENIED', description:
 phone-paired sessions (`{ t: 'res', error: { code: 'ERR_PERMISSION_DENIED', message: 'Permission denied.' } }`).
 Anything else (insufficient funds, locked wallet, network) never carries this code.
 
+Phone-paired sessions have one more code: `REPAIR_NEEDED`. It means the pairing itself has ended (24 hours idle, an
+agent grant expired, Disconnect on the phone, or a different wallet account), not that the user said no. A call on such
+a session answers `{ t: 'res', error: { code: 'REPAIR_NEEDED', message: 'This pairing has ended. Scan the QR code on the
+site again to reconnect.' } }` and the phone then sends `{ t: 'close', reason: 'REPAIR_NEEDED' }`. Show the QR code
+again; don't retry the call. A pairing that is still current keeps its grants across the phone sleeping: the phone
+reopens its relay socket when it comes back to the foreground, so a call that got no answer while it slept can be
+re-sent with the same id (it is answered, never run twice).
+When the phone rejoins the relay it sends `{ t: 'ready' }` again: resend anything still waiting. A paired session
+that already approved its identity key gets it with no sheet (the reconnect sheet never applies to a phone pairing).
+
+To open a pairing straight in bWalletX, link to `https://www.bwallet.space/pair?…` with the same query as the QR code
+(iOS universal link / Android app link). If the app isn't installed, send people to `https://bwalletx.com/get`.
+
 ```ts
 try {
   await window.CWI.createAction(args);

@@ -6,7 +6,7 @@ import { SHOPS } from '../themeStore/shops';
 import { PAID_EDITIONS } from './accents';
 
 describe('TokenBlaster shop', () => {
-  test('bWalletX: two $1 packs, Play and Launchpad links, merch and ammo shown as coming', () => {
+  test('bWalletX: two $1 packs, Play and Launchpad links, merch coming, $TERRORNODE ammo as a BlastPad item', () => {
     const shop = live.TOKENBLASTER_SHOPS[0];
     expect(shop?.themes).toEqual(['tokenblaster', 'terrornode']);
     for (const id of shop?.themes ?? []) expect(PAID_EDITIONS).toContain(id);
@@ -14,7 +14,15 @@ describe('TokenBlaster shop', () => {
       'https://www.tokenblaster.lol',
       'https://www.tokenblaster.lol/launch',
     ]);
-    expect(shop?.coming).toEqual(['Merch: coming', 'Terrornode ammo: coming soon']);
+    expect(shop?.coming).toEqual(['Merch: coming']);
+    const ammo = shop?.items?.[0];
+    expect(ammo?.line).toBe('Ammo for Assault on Terrornode. Rounds burn when you shoot.');
+    expect(ammo?.tokenId).toBe('d5ffbbfd8310dcb6763c7180b8dbc725b708d0ce990f93cd27d00ff24aa0de02_1');
+    expect(ammo?.links.map((l) => l.label)).toEqual(['Buy on BlastPad', 'Play']);
+    expect(ammo?.links[0].href).toBe(
+      'https://www.tokenblaster.lol/launch/d5ffbbfd8310dcb6763c7180b8dbc725b708d0ce990f93cd27d00ff24aa0de02_1',
+    );
+    expect(ammo?.links[1].href).toBe('https://www.tokenblaster.lol/arcade/terrornode');
     // Right after NPG in the Store.
     const ids = SHOPS.map((s) => s.id);
     expect(ids.indexOf('tokenblaster')).toBe(ids.indexOf('npg') + 1);

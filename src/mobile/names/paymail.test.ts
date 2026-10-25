@@ -2,7 +2,15 @@ import { describe, expect, test } from 'bun:test';
 import { PrivateKey, ProtoWallet } from '@bsv/sdk';
 // The server module (CommonJS, site/lib) — the wallet's signatures must verify there.
 import server from '../../../site/lib/paymail.js';
-import { nameChangeBlocked, signRequest, signedMessage, toAlias, PAYMAIL_ALIAS_RE } from './paymail';
+import {
+  nameChangeBlocked,
+  paymailAvailability,
+  paymailAvailable,
+  signRequest,
+  signedMessage,
+  toAlias,
+  PAYMAIL_ALIAS_RE,
+} from './paymail';
 import { ownedFromOutputs, payableLabel, pickName } from './accountName';
 import type { WalletOutput } from '@bsv/sdk';
 
@@ -93,5 +101,30 @@ describe('nameChangeBlocked', () => {
     expect(nameChangeBlocked('boase@bwallet.space', 'b0ase')).toBeNull();
     expect(nameChangeBlocked(undefined, 'b0ase')).toBeNull();
     expect(nameChangeBlocked('b0asex.x@bwallet.space', 'b0asex.x')).toBeNull();
+  });
+});
+
+describe('claim screen availability uses the server rules', () => {
+  // A fetch that answers from the real server handlers (empty store).
+  const store = { getAlias: async () => null, getForward: async () => null };
+  const h = server.makeHandlers({ store, env: { PAYMAIL_DOMAIN: 'pay.test' } });
+  const f = async (url: string) => {
+    const u = new URL(url, 'https://x');
+    const [status, body] = await h.available(Object.fromEntries(u.searchParams));
+    return new Response(JSON.stringify(body), { status });
+  };
+  test('a reserved alias shows Reserved, never Available', async () => {
+    const a = await paymailAvailability(f as never, 'bwalletx', '02' + '1'.repeat(64));
+    expect(a.state).toBe('reserved');
+    expect(a.message).toContain('bWalletX team');
+    expect(await paymailAvailable(f as never, 'bwalletx')).toBe(false);
+  });
+  test('the brand key sees it as free; an ordinary name is free', async () => {
+    expect((await paymailAvailability(f as never, 'bwalletx', server.RESERVED_OWNERS.bwalletx)).state).toBe('free');
+    expect((await paymailAvailability(f as never, 'somebody', '02' + '1'.repeat(64))).state).toBe('free');
+  });
+  test('an older server without the op falls back to pki', async () => {
+    const old = async () => new Response('{}', { status: 404 });
+    expect((await paymailAvailability(old as never, 'x1')).state).toBe('free');
   });
 });

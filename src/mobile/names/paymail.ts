@@ -200,11 +200,35 @@ export const saveUserApps = async (f: Fetch, wallet: Signer, apps: SavedApp[]): 
   await postJson(f, api('apps-put'), await signRequest(wallet, 'apps-put', { apps: JSON.stringify(apps) }));
 };
 
-/** Is `alias@domain` free? (pki 404 = free) */
-export const paymailAvailable = async (f: Fetch, alias: string): Promise<boolean> => {
-  const r = await f(api(`id/${alias}@${BWALLET_PAYMAIL_DOMAIN}`));
-  return r.status === 404;
+export type PaymailAvailability = {
+  state: 'free' | 'mine' | 'taken' | 'reserved' | 'invalid';
+  message?: string;
 };
+/**
+ * What a claim of `alias` by `identityKey` would meet, from the server's `available` op (same rules as
+ * register, reserved names included). An older server without the op: fall back to pki (404 = free).
+ */
+export const paymailAvailability = async (
+  f: Fetch,
+  alias: string,
+  identityKey?: string,
+): Promise<PaymailAvailability> => {
+  const q = new URLSearchParams({ alias, ...(identityKey ? { key: identityKey } : {}) });
+  const r = await f(api(`available?${q.toString()}`));
+  if (r.ok) {
+    const j = (await r.json()) as { available?: boolean; reason?: string | null; message?: string };
+    if (j.reason === 'mine') return { state: 'mine' };
+    if (j.available) return { state: 'free' };
+    if (j.reason === 'reserved' || j.reason === 'invalid') return { state: j.reason, message: j.message };
+    return { state: 'taken' };
+  }
+  const pki = await f(api(`id/${alias}@${BWALLET_PAYMAIL_DOMAIN}`));
+  return { state: pki.status === 404 ? 'free' : 'taken' };
+};
+
+/** Could anyone claim `alias@domain` right now? (reserved and taken names are not free) */
+export const paymailAvailable = async (f: Fetch, alias: string): Promise<boolean> =>
+  (await paymailAvailability(f, alias)).state === 'free';
 
 export type InboxPayment = {
   reference: string;

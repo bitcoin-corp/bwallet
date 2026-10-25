@@ -7,28 +7,16 @@ import type { SheetModel } from './permissionBundle';
  */
 export type ApprovalKind = 'signin' | 'connect' | 'pay' | 'mint' | 'careful' | 'post' | 'private';
 
-export interface ApprovalContext {
-  /**
-   * The site's current monthly allowance in sats, if it has one. A payment that still reaches a sheet
-   * while an allowance exists did not fit inside it.
-   */
-  existingAllowanceSats?: number;
-}
-
-/** True when this sheet's payment goes past the site's monthly allowance. */
-export const isOverAllowance = (model: Pick<SheetModel, 'payment'>, ctx: ApprovalContext = {}): boolean =>
-  !!model.payment && ctx.existingAllowanceSats !== undefined;
-
 /**
  * The card for a one-sheet bundle. Risk wins over everything; then a first post (POST, its cost shown); then
  * payment; then sign-in, private data, or connect.
  */
 export const approvalKindForSheet = (
   model: Pick<SheetModel, 'lines' | 'payment' | 'mode'> & Partial<Pick<SheetModel, 'purpose'>>,
-  ctx: ApprovalContext = {},
 ): ApprovalKind => {
+  // A payment's size never makes a sheet CAREFUL (owner, 25 Oct 2026: "I have no spending caps"). There is no
+  // site allowance, cap or threshold to be "over": the user sees the amount and approves it, whatever it is.
   if (model.lines.some((l) => l.risky)) return 'careful';
-  if (isOverAllowance(model, ctx)) return 'careful';
   if (model.purpose === 'post') return 'post';
   if (model.payment) return 'pay';
   if (model.lines.length > 0 && model.lines.every(isSignInLine)) return 'signin';

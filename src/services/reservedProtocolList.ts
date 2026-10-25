@@ -69,5 +69,8 @@ export const EXTERNAL_OK: readonly (readonly [number, string, string])[] = [
   [2, 'bjobsx records', 'bJobsX private profile records: pinned to bjobsx.com only (pinnedProtocols.ts)'],
   [2, 'bdrivex records', 'bDriveX private file records: pinned to bdrivex.com only (pinnedProtocols.ts)'],
   [2, 'bcalx records', 'bCalX private calendar records: pinned to bcalx.com only (pinnedProtocols.ts)'],
+  // Token receive keys for sites (services/siteTokens.ts, docs/SITE-TOKENS.md): getPublicKey only, answered with a
+  // fresh wallet token key the wallet picks; every signing/crypto method with it is refused for apps.
+  [1, 'bwalletx token receive', 'Site token receive keys: getPublicKey only (siteTokens.ts)'],
   [1, 'sigma', 'SIGMA post signatures: the wallet asks for it with a first post (permissionBundle.ts POST_PROTOCOL)'],
 ];

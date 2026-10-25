@@ -30,6 +30,7 @@ import { SHOPS, shopById, type Shop } from './shops';
 import { priceLabel, visible, type Listing } from './bstore';
 import { EMOJI_PACK_IDS } from '../theme/emojiThemes';
 import { openExternal } from '../exchange/useTokenRowActions';
+import { OpenTokenRoomButton } from '../chat/OpenTokenRoomButton';
 
 // The existing "Get your own edition" order flow ($99 a year), bWalletX only.
 const ThemeOrderSheet = THEME_ORDERS_ENABLED ? lazy(() => import('../themeOrder/ThemeOrderSheet')) : null;
@@ -248,6 +249,39 @@ function ShopPage({ shop, onBack }: { shop: Shop; onBack: () => void }) {
           ))}
         </div>
       )}
+      {shop.items?.map((it) => (
+        <div key={it.id} className={`${TILE} overflow-hidden`} data-testid={`shop-item-${it.id}`}>
+          {it.bannerCss && <div className="h-20 w-full" style={{ background: it.bannerCss }} />}
+          <div className="flex items-center gap-3 p-3">
+            <img src={it.icon} alt="" width={40} height={40} className="rounded-lg" />
+            <div className="min-w-0">
+              <b className="block text-sm text-white">{it.name}</b>
+              <span className="text-xs" style={{ color: MUTED }}>
+                {it.line}
+              </span>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5 px-3 pb-3">
+            {it.links.map((l) => (
+              <button
+                key={l.href}
+                type="button"
+                onClick={() => openExternal(l.href)}
+                className="bw-pill bw-pill-gold flex min-h-[40px] flex-1 items-center justify-center gap-1.5 py-2 text-xs font-bold"
+              >
+                {l.label} <ExternalLink size={12} aria-hidden="true" />
+              </button>
+            ))}
+            {it.tokenId && (
+              <OpenTokenRoomButton
+                id={it.tokenId}
+                className="bw-pill flex min-h-[40px] flex-1 items-center justify-center gap-1.5 py-2 text-xs font-bold"
+                style={{}}
+              />
+            )}
+          </div>
+        </div>
+      ))}
       {!!shop.coming?.length && (
         <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
           {shop.coming.map((c) => (

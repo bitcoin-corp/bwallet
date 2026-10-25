@@ -20,7 +20,7 @@ import {
   type NameFee,
   paymailConfig,
   nameChangeBlocked,
-  paymailAvailable,
+  paymailAvailability,
   paymailEnabled,
   PAYMAIL_ALIAS_RE,
   toAlias,
@@ -90,7 +90,7 @@ export const GetYourName = ({
   const [alias, setAlias] = useState(toAlias(profileName));
   // Optional "Your name" (owner, 15 Oct 2026). Blank → the server uses the handle ("mike" → "Mike").
   const [yourName, setYourName] = useState(() => cleanDisplayName(profileName));
-  const [aliasState, setAliasState] = useState<'idle' | 'checking' | 'free' | 'taken' | 'invalid'>('idle');
+  const [aliasState, setAliasState] = useState<'idle' | 'checking' | 'free' | 'taken' | 'reserved' | 'invalid'>('idle');
   // Personal token: minted with the name (same confirmation) unless already linked.
   const [link, setLink] = useState(getPersonalLink(identityAddress));
   // Names, Rooms and Tickets (24 Oct 2026): a name makes no token and no room unless the user ticks the box
@@ -259,12 +259,18 @@ export const GetYourName = ({
     if (!PAYMAIL_ALIAS_RE.test(alias)) return setAliasState('invalid');
     setAliasState('checking');
     const t = setTimeout(() => {
-      paymailAvailable(f, alias)
-        .then((free) => setAliasState(free || ownPaymail ? 'free' : 'taken'))
+      apiContext.wallet
+        .getPublicKey({ identityKey: true })
+        .then(({ publicKey }) => paymailAvailability(f, alias, publicKey))
+        .then(({ state }) =>
+          setAliasState(
+            ownPaymail || state === 'free' || state === 'mine' ? 'free' : state === 'invalid' ? 'invalid' : state,
+          ),
+        )
         .catch(() => setAliasState('idle'));
     }, 400);
     return () => clearTimeout(t);
-  }, [alias, ownPaymail]);
+  }, [alias, ownPaymail, apiContext.wallet]);
 
   // 1¢ to claim a new name when the server asks for it (anti-squatting, owner 10 Oct 2026).
   const [nameFee, setNameFee] = useState<NameFee | null>(null);
@@ -437,6 +443,7 @@ export const GetYourName = ({
             >
               {aliasState === 'free' && (ownPaymail ? 'Yours' : 'Available')}
               {aliasState === 'taken' && 'Taken'}
+              {aliasState === 'reserved' && 'Reserved: kept for the bWalletX team'}
               {aliasState === 'invalid' && 'a-z, 0-9, - or _'}
               {aliasState === 'checking' && 'Checking…'}
             </span>

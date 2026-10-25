@@ -29,6 +29,15 @@ import { fetchExchangeRate } from '../../utils/wallet';
 import { AgentCallError, CLI_ORIGIN, handleAgentCall, type AgentGrant } from './agentPairing';
 import { ReplyBook } from './replies';
 import { USER_DENIED_CODE, USER_DENIED_MESSAGE, isUserDenied } from '../../services/userDenied';
+import { PAIR_MIRROR_KEY, toPairMirror } from '../../services/pairedPromptGuard';
+
+/**
+ * The pairing itself has ended (24 h idle, agent grant expired, disconnected, or bound to another account), so the
+ * site must show its QR again. Distinct from ERR_PERMISSION_DENIED, which only ever means the user said no.
+ * Sent as a call's error `{ code: 'REPAIR_NEEDED', message }` and as the reason of the phone's close frame.
+ */
+export const REPAIR_NEEDED_CODE = 'REPAIR_NEEDED';
+export const REPAIR_NEEDED_MESSAGE = 'This pairing has ended. Scan the QR code on the site again to reconnect.';
 
 /** What paired-CLI calls need from the app; TopNav keeps it current (wallet context + open account). */
 let agentDeps: {
@@ -216,7 +225,8 @@ const dropLapsed = (dropped: StoredSession[], kept: StoredSession[]) => {
     if (!l) continue;
     if (l.retry) clearTimeout(l.retry);
     live.delete(s.c);
-    l.ws.close();
+    // Tell the site the pairing ended (it shows its QR again) rather than going silent.
+    void send(s.c, { t: 'close', reason: REPAIR_NEEDED_CODE }, l).finally(() => l.ws.close());
   }
   if (origins.length) void flushRevocations();
 };
@@ -240,6 +250,33 @@ export const bindToAccount = (
   });
 };
 
+/**
+ * Mirror the guard's fields into chrome.storage.local for the background worker (services/pairedPromptGuard.ts).
+ * lastUsed is rounded down to the minute so a busy channel doesn't write on every frame.
+ */
+let lastMirror = '';
+const mirrorSessions = (all: StoredSession[]) => {
+  const c = (globalThis as { chrome?: { storage?: { local?: { set?: (v: unknown) => Promise<unknown> } } } }).chrome;
+  if (!c?.storage?.local?.set) return;
+  const value = toPairMirror(all.map((s) => ({ ...s, lastUsed: s.lastUsed - (s.lastUsed % 60_000) })));
+  const json = JSON.stringify(value);
+  if (json === lastMirror) return;
+  lastMirror = json;
+  void c.storage.local.set({ [PAIR_MIRROR_KEY]: value })?.catch?.(() => {
+    lastMirror = '';
+  });
+};
+
+/** The stored session for a channel, read without dropping anything (load() has side effects). */
+const peek = (c: string): StoredSession | undefined => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY) ?? '[]') as StoredSession[];
+    return Array.isArray(raw) ? raw.find((s) => s.c === c) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const load = (): StoredSession[] => {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? '[]') as StoredSession[];
@@ -251,6 +288,7 @@ const load = (): StoredSession[] => {
     const adopted = kept.some((s, i) => s !== current[i]);
     if (kept.length !== raw.length || adopted) {
       localStorage.setItem(KEY, JSON.stringify(kept));
+      mirrorSessions(kept);
       const keptChannels = new Set(kept.map((s) => s.c));
       dropLapsed(
         raw.filter((s) => !keptChannels.has(s.c)),
@@ -268,11 +306,19 @@ const save = (all: StoredSession[]) => {
   } catch {
     /* storage blocked: sessions last until the app closes */
   }
+  mirrorSessions(all);
   emit();
 };
 export const pairedSites = () => load();
 
-type Live = { ws: WebSocket; sealer: Sealer; stored: StoredSession; retry?: ReturnType<typeof setTimeout> };
+type Live = {
+  ws: WebSocket;
+  sealer: Sealer;
+  stored: StoredSession;
+  retry?: ReturnType<typeof setTimeout>;
+  /** Reopened for a stored session (connect), not a fresh pairing. */
+  resumed?: boolean;
+};
 const live = new Map<string, Live>();
 
 const update = (c: string, patch: Partial<StoredSession>) =>
@@ -350,6 +396,10 @@ async function onRequest(l: Live, id: string, action: string, params: unknown) {
       code?: string;
     };
     if (r?.success) await reply(l, { t: 'res', id, result: r.data });
+    // Refused because the pairing ended meanwhile (the background grants nothing to a pairing without a current
+    // session): REPAIR_NEEDED, so the site re-pairs instead of reading it as the user's No.
+    else if (!load().some((s) => s.c === l.stored.c))
+      await reply(l, { t: 'res', id, error: { code: REPAIR_NEEDED_CODE, message: REPAIR_NEEDED_MESSAGE } });
     // The user declined on the phone: the standard code (services/userDenied.ts), not the generic REJECTED.
     else if (r?.code === USER_DENIED_CODE || isUserDenied(r?.error))
       await reply(l, { t: 'res', id, error: { code: USER_DENIED_CODE, message: USER_DENIED_MESSAGE } });
@@ -374,14 +424,33 @@ function attach(l: Live) {
     if (!isSealed(f)) return;
     const msg = await sealer.open(f);
     if (!msg) return;
+    // The pairing lapsed while its socket stayed open: answer the call with REPAIR_NEEDED (never run it), then let
+    // load() drop the session, which revokes its grants and sends the close frame.
+    const own = peek(stored.c);
+    if (!own || !isCurrent(own)) {
+      if (msg.t === 'req')
+        await send(
+          stored.c,
+          { t: 'res', id: msg.id, error: { code: REPAIR_NEEDED_CODE, message: REPAIR_NEEDED_MESSAGE } },
+          l,
+        );
+      load();
+      return;
+    }
     update(stored.c, { ...sealer.counters, lastUsed: Date.now() });
     if (msg.t === 'req') void onRequest(l, msg.id, msg.action, msg.params);
     else if (msg.t === 'ping') void reply(l, { t: 'ping' });
     else if (msg.t === 'close') forget(stored.c, false);
   });
   ws.onerror = null;
-  if (ws.readyState === WebSocket.OPEN) flush(stored.c);
-  else ws.onopen = () => flush(stored.c);
+  // A rejoin (not the first attach, which sends its own ready) says `ready` again, so the site resends anything that
+  // got no answer while the phone was away.
+  const opened = () => {
+    flush(stored.c);
+    if (l.resumed) void reply(l, { t: 'ready' });
+  };
+  if (ws.readyState === WebSocket.OPEN) opened();
+  else ws.onopen = opened;
   ws.onclose = () => {
     if (live.get(stored.c) !== l) return;
     live.delete(stored.c);
@@ -418,6 +487,7 @@ function connect(c: string) {
         ws: new WebSocket(relaySocketUrl(stored.r, stored.c, 'wallet', undefined, claim)),
         sealer,
         stored: { ...stored, claim },
+        resumed: true,
       });
     } finally {
       connecting.delete(c);
@@ -526,6 +596,39 @@ const reconnectAll = () => {
   if (!agentDeps.currentId) return;
   for (const s of load()) connect(s.c);
 };
+
+/**
+ * After the phone sleeps, iOS can hand back a socket that still says OPEN but is dead, so connect() kept it and the
+ * site's calls went nowhere (owner, 25 Oct 2026). Back from more than WAKE_MS in the background: replace every live
+ * socket with a fresh one. Same session, same key and counters, same grants; nothing is re-approved.
+ */
+export const WAKE_MS = 5_000;
+let hiddenAt: number | undefined;
+const replaceAfterWake = () => {
+  for (const [c, l] of [...live]) {
+    if (l.retry) clearTimeout(l.retry);
+    live.delete(c);
+    l.ws.onclose = null;
+    l.ws.onmessage = null;
+    try {
+      l.ws.close();
+    } catch {
+      /* already gone */
+    }
+  }
+  reconnectAll();
+};
+/** The foreground/background handler initPairing installs (exported for tests). */
+export const onPairVisibility = () => {
+  if (document.visibilityState !== 'visible') {
+    hiddenAt = Date.now();
+    return;
+  }
+  const away = hiddenAt === undefined ? 0 : Date.now() - hiddenAt;
+  hiddenAt = undefined;
+  if (away > WAKE_MS) replaceAfterWake();
+  else reconnectAll();
+};
 /** Reconnect every paired site; again whenever the app comes back to the foreground. */
 export function initPairing() {
   if (started) return;
@@ -534,9 +637,8 @@ export function initPairing() {
   sweepHostPairedKeys();
   void flushRevocations();
   reconnectAll();
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') reconnectAll();
-  });
+  mirrorSessions(load()); // pairings saved before the mirror existed reach the background too
+  document.addEventListener('visibilitychange', onPairVisibility);
 }
 
 /**
@@ -555,5 +657,6 @@ export function closeAllPairings() {
   } catch {
     /* storage unavailable */
   }
+  mirrorSessions([]);
   emit();
 }
