@@ -5,10 +5,13 @@ take or spend someone's money, read their keys, or make the wallet sign somethin
 to hear from you first, and we pay for it.
 
 The full policy, the reward table and our responses to advisories live at **https://bwalletx.com/b-Aware**
-(machine-readable: `/.well-known/security.txt`). This file is the short form of policy version 2 (25 October 2026).
+(machine-readable: `/.well-known/security.txt`). This file is the short form of policy version 3 (25 October 2026).
 
 ## Report a vulnerability
 
+- Check **https://bwalletx.com/bugs** first. Known and already-fixed issues are listed there and earn credit, not
+  money. Still-unfixed security issues are not listed, for safety; if yours looks serious and is not there, report it
+  privately as below.
 - Email **support@bwalletx.com** with the subject line `b-Aware`. Put the full report in the mail; we do not need a
   video, we need steps we can run.
 - If the finding would let an attacker move funds or read keys, say so in the subject so it is read first.
@@ -31,6 +34,11 @@ The reward pool is **20 BSV per calendar quarter**. First valid report of an iss
 know about and issues listed under "Known and accepted" on the b-Aware page earn credit, not money. When the quarter's
 pool is spent, valid reports still get credit and are paid from the next quarter's pool, in order. Severity is ours to
 set, by impact on users' money and keys; we explain the reasoning in writing.
+
+Rewards are paid in BSV to an address you give us, within 30 days of the fix being live on every channel (including
+the App Store and Chrome Web Store) or 60 days after we confirm your report, whichever is first. We pay in one batch
+each month. Reports received before 25 October 2026 keep the earlier terms: 14 days from the fix shipping or 30 days
+from triage.
 
 We pay people we can name, and we record every payout: who, which address, how much, and the transaction. Under
 1 BSV, a stable handle and a paymail or address is enough. For 1 BSV or more (every High and Critical), we need your
