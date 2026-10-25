@@ -59,8 +59,9 @@ const sendSiteTheme = () => {
   const theme = v && v.length <= 32 ? v : null;
   if (theme === sentTheme && location.pathname === sentPath) return;
   sentPath = location.pathname;
-  // The meta going away is @bwalletx/connect's disconnect: the next connect re-asks (services/reconnectGate.ts).
-  if (sentTheme && !theme) sendDisconnect();
+  // The meta going away is NOT a disconnect (25 Oct 2026): a React re-render or a route to a page without it removes
+  // it mid-session, and that made the wallet ask "Reconnect?" in the middle of a paid game. Sites post
+  // bwallet:disconnect instead (below; services/reconnectGate.ts).
   sentTheme = theme;
   try {
     chrome.runtime.sendMessage({ action: 'bwxSiteTheme', theme })?.catch(() => undefined);

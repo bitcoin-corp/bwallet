@@ -3,7 +3,9 @@ import {
   RECONNECT_ID_PREFIX,
   RECONNECT_STATE_KEY,
   isReconnectRequestId,
+  gatesConnect,
   needsReconnect,
+  ReconnectAsks,
   noteCall,
   noteDisconnect,
   noteReconnected,
@@ -1022,14 +1024,21 @@ const updateReconnectState = <T>(fn: (s: ReconnectState) => { state?: ReconnectS
 };
 /** Records a site's call; true when it is an identity-key request that must ask first. */
 const reconnectGate = (originator: string, action: string, params: unknown): Promise<boolean> => {
-  const identity =
-    action === CWIEventName.GET_PUBLIC_KEY && (params as { identityKey?: unknown } | undefined)?.identityKey === true;
+  // Only a real connect may ask; every other call just keeps the site's "last seen" fresh.
+  const identity = gatesConnect(action, params);
   const now = Date.now();
   return updateReconnectState((s) => ({
     state: noteCall(s, originator, now),
     result: identity && needsReconnect(s, originator, now),
   })).catch(() => false);
 };
+/** A liveness call (isAuthenticated, getVersion) from a site: refreshes its last-seen time, never asks. */
+const reconnectSeen = (originator: string): void => {
+  const now = Date.now();
+  void updateReconnectState((s) => ({ state: noteCall(s, originator, now), result: null })).catch(() => undefined);
+};
+/** One reconnect sheet per site: identity calls that arrive while it is open share its answer. */
+const reconnectAsks = new ReconnectAsks();
 const IDENTITY_SHEET_LINE = 'identity key retrieval';
 let reconnectCounter = 0;
 /** Shows "Reconnect to <site>?" (the connect sheet); resolves on Reconnect, rejects on Not now. */
@@ -2183,6 +2192,14 @@ if (!(
         return true;
       }
 
+      // A site's liveness check keeps it "in use" for the reconnect gate (never opens a sheet).
+      if (
+        openToAll.includes(message.action) &&
+        !isFromExtension &&
+        typeof message.originator === 'string' &&
+        message.originator !== ADMIN_ORIGINATOR
+      )
+        reconnectSeen(message.originator);
       switch (message.action) {
         case YoursEventName.SWITCH_ACCOUNT:
           switchAccount()
@@ -2726,7 +2743,7 @@ if (!(
               (gateAsk ?? Promise.resolve(false)).then(async (ask) => {
                 if (ask) {
                   try {
-                    await askReconnect(message.originator);
+                    await reconnectAsks.ask(message.originator, () => askReconnect(message.originator));
                   } catch {
                     sendResponse({ type: CWIEventName.GET_PUBLIC_KEY, success: false, error: 'User denied reconnect' });
                     return;

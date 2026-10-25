@@ -267,7 +267,13 @@ export class PermissionBundler<R extends BundleRequest = BundleRequest> {
         id: (this.opts.newId ?? defaultId)(),
         originator: bundle.originator,
         state: 'collecting',
-        items: unseen,
+        // On its own sheet a line that joined live is an ordinary line again (no "New:", judged on its own).
+        items: unseen.map((i) => {
+          if (!i.addedLive) return i;
+          const rest = { ...i };
+          delete rest.addedLive;
+          return rest;
+        }),
         createdAt: (this.opts.now ?? Date.now)(),
       };
       this.bundles.set(carried.id, carried);
@@ -615,6 +621,10 @@ export const sheetDecisions = (
     if (!detailsSeen && view.hidden?.has(l.requestID)) continue;
     // A tick box on the face (or in opened Details) decides as drawn; a new line counts only when the user ticked it.
     const drawn = detailsSeen || !!view.faceTicks?.has(l.requestID);
+    // A line that joined live and was left as it arrived (unticked) is not part of what Allow approves, but Allow
+    // must never deny a line the user saw (paid playtest, 25 Oct 2026: "I trust it, allow" denied a joined line).
+    // It is left out of the answer, so resolve() carries it to a sheet of its own. Not now still declines it.
+    if (approve && l.isNew && ticks[l.requestID] === undefined) continue;
     const ticked = ticks[l.requestID] ?? (l.isNew ? false : l.checked || (!l.risky && !drawn));
     decisions[l.requestID] = approve && ticked;
   }

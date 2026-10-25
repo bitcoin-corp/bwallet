@@ -598,8 +598,37 @@ describe('the live sheet (owner, 24 Oct 2026)', () => {
     clock.tick(400);
     bundler.add(basket('late'));
     const model = buildSheetModel(b);
-    expect(sheetDecisions(model, true, {}, false)).toEqual({ sign: true, late: false });
+    // Left unticked: not granted, and not answered either (it gets its own sheet, see below).
+    expect(sheetDecisions(model, true, {}, false)).toEqual({ sign: true });
     expect(sheetDecisions(model, true, { late: true }, false).late).toBe(true);
+  });
+
+  test('regression (paid playtest, 25 Oct 2026): Allow never denies a joined line; it gets its own sheet', () => {
+    const { clock, ready, bundler } = setup();
+    const b = bundler.add(proto('sign', 'bmovies.app', { counterparty: 'anyone' }))!;
+    clock.tick(400);
+    bundler.add(basket('late'));
+    const model = buildSheetModel(b);
+    const view = sheetView(model, true);
+    const answer = sheetAnswer(model, 'allow', {}, false, view);
+    const res = bundler.resolve(b.id, answer.decisions, sheetHash(b.items))!;
+    expect(res.granted.map((r) => r.requestID)).toEqual(['sign']);
+    expect(res.denied).toHaveLength(0);
+    expect(res.carried?.items.map((r) => r.requestID)).toEqual(['late']);
+    expect(res.carried?.items[0].addedLive).toBeUndefined();
+    expect(ready.at(-1)?.id).toBe(res.carried!.id);
+    // On its own sheet it is an ordinary line, judged on its own.
+    expect(buildSheetModel(res.carried!).lines[0].isNew).toBeUndefined();
+  });
+
+  test('Not now still declines a joined line; an explicit untick on Allow declines it', () => {
+    const { clock, bundler } = setup();
+    const b = bundler.add(proto('sign', 'bmovies.app', { counterparty: 'anyone' }))!;
+    clock.tick(400);
+    bundler.add(basket('late'));
+    const model = buildSheetModel(b);
+    expect(sheetAnswer(model, 'notNow', {}, false).decisions).toEqual({ sign: false, late: false });
+    expect(sheetDecisions(model, true, { late: false }, false)).toEqual({ sign: true, late: false });
   });
 
   test('an approve bound to an older set of lines (hash mismatch) grants nothing', () => {
@@ -664,7 +693,8 @@ describe('the live sheet (owner, 24 Oct 2026)', () => {
     bundler.add(spend('pay', 5000));
     const model = buildSheetModel(b);
     expect(model.payment).toBeUndefined();
-    expect(sheetDecisions(model, true, {}, false).pay).toBe(false);
+    // Not granted by Allow alone, and not denied: it is carried to a sheet of its own.
+    expect(sheetDecisions(model, true, {}, false).pay).toBeUndefined();
   });
 });
 

@@ -5,12 +5,14 @@
  *
  * Signals (either one means the next identity-key request asks first):
  *  1. The site said it disconnected. The page posts `{ type: 'bwallet:disconnect' }` to itself (content.ts forwards
- *     it; the origin comes from Chrome's sender, never from the message), or it removes its
- *     `<meta name="bwalletx-theme">` after having one (what @bwalletx/connect does on disconnect).
- *  2. A gap: nothing from that site for RECONNECT_GAP_MS. Coming back after a day asks again.
+ *     it; the origin comes from Chrome's sender, never from the message). Only this explicit message counts: the
+ *     theme meta going away is not a signal (25 Oct 2026), since a React re-render or a route to a page without the
+ *     meta removes it in the middle of a session.
+ *  2. A gap: nothing at all from that site for RECONNECT_GAP_MS. Every call of any kind (isAuthenticated,
+ *     getVersion, getNetwork, waitForAuthentication included) refreshes it, so a site in use never hits it.
  *
- * Approving the reconnect sheet clears the flag. Liveness checks while connected (a game calling getPublicKey to
- * see whether the wallet is awake) stay silent: only the signals above flip a site to "ask".
+ * Only a real connect asks (getPublicKey with identityKey: true, see gatesConnect). Liveness checks never open the
+ * sheet. Approving the reconnect sheet clears the flag.
  *
  * Pure: state in, state out. background.ts keeps it in chrome.storage.local.
  */
@@ -90,3 +92,29 @@ export const noteReconnected = (s: ReconnectState, originator: string, now: numb
 /** A synthetic sheet line for the reconnect question; never sent to the permissions manager. */
 export const RECONNECT_ID_PREFIX = 'reconnect-';
 export const isReconnectRequestId = (id: string | undefined): boolean => !!id && id.startsWith(RECONNECT_ID_PREFIX);
+
+/**
+ * Whether a call is a real connect that the gate may hold for the sheet. Liveness checks (isAuthenticated,
+ * getVersion, getNetwork, waitForAuthentication, getHeight) never open it: they answer as they always did.
+ */
+export const gatesConnect = (action: string, params: unknown): boolean =>
+  action === 'getPublicKey' &&
+  !!params &&
+  typeof params === 'object' &&
+  (params as { identityKey?: unknown }).identityKey === true;
+
+/**
+ * One reconnect sheet per site at a time: identity-key calls that arrive while it is open wait for the same answer
+ * instead of each adding a line to it.
+ */
+export class ReconnectAsks {
+  private open = new Map<string, Promise<void>>();
+  ask(originator: string, show: () => Promise<void>): Promise<void> {
+    const h = reconnectHost(originator);
+    const cur = this.open.get(h);
+    if (cur) return cur;
+    const p = show().finally(() => this.open.delete(h));
+    this.open.set(h, p);
+    return p;
+  }
+}
