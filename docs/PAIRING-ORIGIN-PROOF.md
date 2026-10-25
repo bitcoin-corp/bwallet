@@ -22,7 +22,20 @@ so the attacker's screen shows the same code.
 Side effect: level-2 keys (protocol keys bound to the originator) differ between the in-app browser and a paired
 session for the same site. That is deliberate.
 
-## The proper fix (not built yet)
+## Origin proof (shipped 25 Oct 2026, display only)
+
+A site may prove its origin so the phone shows its host plainly. Without a proof the phone says
+**"a site that claims to be <host>"** in amber (pair screen, done screen, Paired websites).
+
+1. Publish `https://<origin>/.well-known/bwalletx-pair.json` = `{"keys":["02…"]}` (up to 8 compressed secp256k1
+   public keys; served directly, no redirect, ≤ 8 KB).
+2. Add `s=<DER signature hex>` to the pairing QR: the signature by one of those keys over the UTF-8 string
+   `bwallet-pair-v1|proof|<channel>|<k lowercase>|<origin>|<expiry>` (`signPairProof` in `src/pair/protocol.ts`).
+   It binds the channel and the site's ephemeral key, so it can't be replayed.
+
+A proven pairing still runs under its own `.paired.invalid` key: the proof changes what is shown, not grants.
+
+## Sharing the site's grants (not built yet)
 
 Let a site prove it controls its origin before a paired session can share that origin's grants:
 

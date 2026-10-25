@@ -8,7 +8,7 @@
  *   frame:  { s: seq, n: nonce b64, d: ciphertext b64 }, AAD = "<sender role>|<s>", s strictly increasing
  *   code:   first 2 bytes of SHA-256(key bits) → 4 digits, shown on both screens
  */
-import { PrivateKey, PublicKey } from '@bsv/sdk';
+import { PrivateKey, PublicKey, Signature, Utils } from '@bsv/sdk';
 
 export const PAIR_VERSION = '1';
 export const PAIR_INFO = 'bwallet-pair-v1';
@@ -29,7 +29,8 @@ export const isAllowedRelay = (relay: string, allowLocal = false) =>
 export type Role = 'site' | 'wallet';
 export type WalletInfo = { name: string; icon?: string; rdns: string };
 
-export type PairLink = { v: string; r: string; c: string; k: string; o: string; e: number };
+/** `s` (optional): the site's origin proof, a DER signature (hex) over pairProofMessage by a key in its well-known file. */
+export type PairLink = { v: string; r: string; c: string; k: string; o: string; e: number; s?: string };
 
 /** Plaintext messages inside encrypted frames. */
 export type PairMessage =
@@ -67,6 +68,7 @@ export const newChannel = () => b64url(crypto.getRandomValues(new Uint8Array(16)
 
 export function pairUrl(link: PairLink): string {
   const q = new URLSearchParams({ v: link.v, r: link.r, c: link.c, k: link.k, o: link.o, e: String(link.e) });
+  if (link.s) q.set('s', link.s);
   return `https://${PAIR_HOST}/pair?${q}`;
 }
 
@@ -92,7 +94,59 @@ export function parsePairUrl(
   const o = new URL(link.o);
   if (o.origin !== link.o) throw new Error('Bad pairing code');
   if (!Number.isFinite(link.e) || link.e < nowS) throw new Error('This code has expired. Ask the site for a new one.');
+  const sig = g('s');
+  if (sig && /^30[0-9a-f]{10,150}$/i.test(sig)) link.s = sig.toLowerCase();
   return link;
+}
+
+// ---- Origin proof (docs/PAIRING-ORIGIN-PROOF.md; bridge audit 25 Oct 2026, B3) ----
+// The relay's origin is only the WebSocket Origin header, which any non-browser client can set. A site proves its
+// origin by publishing pairing keys at https://<origin>/.well-known/bwalletx-pair.json ({"keys":["02…"]}), fetched by
+// the phone itself over TLS, and putting in the QR a signature by one of them over the channel, its ephemeral key,
+// the origin and the expiry. Without a valid proof the wallet shows the host as "claims to be".
+
+export const PAIR_PROOF_PATH = '/.well-known/bwalletx-pair.json';
+const PROOF_MAX_BYTES = 8 * 1024;
+const PROOF_TIMEOUT_MS = 5000;
+
+/** What the site signs: binds the proof to this channel and ephemeral key, so it can't be replayed elsewhere. */
+export const pairProofMessage = (l: Pick<PairLink, 'c' | 'k' | 'o' | 'e'>) =>
+  Utils.toArray(`${PAIR_INFO}|proof|${l.c}|${l.k.toLowerCase()}|${l.o}|${l.e}`, 'utf8');
+
+/** Site side: sign a link with the origin's pairing key (its public key goes in the well-known file). */
+export const signPairProof = (l: Pick<PairLink, 'c' | 'k' | 'o' | 'e'>, originKey: PrivateKey) =>
+  Utils.toHex(originKey.sign(pairProofMessage(l)).toDER() as number[]);
+
+/** True only when the link's signature checks against a key the origin itself publishes. Never throws. */
+export async function verifyPairProof(link: PairLink, f: typeof fetch = fetch): Promise<boolean> {
+  if (!link.s) return false;
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), PROOF_TIMEOUT_MS) : null;
+  try {
+    const o = new URL(link.o);
+    if (o.protocol !== 'https:') return false;
+    const r = await f(`${o.origin}${PAIR_PROOF_PATH}`, {
+      credentials: 'omit',
+      cache: 'no-store',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+      ...(ctl ? { signal: ctl.signal } : {}),
+    });
+    if (!r.ok || (r.url && new URL(r.url).origin !== o.origin)) return false;
+    const text = await r.text();
+    if (text.length > PROOF_MAX_BYTES) return false;
+    const keys = (JSON.parse(text) as { keys?: unknown }).keys;
+    if (!Array.isArray(keys)) return false;
+    const sig = Signature.fromDER(link.s, 'hex');
+    const msg = pairProofMessage(link);
+    return keys
+      .slice(0, 8)
+      .some((k) => typeof k === 'string' && /^0[23][0-9a-f]{64}$/i.test(k) && PublicKey.fromString(k).verify(msg, sig));
+  } catch {
+    return false;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /** A fresh relay role claim (16 random bytes): the relay then admits this role only with the same claim. */

@@ -34,7 +34,11 @@ export function PairedSitesList({ onScan }: { onScan: () => void }) {
             {s.agent ? <Terminal size={18} color="#BDB4FE" /> : <Globe size={18} color={MUTED} />}
             <div className="min-w-0 flex-1">
               <div className="overflow-hidden text-ellipsis whitespace-nowrap font-semibold text-white">
-                {s.agent ? `bWalletX CLI · ${s.agent.name}` : new URL(s.origin).host}
+                {s.agent
+                  ? `bWalletX CLI · ${s.agent.name}`
+                  : s.proven
+                    ? new URL(s.origin).host
+                    : `claims to be ${new URL(s.origin).host}`}
               </div>
               <div className="text-xs" style={{ color: MUTED }}>
                 {s.agent

@@ -12,13 +12,14 @@ import { Scanner } from '../scan/Scanner';
 
 const GOLD = 'var(--bw-accent)';
 const MUTED = '#98A2B3';
+const AMBER = '#F5A524';
 const PANEL = '#17191E';
 
 type Stage =
   | { k: 'scan' }
   | { k: 'joining' }
   | { k: 'confirm'; p: PendingPair }
-  | { k: 'done'; origin: string }
+  | { k: 'done'; origin: string; proven?: boolean }
   | { k: 'error'; m: string };
 
 /**
@@ -138,7 +139,23 @@ export default function PairSheet({ onClose, initial }: { onClose: () => void; i
             <p className="mt-5 text-sm" style={{ color: MUTED }}>
               Connect your wallet to
             </p>
-            <p className="mt-1 break-all text-xl font-bold text-white">{new URL(stage.p.origin).host}</p>
+            {stage.p.proven ? (
+              <p className="mt-1 break-all text-xl font-bold text-white">{new URL(stage.p.origin).host}</p>
+            ) : (
+              // Not proven (docs/PAIRING-ORIGIN-PROOF.md): the relay's origin is only what the other side claims.
+              <>
+                <p
+                  className="mt-1 break-all text-xl font-bold"
+                  style={{ color: AMBER }}
+                  data-testid="pair-claimed-host"
+                >
+                  a site that claims to be {new URL(stage.p.origin).host}
+                </p>
+                <p className="mt-2 text-xs" style={{ color: AMBER }}>
+                  bWalletX can&apos;t confirm this. Only connect if you opened the QR code on that site yourself.
+                </p>
+              </>
+            )}
             <p className="mt-6 text-sm" style={{ color: MUTED }}>
               Check the website shows the same code:
             </p>
@@ -160,7 +177,7 @@ export default function PairSheet({ onClose, initial }: { onClose: () => void; i
               <button
                 onClick={() => {
                   stage.p.confirm();
-                  setStage({ k: 'done', origin: stage.p.origin });
+                  setStage({ k: 'done', origin: stage.p.origin, proven: stage.p.proven });
                 }}
                 className="flex-1 rounded-xl py-3 font-bold"
                 style={{ background: GOLD, color: '#000' }}
@@ -182,7 +199,9 @@ export default function PairSheet({ onClose, initial }: { onClose: () => void; i
             <p className="mt-4 text-lg font-bold text-white">
               {stage.origin === CLI_ORIGIN
                 ? 'Paired with the bWalletX CLI'
-                : `Connected to ${new URL(stage.origin).host}`}
+                : stage.proven
+                  ? `Connected to ${new URL(stage.origin).host}`
+                  : `Connected to a site that claims to be ${new URL(stage.origin).host}`}
             </p>
             <p className="mt-2 text-sm" style={{ color: MUTED }}>
               {IS_EXTENSION

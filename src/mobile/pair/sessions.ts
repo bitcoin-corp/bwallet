@@ -15,6 +15,7 @@ import {
   relaySocketUrl,
   newClaim,
   isAllowedRelay,
+  verifyPairProof,
   type HelloFrame,
   type PairLink,
   type PairMessage,
@@ -179,6 +180,8 @@ export type StoredSession = {
   account?: string;
   /** Relay role claim (protocol.ts newClaim): only this wallet can rejoin the channel. Missing on older sessions. */
   claim?: string;
+  /** The site proved its origin (protocol.ts verifyPairProof). Unset: the host is only claimed. */
+  proven?: boolean;
 };
 
 /** What the UI shows while a scan is being confirmed. A CLI pairing passes its grant to confirm. */
@@ -186,6 +189,8 @@ export type PendingPair = {
   origin: string;
   code: string;
   cli: boolean;
+  /** The site proved its origin with its well-known pairing key; else the UI says "claims to be". */
+  proven: boolean;
   confirm: (agent?: AgentGrant) => void;
   cancel: () => void;
 };
@@ -552,6 +557,8 @@ export function beginPairing(scanned: string): Promise<PendingPair> {
       };
       ws.send(JSON.stringify(hello));
       const { key, code } = await deriveSession(P, link.k, link.c);
+      // The relay's origin is only a header; the host is shown plainly only when the site proves it (B3).
+      const proven = !!link.s && f.verifiedOrigin !== CLI_ORIGIN && (await verifyPairProof(link));
       // A new pairing starts with nothing. Its key names its own channel, so it never shares another pairing's grants
       // (b-Aware 24 Oct 2026); still withdraw anything left under that key unless this channel is being resumed.
       if (!load().some((s) => s.c === link.c)) await flushRevocations([pairedOrigin(f.verifiedOrigin, link.c)]);
@@ -563,6 +570,7 @@ export function beginPairing(scanned: string): Promise<PendingPair> {
         origin: f.verifiedOrigin,
         code,
         cli: f.verifiedOrigin === CLI_ORIGIN,
+        proven,
         confirm: (agent?: AgentGrant) => {
           if (f.verifiedOrigin === CLI_ORIGIN && !agent) return ws.close(); // a CLI must be bound to an agent account
           const stored: StoredSession = {
@@ -578,6 +586,7 @@ export function beginPairing(scanned: string): Promise<PendingPair> {
             ...(agent && { agent }),
             ...(agentDeps.currentId && { account: agentDeps.currentId }),
             claim,
+            ...(proven && { proven: true }),
           };
           save([...load().filter((s) => s.c !== link.c), stored]);
           const l: Live = { ws, sealer: new Sealer(key, 'wallet'), stored };
