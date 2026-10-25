@@ -80,6 +80,14 @@ import { internalizeBackoff } from './services/internalizeBackoff';
 import { fixUtxoStatus, utxoStatusFromTxo } from './services/utxoStatus';
 import { restorePaymailHistory, type PaymailRestoreReport } from './mobile/names/paymail';
 import { makeRecoverDeps, runRecoverOnce } from './services/recoverFailedWiring';
+import { makeMissingCoinsDeps } from './services/findMissingCoinsWiring';
+import {
+  restoreMissingCoins,
+  scanMissingCoins,
+  type MissingCoin,
+  type RestoreReport,
+  type ScanReport,
+} from './services/findMissingCoins';
 import { recoverPaymentByTxid, type TxidRecoverReport } from './services/recoverByTxid';
 import { makePostageReconcileWiring, makeTxidRecoverDeps, sweepCandidateTxids } from './services/recoverByTxidWiring';
 import { reconcilePostage, wocIsMined, type PostageReconcileReport } from './services/postageReconcile';
@@ -176,6 +184,10 @@ export interface AccountContext {
   recoverFailed: () => Promise<RecoverReport>;
   /** Recover one mined payment by txid from the derivation any reachable store holds (services/recoverByTxid.ts). */
   recoverTxid: (txid: string, progress?: (step: string) => void) => Promise<TxidRecoverReport>;
+  /** Settings › Storage › Find missing coins: read-only scan of every store (services/findMissingCoins.ts). */
+  findMissingCoins: () => Promise<ScanReport>;
+  /** Add back coins a scan found (after the user confirmed). Never broadcasts. */
+  restoreMissingCoins: (coins: MissingCoin[]) => Promise<RestoreReport>;
   /** Settle bMail postage held as nosend/unsent whose tx the chain says is mined (services/postageReconcile.ts). */
   reconcilePostage: (force?: boolean) => Promise<PostageReconcileReport>;
   /** Sweep txids from this wallet's own records, for Find mined payments (recoverByTxidWiring.ts). */
@@ -1006,6 +1018,53 @@ export const initWallet = async (
     available: () => storage.isActiveStorageProvider(),
   };
 
+  const recoverTxidImpl = (txid: string, progress?: (step: string) => void) =>
+    recoverPaymentByTxid(
+      txid,
+      makeTxidRecoverDeps({
+        progress,
+        storage,
+        wallet: baseWallet as never,
+        services: toolboxServices as never,
+        legacyAddresses: (() => {
+          const a = chromeStorageService.getCurrentAccountObject().account?.addresses;
+          return a
+            ? [
+                { label: 'identity', address: a.identityAddress },
+                { label: 'legacy BSV', address: a.bsvAddress },
+                { label: 'legacy ordinals', address: a.ordAddress },
+              ].filter((x) => !!x.address)
+            : [];
+        })(),
+      }),
+    ).then((r) => {
+      if (r.result === 'restored') internalizeBackoff.clear(r.txid);
+      return r;
+    });
+
+  // Settings › Storage › Find missing coins (services/findMissingCoins.ts).
+  const missingCoins = () =>
+    makeMissingCoinsDeps({
+      storage,
+      identityKey: baseWallet.keyDeriver.identityKey,
+      services: toolboxServices as never,
+      // The toolbox's own repair for a record the active store holds: proven-tx request -> 'unfail', TaskUnFail.
+      unfail: storage.isActiveStorageProvider()
+        ? async (txids) => {
+            const d = makeRecoverDeps({
+              storage,
+              wallet: baseWallet,
+              services: toolboxServices,
+              monitor: walletMonitor,
+            });
+            const n = await d.queueUnfail(txids);
+            if (n) console.log(`[bwx-recover] ${(await d.runUnFail()).trim() || 'UnFail done'}`);
+            return n;
+          }
+        : undefined,
+      recoverTxid: (txid) => recoverTxidImpl(txid),
+    });
+
   const close = async () => {
     await destroyWallet();
   };
@@ -1044,27 +1103,11 @@ export const initWallet = async (
         for (const txid of r.restored) internalizeBackoff.clear(txid);
         return r;
       }),
-    recoverTxid: (txid: string, progress?: (step: string) => void) =>
-      recoverPaymentByTxid(
-        txid,
-        makeTxidRecoverDeps({
-          progress,
-          storage,
-          wallet: baseWallet as never,
-          services: toolboxServices as never,
-          legacyAddresses: (() => {
-            const a = chromeStorageService.getCurrentAccountObject().account?.addresses;
-            return a
-              ? [
-                  { label: 'identity', address: a.identityAddress },
-                  { label: 'legacy BSV', address: a.bsvAddress },
-                  { label: 'legacy ordinals', address: a.ordAddress },
-                ].filter((x) => !!x.address)
-              : [];
-          })(),
-        }),
-      ).then((r) => {
-        if (r.result === 'restored') internalizeBackoff.clear(r.txid);
+    recoverTxid: recoverTxidImpl,
+    findMissingCoins: () => scanMissingCoins(missingCoins().scan),
+    restoreMissingCoins: (coins: MissingCoin[]) =>
+      restoreMissingCoins(coins, missingCoins().restore).then((r) => {
+        for (const x of r.restored) internalizeBackoff.clear(x.txid);
         return r;
       }),
     reconcilePostage: (force?: boolean) =>

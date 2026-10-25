@@ -35,7 +35,7 @@ type ReadableStore = {
     args: { partial: Record<string, unknown>; noScript?: boolean; paged?: { limit: number; offset: number } },
   ) => Promise<Row[]>;
 };
-type Managed = { storage: ReadableStore & { constructor: { name: string } }; user?: { userId: number } };
+export type Managed = { storage: ReadableStore & { constructor: { name: string } }; user?: { userId: number } };
 
 export type TxidWiring = {
   storage: Pick<
@@ -61,7 +61,7 @@ export type TxidWiring = {
 };
 
 /** Active, backup and conflicting stores of the manager (toolbox internals; read only). */
-function managedStores(storage: TxidWiring['storage']): { name: string; m: Managed }[] {
+export function managedStores(storage: TxidWiring['storage']): { name: string; m: Managed }[] {
   const s = storage as unknown as { _active?: Managed; _stores?: Managed[] };
   const all = s._stores?.length ? s._stores : s._active ? [s._active] : [];
   return all.map((m) => ({
@@ -80,7 +80,7 @@ type SP = StorageProvider;
  * backup; the result is then merged into the remote with the toolbox's own sync (syncFromReader), never by
  * writing remote rows directly.
  */
-async function withRepairStore<T>(
+export async function withRepairStore<T>(
   storage: TxidWiring['storage'],
   fn: (sp: SP, userId: number) => Promise<T>,
 ): Promise<T> {

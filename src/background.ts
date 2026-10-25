@@ -76,6 +76,7 @@ import { balanceWithDeposits } from './services/depositBalance';
 import { arrivingSats } from './services/receiveGuard';
 import { recoverySummary } from './services/recoverFailed';
 import { timedStep, txidRecoverySummary } from './services/recoverByTxid';
+import { foundHeadline, restoredLine, scanNote, type ScanReport } from './services/findMissingCoins';
 import { paymailRestoreSummary } from './mobile/names/paymail';
 import { isEmpty, summarizeActive, switchToLocalVerified, type SwitchDeps } from './services/restoreFromRemote';
 import { insufficientFundsMessage, isInsufficientFunds, prepareFunding, type FundingSnapshot } from './services/fundingPrep';
@@ -2260,6 +2261,8 @@ if (!(
       'STORAGE_REPAIR_SYNC',
       'STORAGE_RECOVER_MINED',
       'STORAGE_RECOVER_TXID',
+      'STORAGE_FIND_MISSING_COINS',
+      'STORAGE_RESTORE_MISSING_COINS',
       'STORAGE_RECONCILE_POSTAGE',
       'STORAGE_RESYNC_COINS',
       'STORAGE_RESTORE_BACKUP',
@@ -2637,6 +2640,12 @@ if (!(
           return true;
         case 'STORAGE_RECOVER_TXID':
           processRecoverTxid(typeof message.txid === 'string' ? message.txid : '', sendResponse);
+          return true;
+        case 'STORAGE_FIND_MISSING_COINS':
+          processFindMissingCoins(sendResponse);
+          return true;
+        case 'STORAGE_RESTORE_MISSING_COINS':
+          processRestoreMissingCoins(Array.isArray(message.txids) ? message.txids.map(String) : [], sendResponse);
           return true;
         case 'STORAGE_RESYNC_COINS':
           processResyncCoins(sendResponse);
@@ -3125,6 +3134,47 @@ if (!(
       });
     } catch (err) {
       sendResponse({ type: 'STORAGE_RECOVER_TXID', success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
+  /**
+   * Settings › Storage › Find missing coins (services/findMissingCoins.ts). The scan is read only; its result is
+   * kept here, and a restore only acts on coins this scan found (the page passes txids, never coin data).
+   */
+  let lastMissingScan: ScanReport | null = null;
+  const processFindMissingCoins = async (sendResponse: CallbackResponse) => {
+    try {
+      await ensureWallet(true);
+      if (!accountContext) throw new Error('Wallet not initialized');
+      const report = await accountContext.findMissingCoins();
+      lastMissingScan = report;
+      console.log('[bwx-recover] scan', report);
+      sendResponse({
+        type: 'STORAGE_FIND_MISSING_COINS',
+        success: true,
+        data: { report, headline: foundHeadline(report), note: scanNote(report) },
+      });
+    } catch (err) {
+      sendResponse({ type: 'STORAGE_FIND_MISSING_COINS', success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  };
+  const processRestoreMissingCoins = async (txids: string[], sendResponse: CallbackResponse) => {
+    try {
+      await ensureWallet(true);
+      if (!accountContext) throw new Error('Wallet not initialized');
+      const want = new Set(txids.map((t) => t.toLowerCase()));
+      const coins = (lastMissingScan?.found ?? []).filter((c) => want.has(c.txid));
+      if (!coins.length) throw new Error('Scan again first: nothing from the last scan matches.');
+      const report = await accountContext.restoreMissingCoins(coins);
+      lastMissingScan = null;
+      console.log('[bwx-recover] restore', report);
+      sendResponse({
+        type: 'STORAGE_RESTORE_MISSING_COINS',
+        success: report.restored.length > 0 && !report.notRestored.length,
+        data: { report, summary: restoredLine(report) },
+      });
+    } catch (err) {
+      sendResponse({ type: 'STORAGE_RESTORE_MISSING_COINS', success: false, error: err instanceof Error ? err.message : String(err) });
     }
   };
 

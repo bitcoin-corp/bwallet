@@ -19,6 +19,7 @@ import { PageLoader } from '../components/PageLoader';
 import { ProviderPicker } from '../components/ProviderPicker';
 import { KNOWN_PROVIDERS } from '../components/storageProviders';
 import { SpeedBump } from '../components/SpeedBump';
+import { FindMissingCoins } from '../components/FindMissingCoins';
 import { useTheme } from '../hooks/useTheme';
 import { useSnackbar } from '../hooks/useSnackbar';
 import { useServiceContext } from '../hooks/useServiceContext';
@@ -606,6 +607,8 @@ export const StorageStatus = ({ onBack }: StorageStatusProps) => {
           </p>
         </div>
       )}
+
+      <FindMissingCoins />
 
       {/* Active storage summary */}
       <div
