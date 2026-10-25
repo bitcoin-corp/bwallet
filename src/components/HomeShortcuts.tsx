@@ -6,6 +6,7 @@ import { FindMissingCoins, type ScanAnswer } from './FindMissingCoins';
 import { useTheme } from '../hooks/useTheme';
 import { useRecoveryTools } from '../hooks/useRecoveryTools';
 import { sendMessageAsync } from '../utils/chromeHelpers';
+import { VersionLabel } from './VersionLabel';
 
 type SyncAnswer = { success?: boolean; error?: string };
 type StepState = 'waiting' | 'running' | 'ok' | 'failed';
@@ -75,7 +76,7 @@ export const HomeShortcuts = () => {
   const needLook = steps?.filter((s) => s.state === 'failed').length ?? 0;
 
   return (
-    <div className="bw-home-shortcuts w-[92%] mb-6 space-y-3" data-testid="home-shortcuts">
+    <div className="bw-home-shortcuts w-[92%] space-y-3" data-testid="home-shortcuts">
       <button
         type="button"
         data-testid="dont-panic"
@@ -170,6 +171,8 @@ export const HomeShortcuts = () => {
           </div>
         </div>
       )}
+      {/* The last thing on the home (owner, 25 Oct 2026): nothing scrolls past DON'T PANIC but the version. */}
+      <VersionLabel className="pt-2 text-center" />
     </div>
   );
 };
