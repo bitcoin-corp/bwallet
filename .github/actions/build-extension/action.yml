@@ -32,6 +32,10 @@ runs:
       shell: bash
       run: pnpm run typecheck
 
+    - name: Lint
+      shell: bash
+      run: pnpm run lint --max-warnings 0
+
     - name: Test
       shell: bash
       run: pnpm test
