@@ -39,6 +39,8 @@ export type ConnectTheme = {
   /** Same-origin https URL as declared (validated). */
   logo?: string;
   cardArt?: string;
+  /** Optional background for the site's chat room (wide picture); the room falls back to cardArt. Same rules. */
+  roomArt?: string;
   /** Root file only: path prefix → same-origin /.well-known/*.json sub-theme URL (validated, ≤ PATHS_MAX). */
   paths?: Record<string, string>;
   /** The site's chat room: a ticker the wallet's room list knows (mobile/chat/siteRoom.ts). Optional. */
@@ -46,7 +48,7 @@ export type ConnectTheme = {
 };
 
 /** A theme ready to paint: images already fetched and checked. */
-export type WornTheme = ConnectTheme & { origin: string; logoData?: string; artData?: string };
+export type WornTheme = ConnectTheme & { origin: string; logoData?: string; artData?: string; roomArtData?: string };
 
 const KEYS = new Set([
   '$schema',
@@ -60,6 +62,7 @@ const KEYS = new Set([
   'text',
   'logo',
   'cardArt',
+  'roomArt',
   'paths',
   'room',
 ]);
@@ -203,6 +206,12 @@ export function parseConnectTheme(v: unknown, origin: string): ParseResult {
     if (!a) return { error: 'cardArt must be a same-origin URL' };
     cardArt = a;
   }
+  let roomArt: string | undefined;
+  if (t.roomArt !== undefined) {
+    const a = sameOriginImage(t.roomArt, origin);
+    if (!a) return { error: 'roomArt must be a same-origin URL' };
+    roomArt = a;
+  }
   // A bad `paths` map is dropped, never fatal: the root theme still applies.
   const paths = t.paths === undefined ? null : parsePaths(t.paths, origin);
   // A bad `room` is dropped too: no room means the normal home screen.
@@ -219,6 +228,7 @@ export function parseConnectTheme(v: unknown, origin: string): ParseResult {
       text,
       ...(logo ? { logo } : {}),
       ...(cardArt ? { cardArt } : {}),
+      ...(roomArt ? { roomArt } : {}),
       ...(paths && Object.keys(paths).length ? { paths } : {}),
       ...(room ? { room } : {}),
     },
@@ -286,6 +296,22 @@ async function fetchImage(url: string | undefined, origin: string, max: number, 
   return `data:${r.type};base64,${toBase64(r.bytes)}`;
 }
 
+/** The theme's pictures, fetched by the wallet (same origin, size-capped) and kept as data: URLs. */
+async function withImages(t: ConnectTheme, origin: string, f: Fetch): Promise<WornTheme> {
+  const [logoData, artData, roomArtData] = await Promise.all([
+    fetchImage(t.logo, origin, LOGO_MAX_BYTES, f),
+    fetchImage(t.cardArt, origin, ART_MAX_BYTES, f),
+    fetchImage(t.roomArt, origin, ART_MAX_BYTES, f),
+  ]);
+  return {
+    ...t,
+    origin,
+    ...(logoData ? { logoData } : {}),
+    ...(artData ? { artData } : {}),
+    ...(roomArtData ? { roomArtData } : {}),
+  };
+}
+
 const readJson = async (url: string, origin: string, f: Fetch): Promise<unknown> => {
   const r = await fetchCapped(url, origin, THEME_MAX_BYTES, f);
   if (!r) return undefined;
@@ -319,11 +345,7 @@ export async function fetchConnectTheme(origin: string, f: Fetch = fetch): Promi
   for (const c of candidates) {
     const p = parseConnectTheme(c, origin);
     if (!p.theme) continue;
-    const [logoData, artData] = await Promise.all([
-      fetchImage(p.theme.logo, origin, LOGO_MAX_BYTES, f),
-      fetchImage(p.theme.cardArt, origin, ART_MAX_BYTES, f),
-    ]);
-    return { ...p.theme, origin, ...(logoData ? { logoData } : {}), ...(artData ? { artData } : {}) };
+    return withImages(p.theme, origin, f);
   }
   return null;
 }
@@ -338,11 +360,7 @@ export async function fetchSubTheme(url: string, origin: string, f: Fetch = fetc
   if (!v || typeof v !== 'object' || 'paths' in (v as object)) return null;
   const p = parseConnectTheme(v, origin);
   if (!p.theme) return null;
-  const [logoData, artData] = await Promise.all([
-    fetchImage(p.theme.logo, origin, LOGO_MAX_BYTES, f),
-    fetchImage(p.theme.cardArt, origin, ART_MAX_BYTES, f),
-  ]);
-  return { ...p.theme, origin, ...(logoData ? { logoData } : {}), ...(artData ? { artData } : {}) };
+  return withImages(p.theme, origin, f);
 }
 
 // ---- per-device state (localStorage: prompt.html shares the wallet page's origin in every build) ----

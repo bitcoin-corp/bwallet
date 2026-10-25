@@ -10,7 +10,18 @@ import { claimDepsFor } from '../chat/claimDeps';
 import { IssuerBadge } from '../issuer/IssuerBadge';
 import { HISTORY_HIDDEN_NOTE, showHistoryNote } from '../chat/history';
 import { logInWalletApp } from '../wallet/connectionLog';
-import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  Fragment,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useBackClose } from '../backStack';
 import { createPortal } from 'react-dom';
 import {
@@ -79,6 +90,7 @@ import { BchatClient, ChatApiError, loadSession, needsHandle, saveSession, SESSI
 import { HandleFlow } from '../names/HandleFlow';
 import { avatarFor, B_AVATAR, pendingBQuestions, rememberAvatar, useAvatars } from '../chat/avatars';
 import { ChatAvatar as Avatar } from '../chat/ChatAvatar';
+import { roomHeaderBackground, useRoomLook } from '../chat/roomLook';
 import { roomSetupState, shouldOfferRoomSetup } from '../chat/roomSetupPrompt';
 import type { ReplyRef } from '../chat/api';
 import {
@@ -730,6 +742,8 @@ const Conversation = ({
   const composer = useRef<HTMLTextAreaElement>(null);
   const [drafting, setDrafting] = useState(false);
   const draftable = canAskBDraft(room, !!entry) && !isOfficialRoom(room);
+  // A connected game's theme dresses its room (chat/roomLook.ts). Never the Help Desk, official rooms or store builds.
+  const look = useRoomLook(room.ticker, !STORE_BUILD && !isLounge(room.ticker) && !isOfficialRoom(room));
   const askB = () => {
     setDraft((d) => (/^\/b(\s|$)/i.test(d) ? d : `/b ${d}`));
     requestAnimationFrame(() => composer.current?.focus());
@@ -747,7 +761,8 @@ const Conversation = ({
         right: 'var(--ww-conv-right, 0px)',
         top: 'calc(var(--wallet-inset-top, 0px) + var(--ww-conv-top, 3.5rem))',
         bottom: 'calc(env(safe-area-inset-bottom) + var(--dock-h, 3.75rem) + var(--ww-conv-bottom, 0px))',
-        background: BG,
+        // A dark game theme colours the room; a light one keeps the dark room so the message colours still read.
+        background: look?.mode === 'dark' ? look.bg : BG,
       }}
     >
       {/* The connected game's room: a short balance card on top (chat/SiteRoomViews.tsx; only for that room).
@@ -757,19 +772,49 @@ const Conversation = ({
         // Two rows (owner, 17 Oct 2026): back, picture, name and details on the first; the room's buttons on the
         // second. On one row the buttons squeezed the name and details into a one-word column.
         className="bw-room-head flex flex-wrap items-center gap-x-3 gap-y-1 px-2 pb-2 shrink-0"
-        style={{
-          paddingTop: 8,
-          background: 'linear-gradient(180deg, #16140c 0%, #0b0b0b 100%)',
-          borderBottom: `1px solid ${LINE}`,
-        }}
+        data-room-look={look ? look.host : undefined}
+        style={
+          look
+            ? ({
+                paddingTop: 8,
+                minHeight: look.artData ? 96 : undefined,
+                background: roomHeaderBackground(look),
+                borderBottom: `2px solid ${look.accent}`,
+                // The header's buttons use the accent (GOLD reads this variable).
+                '--bw-accent-hi': look.accentHi,
+              } as CSSProperties)
+            : {
+                paddingTop: 8,
+                background: 'linear-gradient(180deg, #16140c 0%, #0b0b0b 100%)',
+                borderBottom: `1px solid ${LINE}`,
+              }
+        }
       >
         <button onClick={onBack} className="p-2 rounded-full active:opacity-60" aria-label="Back">
           <ArrowLeft size={22} color={GOLD} />
         </button>
-        <Avatar title={title} size={38} roomKey={entry?.key} src={roomIcon(room)} issuer={peer} place="full" />
+        <Avatar
+          title={title}
+          size={38}
+          roomKey={entry?.key}
+          src={roomIcon(room)}
+          fallback={look?.logoData}
+          issuer={peer}
+          place="full"
+        />
         <div className="flex-1 min-w-0">
-          <div className={`text-[15px] font-semibold text-white ${ELLIPSIS}`}>{title}</div>
-          <div className="text-[11px]" style={{ color: MUTED }}>
+          <div
+            className={`text-[15px] font-semibold ${look ? '' : 'text-white'} ${ELLIPSIS}`}
+            style={look ? { color: look.text } : undefined}
+          >
+            {title}
+          </div>
+          {look && (
+            <div className={`text-[11px] ${ELLIPSIS}`} style={{ color: look.text, opacity: 0.85 }}>
+              {look.name} look · from {look.host}
+            </div>
+          )}
+          <div className="text-[11px]" style={{ color: look ? look.text : MUTED, opacity: look ? 0.85 : undefined }}>
             {!online
               ? 'waiting for network…'
               : entry
@@ -1029,6 +1074,8 @@ const Conversation = ({
                       title={it.message.author_handle || '?'}
                       size={28}
                       src={avatarFor(it.message.author_handle)}
+                      // The room's agent wears the game's logo when it has no picture of its own (chat/roomLook.ts).
+                      fallback={look && isBusinessAgentMessage(it.message) ? look.logoData : undefined}
                     />
                   ) : (
                     <div className="shrink-0" style={{ width: 28 }} />
@@ -1071,7 +1118,7 @@ const Conversation = ({
                   )}
                   {isBusinessAgentMessage(it.message) && (
                     <div className="mb-[3px]">
-                      <AiLabel />
+                      <AiLabel look={look} />
                     </div>
                   )}
                   {replyOf(it.message) && <ReplyQuote reply={replyOf(it.message)!} mine={it.mine} />}
@@ -2250,6 +2297,8 @@ const OpenRoomRow = ({
   const title = isLounge(room.ticker) ? HELP_DESK_NAME : room.name || `$${room.ticker}`;
   const key = roomKeyOf(room.ticker);
   const muted = isMuted(commands.prefs, key);
+  // A connected game's room shows the game's logo when it has no picture of its own (chat/roomLook.ts).
+  const look = useRoomLook(room.ticker, !STORE_BUILD && !isLounge(room.ticker) && !info?.official);
   return (
     <li>
       <ChatSwipeRow
@@ -2262,7 +2311,7 @@ const OpenRoomRow = ({
           className="w-full flex items-center gap-3 px-4 py-[10px] text-left active:bg-[#111]"
           style={{ background: BG }}
         >
-          <Avatar title={title} src={roomIcon(room)} />
+          <Avatar title={title} src={roomIcon(room)} fallback={look?.logoData} />
           <div className="flex-1 min-w-0 pb-[10px] -mb-[10px]" style={{ borderBottom: `1px solid ${LINE}` }}>
             <div className="flex items-baseline gap-2">
               <span className={`flex-1 flex items-center gap-1 text-[15px] font-semibold text-white ${ELLIPSIS}`}>

@@ -8,6 +8,7 @@
  *     publish) and the Orders list (refund = a normal send from the host's own wallet).
  */
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import type { RoomLook } from './roomLook';
 import { BIZ_AGENT_ACCOUNT_ENABLED } from '../storeBuild';
 import { createPortal } from 'react-dom';
 import { sendBsv } from '../../utils/guardedSendBsv';
@@ -62,12 +63,17 @@ const AgentRefundButton = BIZ_AGENT_ACCOUNT_ENABLED
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const sats = (n: number) => `${n.toLocaleString('en-US')} sats`;
 
-export const AiLabel = () => (
+/** The agent's label. In a game's themed room (chat/roomLook.ts) it carries the game's name and colours. */
+export const AiLabel = ({ look }: { look?: Pick<RoomLook, 'name' | 'accent' | 'onAccent'> | null } = {}) => (
   <span
     className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-[1px] rounded"
-    style={{ background: '#2b2410', color: GOLD, border: `1px solid ${LINE}` }}
+    style={
+      look
+        ? { background: look.accent, color: look.onAccent, border: `1px solid ${look.accent}` }
+        : { background: '#2b2410', color: GOLD, border: `1px solid ${LINE}` }
+    }
   >
-    <Bot size={10} /> {AI_LABEL.toUpperCase()}
+    <Bot size={10} /> {look ? `${look.name} · ${AI_LABEL}`.toUpperCase() : AI_LABEL.toUpperCase()}
   </span>
 );
 

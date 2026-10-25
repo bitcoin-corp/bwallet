@@ -37,7 +37,8 @@ Either file, served over https from the site's own origin, `Access-Control-Allow
 | `mode`                            | `dark` or `light`                                                                          |
 | `accent`, `bg`, `surface`, `text` | `#RRGGBB` only. `accentHi` optional, `#RRGGBB`                                             |
 | `logo`                            | optional; a path or https URL on the **same origin**; png, jpeg, webp, gif or svg; ≤ 64 KB |
-| `cardArt`                         | optional; same rules, ≤ 256 KB; drawn behind the banner                                    |
+| `cardArt`                         | optional; same rules, ≤ 256 KB; drawn behind the banner (and the room header, see below)   |
+| `roomArt`                         | optional; same rules, ≤ 256 KB; a wide picture for the chat room's header (else `cardArt`) |
 
 | `paths` | optional, root file only; see "Path sub-themes" below |
 | `room` | optional; the site's chat room ticker (`ASSAULT` or `$ASSAULT`, 1-20 letters/digits); see "The game's room" |
@@ -109,6 +110,31 @@ Owner, 24 Oct 2026: when a site or game is connected, the extension opens straig
 - Above the room, a short balance card: the balance in dollars large, BSV small, in the site's colours. It shows the
   last balance the wallet card read.
 - Store builds never do this: rooms there can take a penny ticket, and the store edition sells no paid content.
+
+## The room dresses itself (game makers: what to put in the file)
+
+Owner, 25 Oct 2026: a game's room, its token picture and its agent take the game's look automatically, and change
+as the game maker updates the theme file. Code: `src/mobile/chat/roomLook.ts`.
+
+| Field               | Drives in the room                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------- |
+| `room`              | which room is dressed (only that room; a sub-theme dresses its own room, e.g. `ASSAULT`)    |
+| `roomArt`           | header background picture (wide, about 3:1, ≤ 256 KB). Optional: falls back to `cardArt`    |
+| `cardArt`           | header background when there is no `roomArt`                                                |
+| `bg`, `surface`     | header overlay and gradient; a `dark` theme also colours the room behind the messages       |
+| `text`              | room name and details in the header                                                         |
+| `accent`/`accentHi` | header edge and buttons; the room agent's label                                             |
+| `logo`              | the room's picture (room list and header) and the room agent's picture, when they have none |
+| `name`              | "<name> look · from <host>" under the room name, and the agent's label ("<NAME> · AI")      |
+
+- The art always sits under an overlay in the theme's `bg` so text stays readable. Messages, amounts and payment
+  buttons keep the wallet's own styling.
+- A room's own picture (`metadata.icon`) or its token's icon wins over the theme logo.
+- The wallet learns which site dresses a room when the extension sees that site (connected, theme on) name it; the
+  room stays dressed while the site stays connected and its theme switched on. Never the Help Desk, official rooms,
+  or store builds. The header always names the true host the look came from.
+- Sub-themes match the page's real path (after redirects), longest prefix first, so moving a game from
+  `/arcade/assault` to `/arcade/terrornode` only needs the `paths` key changed.
 
 ## Switches
 

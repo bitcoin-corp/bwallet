@@ -9,6 +9,7 @@ import {
 } from './connectSiteTheme';
 import { wearSiteLook } from './accent';
 import { setActiveSiteRoom } from '../chat/siteRoom';
+import { rememberRoomSite } from '../chat/roomLook';
 import { STORE_BUILD } from '../storeBuild';
 
 /**
@@ -63,6 +64,8 @@ export async function wearActiveSite(origin: string | null, path: string | null 
   wearSiteLook(t ? siteLookAccent(t) : null);
   // The game's room follows the same root / path sub-theme (store builds never open one).
   setActiveSiteRoom(t?.room && !STORE_BUILD ? { ticker: t.room, origin } : null);
+  // The room keeps the site's look after the tab changes (chat/roomLook.ts), while the site stays connected.
+  if (t?.room && !STORE_BUILD) rememberRoomSite(t.room, origin, path);
 }
 
 // A switch flipped, a site revoked, or its theme arrived: look again.
