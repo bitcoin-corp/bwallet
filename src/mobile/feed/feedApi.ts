@@ -13,6 +13,7 @@ import {
   PECK_READ_APPS,
   TREECHAT_OVERLAY_APP,
 } from './peck';
+import { fetchOpenFeed, isOpenFeedSource, OPEN_FEED_SOURCES } from './openFeed';
 import { buildTreechatTree, treechatThreadIdFromRawTx } from './treechat';
 import { cutoff, readCache, writeCache, type LeaderboardData, type Timeframe } from './leaderboard';
 import { PublicKey, Transaction, Utils, type Script } from '@bsv/sdk';
@@ -294,6 +295,7 @@ export const authorDeps: AuthorDeps = {
   bmapApi: FEED_API,
   fwetchPage: (limit, offset) => fetchFwetch(limit, offset),
   treechatEnrich: (posts) => withTreechatThreadIds(posts),
+  openFeed: (source) => fetchOpenFeed(source),
 };
 
 /** One on-chain post by txid from bmap, or null when unindexed. */
@@ -323,26 +325,29 @@ export const fetchAncestors = (post: FeedPost): Promise<FeedPost[]> => ancestorC
  * txid, newest first). Twetch or the bChat indexer failing never blanks the feed.
  */
 export async function fetchForYou(): Promise<FeedPost[]> {
-  const [recent, bchat, twetch, peck, fwetch, treechat] = await Promise.allSettled([
+  const [recent, bchat, twetch, peck, fwetch, treechat, ...open] = await Promise.allSettled([
     fetchRecent(),
     fetchBchatRecent(),
     fetchTwetch(),
     fetchPeck(),
     fetchFwetch(),
     fetchTreechat(),
+    // CoinGeek, Hodlocker, RelayX: only through bChatX's Open Feed (openFeed.ts).
+    ...OPEN_FEED_SOURCES.map((s) => fetchOpenFeed(s)),
   ]);
   const extra = (r: PromiseSettledResult<FeedPost[]>) => (r.status === 'fulfilled' ? r.value : []);
   const tc = extra(treechat);
+  const ob = open.flatMap(extra);
   if (recent.status === 'rejected') {
     if (bchat.status === 'fulfilled' && bchat.value.length)
-      return mergePosts(bchat.value, extra(twetch), extra(peck), extra(fwetch), tc);
-    if (tc.length) return mergePosts(tc, extra(twetch), extra(peck), extra(fwetch));
+      return mergePosts(bchat.value, extra(twetch), extra(peck), extra(fwetch), tc, ob);
+    if (tc.length) return mergePosts(tc, extra(twetch), extra(peck), extra(fwetch), ob);
     throw recent.reason;
   }
   // bmap's Treechat posts are months old (it stopped at block ~944922): the overlay replaces
   // them while it answers.
   const bmap = tc.length ? recent.value.filter((p) => p.source !== 'treechat') : recent.value;
-  return mergePosts(bmap, extra(bchat), extra(twetch), extra(peck), extra(fwetch), tc);
+  return mergePosts(bmap, extra(bchat), extra(twetch), extra(peck), extra(fwetch), tc, ob);
 }
 
 /**
@@ -353,6 +358,8 @@ export async function fetchForYou(): Promise<FeedPost[]> {
  */
 export async function fetchThread(post: FeedPost): Promise<FeedPost[]> {
   if (post.source === 'twetch' && post.twetchId) return [post, ...(await fetchTwetchReplies(post.twetchId))];
+  // CoinGeek articles are not on chain: no replies to read.
+  if (isOpenFeedSource(post.source) && !isTxid(post.txid)) return [post];
   if (post.source === 'treechat' && isTxid(post.txid)) {
     const tree = await buildTreechatTree(post, {
       post: async (t) => (await fetchPeckPost(t).catch(() => null)) ?? fetchBmapPost(t).catch(() => null),

@@ -9,6 +9,7 @@
 import type { Author, FeedPost } from './post';
 import type { Source } from './sources';
 import { mergePosts, parseBmapFeed, parseTwetchFeed, TWETCH_API } from './post';
+import type { OpenFeedSource } from './openFeed';
 import { parsePeckFeed, parseTreechatOverlayFeed, PECK_OVERLAY, PECK_READ_APPS, TREECHAT_OVERLAY_APP } from './peck';
 
 /** Which source to read an author's posts from, and that source's id for them. */
@@ -20,7 +21,7 @@ export type AuthorRef = {
   bapId: string | null;
 };
 
-const PREFIXED = ['twetch', 'peck', 'treechat', 'fwetch'] as const;
+const PREFIXED = ['twetch', 'peck', 'treechat', 'fwetch', 'coingeek', 'hodlocker', 'relayx'] as const;
 
 /** Map a feed author to the source + id its posts are filed under. */
 export function authorRef(a: Pick<Author, 'address' | 'bapId' | 'source' | 'sourceId'>): AuthorRef {
@@ -46,6 +47,9 @@ export function authorProfileUrl(r: AuthorRef): string | null {
       return `https://app.treechat.com/u/${id}`;
     case 'fwetch':
       return `https://fwetch.lol/#/u/${id}`;
+    // CoinGeek's claimable profile on bChatX. Hodlocker and RelayX are gone.
+    case 'coingeek':
+      return 'https://www.bchatx.com/u/coingeek';
     default:
       return null;
   }
@@ -88,6 +92,8 @@ export type AuthorDeps = {
   fwetchPage: (limit: number, offset: number) => Promise<FeedPost[]>;
   /** Treechat thread ids (for the original-post link). */
   treechatEnrich?: (posts: FeedPost[]) => Promise<FeedPost[]>;
+  /** A bChatX Open Feed source's recent posts (CoinGeek, Hodlocker, RelayX); no per-author endpoint. */
+  openFeed?: (source: OpenFeedSource) => Promise<FeedPost[]>;
 };
 
 export const AUTHOR_PAGE = 20;
@@ -149,6 +155,13 @@ export async function fetchAuthorPage(r: AuthorRef, cursor: string | null, d: Au
         found = found.concat(page.filter(isAuthor(r)));
       }
       return { posts: newestFirst(found), next: more ? String(at) : null };
+    }
+    case 'coingeek':
+    case 'hodlocker':
+    case 'relayx': {
+      // One page of the source's recent posts (the Open Feed's max), filtered to the author.
+      if (cursor || !d.openFeed) return { posts: [], next: null };
+      return { posts: newestFirst((await d.openFeed(r.source)).filter(isAuthor(r))), next: null };
     }
     default: {
       // bChat: our own indexer (current) + bmap (history before April 2026), merged.

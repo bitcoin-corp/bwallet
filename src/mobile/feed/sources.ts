@@ -1,4 +1,7 @@
 import bchatIcon from '../brand/sources/bchat.png';
+import coingeekIcon from '../brand/sources/coingeek.png';
+import hodlockerIcon from '../brand/sources/hodlocker.png';
+import relayxIcon from '../brand/sources/relayx.png';
 import otherIcon from '../brand/sources/other.png';
 import fwetchIcon from '../brand/sources/fwetch.png';
 import peckIcon from '../brand/sources/peck.png';
@@ -10,7 +13,16 @@ import twetchIcon from '../brand/sources/twetch.png';
  * is one entry here: how to recognise its MAP app, its label and bundled 64px logo
  * (src/mobile/brand/sources/, never hotlinked), and where its original post lives.
  */
-export type Source = 'bchat' | 'treechat' | 'twetch' | 'peck' | 'fwetch' | 'other';
+export type Source =
+  | 'bchat'
+  | 'treechat'
+  | 'twetch'
+  | 'peck'
+  | 'fwetch'
+  | 'coingeek'
+  | 'hodlocker'
+  | 'relayx'
+  | 'other';
 
 /**
  * Per-post actions. On-chain ones are Bitcoin Schema transactions signed by the user with
@@ -41,6 +53,15 @@ export const REMOTE_ACTIONS: ReadonlySet<PostAction> = new Set(['bookmark', 'unl
 const LINK_ACTIONS: ReadonlySet<PostAction> = new Set(['copyLink', 'open', 'bookmark', 'unlock']);
 
 const BASIC: SourceActions = { row: ['reply', 'like', 'tip', 'lock'], more: ['open', 'copyLink', 'report', 'mute'] };
+
+/** Off-chain items (CoinGeek articles): nothing to reply to, like, tip or lock on chain. */
+const READ_ONLY: SourceActions = { row: ['open'], more: ['copyLink', 'report', 'mute'] };
+
+/** CoinGeek's Open Feed key `coingeek:<WordPress post id>` → the article. */
+export const coingeekArticleUrl = (txid: string): string | null => {
+  const m = /^coingeek:(\d{1,12})$/.exec(txid);
+  return m ? `https://coingeek.com/?p=${m[1]}` : null;
+};
 
 export type SourceInfo = {
   id: Source;
@@ -134,6 +155,39 @@ export const SOURCE_REGISTRY: Record<Source, SourceInfo> = {
     postUrl: (p) => `https://fwetch.lol/#/post/${p.txid}`,
     actions: BASIC,
   },
+  // The next three come only from bChatX's Open Feed (openFeed.ts); openFeed.ts sets `app` to the id.
+  // Icons are bChatX's own bundled 64px logos (www.bchatx.com/feed-sources/<id>.png).
+  coingeek: {
+    id: 'coingeek',
+    label: 'CoinGeek',
+    icon: coingeekIcon,
+    color: '#FFFFFF',
+    matches: (a) => a === 'coingeek',
+    postUrl: (p) => coingeekArticleUrl(p.txid),
+    actions: READ_ONLY,
+  },
+  hodlocker: {
+    id: 'hodlocker',
+    label: 'Hodlocker',
+    icon: hodlockerIcon,
+    // Sampled from brand/sources/hodlocker.png.
+    color: '#F7931A',
+    matches: (a) => a === 'hodlocker',
+    // hodlocker.com is gone: no original-post link.
+    postUrl: () => null,
+    actions: BASIC,
+  },
+  relayx: {
+    id: 'relayx',
+    label: 'RelayX',
+    icon: relayxIcon,
+    // Sampled from brand/sources/relayx.png.
+    color: '#3D7BF7',
+    matches: (a) => a === 'relayx',
+    // RelayX clubs are gone: no original-post link.
+    postUrl: () => null,
+    actions: BASIC,
+  },
   other: {
     id: 'other',
     label: 'Other',
@@ -145,7 +199,7 @@ export const SOURCE_REGISTRY: Record<Source, SourceInfo> = {
 };
 
 /** Match order: specific sources first, "other" last. */
-const ORDER: Source[] = ['bchat', 'twetch', 'treechat', 'peck', 'fwetch', 'other'];
+const ORDER: Source[] = ['bchat', 'twetch', 'treechat', 'peck', 'fwetch', 'coingeek', 'hodlocker', 'relayx', 'other'];
 
 /** Chips: All, bChat, then the others (same order as bitcoinchat.online/feed). */
 export const SOURCES: { id: Source | 'all'; label: string }[] = [

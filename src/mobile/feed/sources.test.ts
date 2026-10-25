@@ -28,7 +28,17 @@ describe('source registry', () => {
       expect(s.icon).not.toMatch(/^https?:/);
       expect(typeof s.postUrl).toBe('function');
     }
-    expect(SOURCES.map((s) => s.id)).toEqual(['all', 'bchat', 'twetch', 'treechat', 'peck', 'fwetch']);
+    expect(SOURCES.map((s) => s.id)).toEqual([
+      'all',
+      'bchat',
+      'twetch',
+      'treechat',
+      'peck',
+      'fwetch',
+      'coingeek',
+      'hodlocker',
+      'relayx',
+    ]);
   });
   test('matching MAP app values', () => {
     expect(sourceOf(' bWallet ')).toBe('bchat');
