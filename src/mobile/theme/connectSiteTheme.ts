@@ -25,6 +25,13 @@ export const FETCH_TIMEOUT_MS = 4000;
 /** A fetched theme is reused for a day; a site with none is asked again after an hour. */
 export const CACHE_MS = 24 * 60 * 60 * 1000;
 export const MISS_CACHE_MS = 60 * 60 * 1000;
+/**
+ * A cached theme older than this is re-checked: the small JSON file is fetched again and, if it changed (a new
+ * `paths` map, another `room`, new colours), the theme is rebuilt. Unchanged files keep the cached pictures.
+ * (Owner, 25 Oct 2026: tokenblaster.lol moved /arcade/terrornode to a new sub-theme and the wallet kept the old one
+ * for a day.)
+ */
+export const RECHECK_MS = 10 * 60 * 1000;
 
 export type ConnectTheme = {
   name: string;
@@ -305,6 +312,23 @@ const readJson = async (url: string, origin: string, f: Fetch): Promise<unknown>
   }
 };
 
+/** A short fingerprint of a JSON value (FNV-1a over its text), to tell whether a theme file changed. */
+export function jsonSig(v: unknown): string {
+  const text = JSON.stringify(v ?? null);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return `${text.length}.${(h >>> 0).toString(36)}`;
+}
+
+/** The fingerprint of the file at `url` right now, or null when it cannot be read. */
+export async function fileSig(url: string, origin: string, f: Fetch = fetch): Promise<string | null> {
+  const v = await readJson(url, origin, f);
+  return v === undefined ? null : jsonSig(v);
+}
+
 /**
  * Fetches and checks a site's theme: /.well-known/bwalletx-theme.json first (v2, or a family v1 file), then the
  * `theme` object of /.well-known/bapp.json. Null when there is none or it fails the checks; a missing theme is
@@ -480,7 +504,7 @@ export const shouldWearSiteTheme = (originator: string, s: Store | null = local(
 export const shouldWearOnSheet = (originator: string, s: Store | null = local()): boolean =>
   !!themeOrigin(originator) && siteThemesOn(s) && siteThemeAllowed(originator, s);
 
-type CacheEntry = { at: number; theme: WornTheme | null };
+type CacheEntry = { at: number; theme: WornTheme | null; sig?: string | null; checked?: number };
 const inflight = new Map<string, Promise<WornTheme | null>>();
 
 /** The site's theme from cache or the network. Fetched only for a site the user approved or that is asking now. */
@@ -499,13 +523,26 @@ async function loadRootTheme(
   if (!origin || (!asking && !siteConnected(h, s))) return null;
   const cache = (get(s, CACHE_KEY) ?? {}) as Record<string, CacheEntry>;
   const hit = cache[h];
-  if (hit && now - hit.at < (hit.theme ? CACHE_MS : MISS_CACHE_MS)) return hit.theme;
+  if (hit && now - hit.at < (hit.theme ? CACHE_MS : MISS_CACHE_MS)) {
+    // Fresh enough, or re-checked recently: keep it. Else re-read the small file and keep it only if unchanged.
+    if (!hit.theme || now - (hit.checked ?? hit.at) < RECHECK_MS) return hit.theme;
+    const sig = await fileSig(`${origin}${CONNECT_THEME_PATH}`, origin, f).catch(() => null);
+    if (sig === null || sig === hit.sig) {
+      const c = (get(s, CACHE_KEY) ?? {}) as Record<string, CacheEntry>;
+      if (c[h]) c[h] = { ...c[h]!, checked: now };
+      put(s, CACHE_KEY, c);
+      return hit.theme;
+    }
+  }
   const running = inflight.get(h);
   if (running) return running;
-  const p = fetchConnectTheme(origin, f)
-    .then((theme) => {
+  const p = Promise.all([
+    fetchConnectTheme(origin, f),
+    fileSig(`${origin}${CONNECT_THEME_PATH}`, origin, f).catch(() => null),
+  ])
+    .then(([theme, sig]) => {
       const c = (get(s, CACHE_KEY) ?? {}) as Record<string, CacheEntry>;
-      c[h] = { at: now, theme };
+      c[h] = { at: now, theme, sig, checked: now };
       // Keep the cache small: the 50 most recent sites.
       const keep = Object.entries(c)
         .sort((a, b) => b[1].at - a[1].at)

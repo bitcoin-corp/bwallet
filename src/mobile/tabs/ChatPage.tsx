@@ -2475,6 +2475,37 @@ const RoomsPage = ({ header }: { header: React.ReactNode }) => {
   const identityAddress = chromeStorageService.getCurrentAccountObject().account?.addresses?.identityAddress ?? '';
   // Cache first (owner round 6): the last room list shows at once; the live list replaces it quietly.
   const [rooms, setRooms] = useState<ChatRoom[] | null>(() => readListCache<ChatRoom>(roomsCacheKey(identityAddress)));
+  /**
+   * The open room's full server metadata. A room opened right after joining or starting it is a stub with no
+   * metadata.site / metadata.look, so its look never showed (owner, 25 Oct 2026: $TERRORNODE plain on a new account).
+   * Take the list's row for it, else ask the server once.
+   */
+  const [fetchedMeta, setFetchedMeta] = useState<{ ticker: string; metadata: Record<string, unknown> } | null>(null);
+  const stubTicker =
+    open && !(open.room.metadata as { site?: unknown } | null | undefined)?.site ? open.room.ticker : null;
+  const listedMeta = stubTicker
+    ? ((rooms ?? []).find((r) => r.ticker.toUpperCase() === stubTicker.toUpperCase())?.metadata ?? null)
+    : null;
+  const listedHasSite = !!(listedMeta as { site?: unknown } | null)?.site;
+  useEffect(() => {
+    if (!stubTicker || listedHasSite || STORE_BUILD) return;
+    let live = true;
+    void client.roomMetadata(stubTicker).then((m) => {
+      if (live && m) setFetchedMeta({ ticker: stubTicker, metadata: m });
+    });
+    return () => {
+      live = false;
+    };
+  }, [client, stubTicker, listedHasSite]);
+  const openRoomView: ChatRoom | null = !open
+    ? null
+    : !stubTicker
+      ? open.room
+      : listedHasSite
+        ? { ...open.room, metadata: { ...(open.room.metadata ?? {}), ...(listedMeta ?? {}) } }
+        : fetchedMeta && fetchedMeta.ticker === stubTicker
+          ? { ...open.room, metadata: { ...(open.room.metadata ?? {}), ...fetchedMeta.metadata } }
+          : open.room;
   // Either segment's rooms() fetch updates this list too (chat/sharedRooms.ts).
   useEffect(() => onRooms(setRooms), []);
   // Chat tab badge: this list's unread counts (a room opened or marked read clears at once).
@@ -3500,7 +3531,7 @@ const RoomsPage = ({ header }: { header: React.ReactNode }) => {
       {open && handle && (
         <Conversation
           client={client}
-          room={open.room}
+          room={openRoomView ?? open.room}
           entry={open.entry}
           autoJoinSpace={!!open.joinSpace}
           me={handle}

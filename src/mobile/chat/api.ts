@@ -459,6 +459,21 @@ export class BchatClient {
     return r.rooms ?? [];
   }
 
+  /**
+   * One room's server metadata (GET /api/bitsign/rooms/[ticker]: membership-gated, the same row the list sends).
+   * Used when a room was opened from a stub (just joined / just started) so its look (metadata.site + .look) still
+   * shows. Null on any failure.
+   */
+  async roomMetadata(ticker: string): Promise<Record<string, unknown> | null> {
+    try {
+      const r = await this.call<{ room?: { metadata?: unknown } }>('GET', BchatClient.path(ticker));
+      const m = r.room?.metadata;
+      return m && typeof m === 'object' && !Array.isArray(m) ? (m as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  }
+
   private static path(ticker: string) {
     return `/api/bitsign/rooms/${encodeURIComponent(ticker.replace(/^\$/, ''))}`;
   }

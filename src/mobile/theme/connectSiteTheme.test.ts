@@ -200,6 +200,22 @@ describe('connected origins, cache and switches', () => {
     expect(calls.length).toBeGreaterThan(n);
   });
 
+  it('re-checks a cached theme after RECHECK_MS and picks up a changed paths map / room', async () => {
+    const s = mem();
+    const file = `${O}/.well-known/bwalletx-theme.json`;
+    const r: Record<string, Route> = { [file]: { body: JSON.stringify({ ...GOOD, logo: undefined }) } };
+    const f = fakeFetch(r);
+    markSiteConnected('emberandbean.example', s, f);
+    const t0 = Date.now();
+    const a = await loadConnectTheme('emberandbean.example', { s, f, now: t0 });
+    expect(a?.room).toBeUndefined();
+    r[file] = { body: JSON.stringify({ ...GOOD, logo: undefined, room: 'TERRORNODE' }) };
+    // Inside the re-check window the cached copy is used.
+    expect((await loadConnectTheme('emberandbean.example', { s, f, now: t0 + 60_000 }))?.room).toBeUndefined();
+    // After it, the changed file is noticed the same hour, not the next day.
+    expect((await loadConnectTheme('emberandbean.example', { s, f, now: t0 + 11 * 60_000 }))?.room).toBe('TERRORNODE');
+  });
+
   it('per-site toggle and the global switch turn it off; revoking forgets the site', () => {
     const s = mem();
     markSiteConnected('emberandbean.example', s, fakeFetch(routes));
