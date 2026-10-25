@@ -82,7 +82,7 @@ export const WalletNames = () => {
     if (!PAYMAIL_ALIAS_RE.test(a)) return setError('Use a-z, 0-9, - or _ (up to 32)');
     if (nameFee && !confirmed) return setFeeConfirm(true);
     setFeeConfirm(false);
-    const go = () => addExtraName(apiContext, f, a);
+    const go = () => addExtraName(apiContext, f, a, nameFee);
     if (await run('add', go, 'Could not add that name')) {
       setDraft('');
       setAdding(false);

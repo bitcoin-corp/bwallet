@@ -46,13 +46,33 @@ export const loadHandles = async (ctx: OneSatContext): Promise<HandlesInfo> => (
  * through its 402 flow (signed, never broadcast by us: bit-sign verifies and broadcasts), then adds the
  * paymail alias. Returns the new paymail.
  */
-export async function addExtraName(ctx: OneSatContext, f: Fetch, alias: string): Promise<string> {
+/** A name costs 1p; nothing near this is ever a real name fee. */
+export const MAX_NAME_FEE_SATS = 50_000;
+
+/**
+ * The 402 must ask for no more than the fee the user confirmed, to the same address (b-Aware 25 Oct 2026: the
+ * server's amount and address were paid as sent, with no sheet). Pure; throws with "Nothing was paid".
+ */
+export function checkNamePayment(pay: HandlePayment, approved: { sats: number; to: string } | null): void {
+  if (!approved) throw new Error('This name now has a fee you have not seen. Nothing was paid. Close and try again.');
+  if (pay.to !== approved.to) throw new Error('The name fee address changed. Nothing was paid. Try again.');
+  if (pay.sats > approved.sats || pay.sats > MAX_NAME_FEE_SATS)
+    throw new Error('The name fee is higher than the one you confirmed. Nothing was paid.');
+}
+
+export async function addExtraName(
+  ctx: OneSatContext,
+  f: Fetch,
+  alias: string,
+  approved: { sats: number; to: string } | null,
+): Promise<string> {
   const c = await client(ctx);
   try {
     await c.addHandle(alias);
   } catch (e) {
     const pay = e instanceof ChatApiError && e.status === 402 ? parsePaymentRequired(e.data) : null;
     if (!pay) throw e;
+    checkNamePayment(pay, approved);
     const r = await ctx.wallet.createAction({
       description: `Name ${alias}`,
       outputs: handlePaymentOutputs(pay),

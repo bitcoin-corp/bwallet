@@ -546,6 +546,42 @@ describe('crash safety: a payment is recorded before it is broadcast', () => {
     expect(getPending(s.id)).toBeNull();
   });
 
+  test('b-Aware 25 Oct: a waiting payment is not sent after Cancel or pot Stop, or when paused at broadcast', async () => {
+    const s = setup();
+    const failing = {
+      bsvUsd: 50,
+      resolve: async () => '1L',
+      sign: async () => ({ rawTx: 'RAW1', txid: 'TX1' }),
+      broadcast: async () => Promise.reject(new Error('Network request failed')),
+      spendingPaused: async () => false,
+    };
+    await payDue(failing, NOW);
+    expect(getPending(s.id)?.rawTx).toBe('RAW1');
+    const sent: string[] = [];
+    const ok = { ...failing, broadcast: async (raw: string) => void sent.push(raw) };
+
+    setAgentStopped('1Pot', true);
+    expect((await payDue(ok, NOW + 1000))[0].ok).toBe(false);
+    setAgentStopped('1Pot', false);
+
+    let pausedNow = false;
+    const pausedAtBroadcast = {
+      ...ok,
+      // Not paused when the run starts, paused by the time the waiting payment would go out.
+      spendingPaused: async () => {
+        const was = pausedNow;
+        pausedNow = true;
+        return was;
+      },
+    };
+    expect((await payDue(pausedAtBroadcast, NOW + 2000))[0]).toMatchObject({ ok: false, reason: 'Spending is paused' });
+
+    cancelSub(s.id, NOW + 3000);
+    expect((await payDue(ok, NOW + 4000))[0].ok).toBe(false);
+    expect(sent).toEqual([]);
+    expect(getPending(s.id)?.rawTx).toBe('RAW1'); // kept: nothing new is ever signed for those periods
+  });
+
   test('crash after save, before the record is cleared: no double count', async () => {
     const s = setup();
     // Simulate: sub already advanced to 3 but the pending record for periods 0..2 is still there.

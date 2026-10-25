@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { PrivateKey } from '@bsv/sdk';
-import { handlePaymentOutputs, parsePaymentRequired } from './extraNames';
+import { checkNamePayment, handlePaymentOutputs, parsePaymentRequired } from './extraNames';
 import { commitmentScript } from '../chat/roomSpend';
 import { parseHandlesInfo } from '../chat/api';
 
@@ -40,5 +40,19 @@ describe('extra names (bit-sign 402 flow)', () => {
     ]);
     expect(h.nextFee?.sats).toBe(2500);
     expect(parseHandlesInfo({ handles: [], next_fee: null }).nextFee).toBeNull();
+  });
+});
+
+describe('b-Aware 25 Oct: the name fee paid is the one the user confirmed', () => {
+  const pay = parsePaymentRequired(body)!;
+  test('same amount and address as confirmed: allowed', () => {
+    expect(() => checkNamePayment(pay, { sats: 2500, to })).not.toThrow();
+  });
+  test('no fee confirmed, a different address, or a higher amount: nothing is paid', () => {
+    expect(() => checkNamePayment(pay, null)).toThrow(/Nothing was paid/);
+    const other = PrivateKey.fromRandom().toAddress();
+    expect(() => checkNamePayment(pay, { sats: 2500, to: other })).toThrow(/Nothing was paid/);
+    expect(() => checkNamePayment({ ...pay, sats: 2501 }, { sats: 2500, to })).toThrow(/Nothing was paid/);
+    expect(() => checkNamePayment({ ...pay, sats: 1_000_000 }, { sats: 1_000_000, to })).toThrow(/Nothing was paid/);
   });
 });

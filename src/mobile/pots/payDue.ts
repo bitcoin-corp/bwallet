@@ -106,9 +106,11 @@ const fail = (s: Subscription, reason: string, deps: PayDeps, lowFunds = false):
   return { id: s.id, ok: false, reason };
 };
 
+const paused = (deps: PayDeps) => (deps.spendingPaused ?? (() => isPaused('spending')))().catch(() => true);
+
 async function run(deps: PayDeps, now: number): Promise<PayOutcome[]> {
   // The pause stops pot payments too: no new signature and no broadcast of an already-signed one.
-  if (await (deps.spendingPaused ?? (() => isPaused('spending')))().catch(() => true)) return [];
+  if (await paused(deps)) return [];
   const cap = deps.cap ?? MAX_CATCH_UP;
   const subsOn = deps.subsOn ?? SUBSCRIPTIONS_ENABLED;
   const out: PayOutcome[] = [];
@@ -117,7 +119,19 @@ async function run(deps: PayDeps, now: number): Promise<PayOutcome[]> {
     if (!s) continue;
     const pending = getPending(id);
     if (pending) {
-      const r = await settlePending(s, pending, deps, now);
+      // b-Aware 25 Oct 2026: a waiting payment is only sent while its order is still live and its pot allows it.
+      // Cancelled, paused or ended, or the pot stopped: keep the record (nothing new is signed for it), don't send.
+      const cur = live(id);
+      const gate = cur ? checkAgentSpend(cur.potId, pending.usd, now) : null;
+      if (!cur || !gate?.ok) {
+        out.push({
+          id,
+          ok: false,
+          reason: gate && !gate.ok ? gate.reason : 'Stopped: the waiting payment was not sent',
+        });
+        continue;
+      }
+      const r = await settlePending(cur, pending, deps, now);
       out.push(r);
       if (!r.ok) continue; // still unsettled: never sign anything new for this order
     }
@@ -250,6 +264,8 @@ async function run(deps: PayDeps, now: number): Promise<PayOutcome[]> {
 
 /** Broadcast a recorded payment (again, if it may already be out) and, once accepted, mark its periods paid. */
 async function settlePending(s: Subscription, p: PendingPayment, deps: PayDeps, now: number): Promise<PayOutcome> {
+  // Checked again at broadcast time: the pause may have been switched on while this order was resolving or signing.
+  if (await paused(deps)) return { id: s.id, ok: false, reason: 'Spending is paused' };
   try {
     if (p.unit === 'PNEE') {
       if (!deps.broadcastPnee) throw new Error('PNEE payments can’t be sent from this device');
