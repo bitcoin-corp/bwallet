@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { BSM, PrivateKey, Utils } from '@bsv/sdk';
+import { keepGlobals } from '../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 const mem = new Map<string, string>();
 (globalThis as Record<string, unknown>).localStorage = {

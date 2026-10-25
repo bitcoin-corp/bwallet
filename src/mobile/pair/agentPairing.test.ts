@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { markAgentAccount } from '../agents/agentAccounts';
 import { AgentCallError, checkGrant, makeGrant, MAX_GRANT_DAYS } from './agentPairing';
+import { keepGlobals } from '../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 const mem = new Map<string, string>();
 (globalThis as { localStorage?: unknown }).localStorage = {

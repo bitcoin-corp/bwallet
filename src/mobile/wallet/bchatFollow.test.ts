@@ -11,6 +11,10 @@ import {
   type BchatPref,
 } from './bchatFollow';
 import { keyFingerprint } from './identityLine';
+import { keepGlobals } from '../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 const store = new Map<string, string>();
 (globalThis as { localStorage?: unknown }).localStorage = {

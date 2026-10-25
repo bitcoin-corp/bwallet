@@ -10,6 +10,10 @@ import {
   parseRoles,
 } from './contactCardData';
 import { contactNoteKey, isEmptyNotes, loadNotes, saveNotes } from './contactNotes';
+import { keepGlobals } from '../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 const KEY = '02' + 'a'.repeat(64);
 const OTHER = '03' + 'b'.repeat(64);

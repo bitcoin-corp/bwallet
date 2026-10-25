@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import { BSV21, buildInscriptionScript } from '@1sat/templates';
 import { KeyDeriver, P2PKH, PrivateKey, Transaction, type WalletProtocol } from '@bsv/sdk';
 import type { OneSatContext } from '@1sat/actions';
+import { keepGlobals } from '../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 const store = new Map<string, string>();
 (globalThis as { localStorage?: unknown }).localStorage = {

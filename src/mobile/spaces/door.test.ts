@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import * as realClient from '../bmail/client';
+import * as bmailClient from '../bmail/client';
+import { keepGlobals } from '../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 // The message box and the wallet's BEEF check are mocked: these tests cover the door's own rules.
 type Msg = { messageId: string; sender: string; body: string };
@@ -8,7 +12,11 @@ let sent: { recipient: string; messageBox: string; body: string }[] = [];
 let acked: string[] = [];
 let paidSats = 20_000;
 let internalized = 0;
+// Keep the real exports: bun module mocks are process-wide, and a partial mock left behind breaks later files that
+// import other names from it.
+const realMessageBox = { ...(await import('@bsv/message-box-client')) };
 mock.module('@bsv/message-box-client', () => ({
+  ...realMessageBox,
   MessageBoxClient: class {
     async listMessages() {
       return inbox.filter((m) => !acked.includes(m.messageId));
@@ -21,6 +29,8 @@ mock.module('@bsv/message-box-client', () => ({
     }
   },
 }));
+// A copy taken before mocking (the mock patches the module namespace in place).
+const realClient = { ...bmailClient };
 mock.module('../bmail/client', () => ({
   // Keep the real exports (bun module mocks leak across test files; bMail's own tests need sendMail).
   ...realClient,

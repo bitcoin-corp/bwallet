@@ -70,7 +70,11 @@ const settle = () => new Promise<void>((r) => setImmediate(r));
 
 let calls = 0;
 let gate: Promise<void> = Promise.resolve();
+// Keep the real exports: bun module mocks are process-wide, and a partial mock left behind breaks later files that
+// import other names from it (openDappBrowser). Only handleSiteCall is replaced; no other test calls it.
+const realDappBrowser = { ...(await import('../dappBrowser')) };
 mock.module('../dappBrowser', () => ({
+  ...realDappBrowser,
   handleSiteCall: async () => {
     calls++;
     poke();
@@ -134,7 +138,11 @@ Object.assign(globalThis, {
 // of that graph is most of a second alone and several seconds under a busy full-suite or release-build run, and it
 // was being charged to the test's 5 s budget. (Bun shares one module registry across test files, so it is cold or
 // warm depending on whether relay/e2e/pair.e2e.test.ts happened to load it first.)
-const { beginPairing, initPairing, forget, pairedSites, setAgentPairDeps } = await import('./sessions');
+// A private copy (?replies): initPairing registers its foreground listener once per module instance, so with a
+// shared instance another pair test file could already have started it on that file's document stub.
+const { beginPairing, initPairing, forget, pairedSites, setAgentPairDeps } = (await import(
+  './sessions?replies' as string
+)) as typeof import('./sessions');
 // Sessions are revived only for the account that paired them (accountBind.test.ts).
 setAgentPairDeps({ ctx: undefined, currentId: '1ReplyTestAccount', accountCount: 1 });
 // Leave no live socket or reconnect timer behind for later test files.

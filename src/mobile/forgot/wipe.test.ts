@@ -71,14 +71,22 @@ describe('wipeLocalWallet', () => {
 
   test('initialRoute returns the restore screen once after a wipe', () => {
     const store = new Map<string, string>();
-    (globalThis as { sessionStorage?: unknown }).sessionStorage = {
+    const g = globalThis as { sessionStorage?: unknown };
+    const prev = Object.getOwnPropertyDescriptor(g, 'sessionStorage');
+    g.sessionStorage = {
       getItem: (k: string) => store.get(k) ?? null,
       setItem: (k: string, v: string) => void store.set(k, v),
       removeItem: (k: string) => void store.delete(k),
     };
-    expect(initialRoute()).toBe('/');
-    store.set('bwallet:open-restore', '1');
-    expect(initialRoute()).toBe(RESTORE_ROUTE);
-    expect(initialRoute()).toBe('/');
+    try {
+      expect(initialRoute()).toBe('/');
+      store.set('bwallet:open-restore', '1');
+      expect(initialRoute()).toBe(RESTORE_ROUTE);
+      expect(initialRoute()).toBe('/');
+    } finally {
+      // bun runs every test file in one process: don't leave the stub for the next file.
+      if (prev) Object.defineProperty(g, 'sessionStorage', prev);
+      else delete g.sessionStorage;
+    }
   });
 });

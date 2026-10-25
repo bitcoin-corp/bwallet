@@ -19,7 +19,11 @@ import {
 } from '../services/restoreFromRemote';
 
 // Paymail on, pointed at the mocked endpoint (outside a build the constants are empty and paymail is off).
+// Keep the real exports: bun module mocks are process-wide, and a partial mock left behind breaks later files that
+// import other names from it.
+const realNamesConfig = { ...(await import('../mobile/names/config')) };
 mock.module('../mobile/names/config', () => ({
+  ...realNamesConfig,
   BWALLET_PAYMAIL_DOMAIN: 'bwalletx.com',
   BWALLET_PAYMAIL_API: 'https://pay.test',
   LEGACY_PAYMAIL_DOMAINS: ['bwallet.space'],

@@ -11,6 +11,10 @@ import {
   type AgentAccount,
   type AgentLogEntry,
 } from './agentAccounts';
+import { keepGlobals } from '../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 const DAY = Date.UTC(2026, 9, 4, 12);
 const acct = (p: Partial<AgentAccount> = {}): AgentAccount => ({

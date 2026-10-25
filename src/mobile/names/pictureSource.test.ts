@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
+import { keepGlobals } from '../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 // A Map-backed localStorage (bun has none), installed before the modules load.
 const store = new Map<string, string>();

@@ -16,6 +16,10 @@ import {
   saveCardArtLook,
 } from './cardFrontArt';
 import { bavatarSvg } from '../bavatar/bavatar';
+import { keepGlobals } from '../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 const A = '02' + 'a1'.repeat(32);
 const B = '03' + 'b2'.repeat(32);

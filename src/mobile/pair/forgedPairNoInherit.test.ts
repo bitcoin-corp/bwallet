@@ -8,8 +8,13 @@ import { describe, expect, mock, test } from 'bun:test';
 import { PrivateKey } from '@bsv/sdk';
 import { PAIR_VERSION, pairUrl } from '../../pair/protocol';
 import { InMemoryPermissionStore, LocalWalletPermissionsManager, normalizeOriginator } from '@1sat/wallet';
+import { stubGlobals } from '../../testing/stubGlobals';
 
+// Keep the real exports: bun module mocks are process-wide, and a partial mock left behind breaks later files that
+// import other names from it (openDappBrowser). Only handleSiteCall is replaced; no other test calls it.
+const realDappBrowser = { ...(await import('../dappBrowser')) };
 mock.module('../dappBrowser', () => ({
+  ...realDappBrowser,
   handleSiteCall: async () => ({ success: true, data: {} }),
 }));
 
@@ -35,16 +40,19 @@ class FakeWS {
 }
 
 const mem = new Map<string, string>();
-const g = globalThis as Record<string, unknown>;
-g.WebSocket = FakeWS;
-g.localStorage = {
-  getItem: (k: string) => mem.get(k) ?? null,
-  setItem: (k: string, v: string) => void mem.set(k, v),
-  removeItem: (k: string) => void mem.delete(k),
-};
-g.document = { visibilityState: 'visible', addEventListener: () => undefined };
+stubGlobals({
+  WebSocket: FakeWS,
+  localStorage: {
+    getItem: (k: string) => mem.get(k) ?? null,
+    setItem: (k: string, v: string) => void mem.set(k, v),
+    removeItem: (k: string) => void mem.delete(k),
+  },
+  document: { visibilityState: 'visible', addEventListener: () => undefined },
+});
 
-const sessions = await import('./sessions');
+// A private copy of sessions.ts for this file: bun shares one module registry across test files, and its
+// started flag, live sockets and document listener would otherwise carry over from whichever pair test ran first.
+const sessions = (await import('./sessions?forgedPairNoInherit' as string)) as typeof import('./sessions');
 const { pairedOrigin } = await import('../../services/originKey');
 
 const settle = () => new Promise<void>((r) => setTimeout(r, 25));

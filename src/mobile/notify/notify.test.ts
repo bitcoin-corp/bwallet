@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'bun:test';
+import { beforeEach, describe, expect, test } from 'bun:test';
+import { __resetExchangeRateForTests } from '../../utils/exchangeRate';
 import {
   addItems,
   allowed,
@@ -81,6 +82,8 @@ describe('who is me', () => {
 });
 
 describe('incoming outputs', () => {
+  // Amounts read in BSV until a price is known; pin "no price" so another file's cached rate can't leak in.
+  beforeEach(() => __resetExchangeRateForTests({ storage: null }));
   test('payments, tokens, tickets; own listings ignored', () => {
     expect(describeIncoming({ outpoint: 'a.0', satoshis: 150_000_000 })).toMatchObject({
       kind: 'payment',

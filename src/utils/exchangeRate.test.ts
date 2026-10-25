@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
 import {
   __resetExchangeRateForTests,
   BACKOFF_MAX_MS,
@@ -16,6 +16,10 @@ const mem = new Map<string, string>();
 const storage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) };
 const ok = (rate: number) => () => new Response(JSON.stringify({ rate }), { status: 200 });
 const tooMany = () => new Response('', { status: 429 });
+
+// bun runs every test file in one process and this module keeps the price in memory: don't hand the next file a
+// cached $ rate (it turned "1.5 BSV" into "$105.00" in notify.test.ts), a fake fetch or a frozen clock.
+afterAll(() => __resetExchangeRateForTests({ fetch: (...a) => fetch(...a), now: () => Date.now(), storage: null }));
 
 beforeEach(() => {
   now = 1_000_000;

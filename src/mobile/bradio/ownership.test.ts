@@ -2,8 +2,11 @@ import { describe, expect, mock, test } from 'bun:test';
 import { Utils } from '@bsv/sdk';
 
 const outputs: { outpoint: string; tags?: string[]; customInstructions?: string }[] = [];
+// Keep the real exports: bun module mocks are process-wide, and a partial mock left behind breaks later files that
+// import other names from it.
+const realActions = { ...(await import('@1sat/actions')) };
 mock.module('@1sat/actions', () => ({
-  P1SAT_PROTOCOL: [1, 'P1SAT'],
+  ...realActions,
   listOrdinals: { execute: async () => ({ outputs }) },
 }));
 const { isListed, keyOf, ownerSigner } = await import('./ownership');
@@ -37,7 +40,10 @@ describe('podcast ownership signer', () => {
     expect(r).toEqual({ pubKey: '02' + 'b'.repeat(64), sig: '3001' });
   });
   test('default key is P1SAT with keyID = current outpoint', () => {
-    expect(keyOf({ outpoint: `${TX}_5` })).toEqual({ protocolID: [1, 'P1SAT'] as never, keyID: `${TX}.5` });
+    expect(keyOf({ outpoint: `${TX}_5` })).toEqual({
+      protocolID: realActions.P1SAT_PROTOCOL as never,
+      keyID: `${TX}.5`,
+    });
   });
   test('OrdLock-listed NFT → PodcastListedError, never signs', async () => {
     outputs.length = 0;

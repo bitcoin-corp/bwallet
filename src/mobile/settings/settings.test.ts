@@ -19,6 +19,7 @@ import {
 } from '../feed/store';
 import { SafetyFilter, normalizeBlocklist } from '../market/safety';
 import type { FeedPost } from '../feed/post';
+import { stubGlobals } from '../../testing/stubGlobals';
 
 class MemStorage {
   m = new Map<string, string>();
@@ -36,9 +37,9 @@ class MemStorage {
   }
 }
 const g = globalThis as unknown as { localStorage: MemStorage; window: EventTarget };
+stubGlobals({ localStorage: new MemStorage(), window: new EventTarget() });
 beforeEach(() => {
   g.localStorage = new MemStorage();
-  if (!g.window) g.window = new EventTarget();
 });
 
 const post = (txid: string, address: string, bapId: string | null = null): FeedPost => ({

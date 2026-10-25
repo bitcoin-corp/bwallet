@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { MAX_AGE_MS, clearSweepPrompt, getSweepPrompt, markSweepPrompt } from './sweepPending';
+import { keepGlobals } from '../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 const store = new Map<string, string>();
 (globalThis as { localStorage?: unknown }).localStorage ??= {

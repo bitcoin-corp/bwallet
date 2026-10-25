@@ -10,6 +10,10 @@ import {
   loadFundLikes,
   planLike,
 } from './likeToFund';
+import { keepGlobals } from '../../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 if (typeof globalThis.localStorage === 'undefined') {
   const m = new Map<string, string>();

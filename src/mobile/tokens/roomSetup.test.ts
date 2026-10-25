@@ -23,6 +23,7 @@ import {
 } from './roomSetup';
 import { ticketCost } from '../tickets/tickets';
 import { PERSONAL_FEE_ESTIMATE_SATS, PERSONAL_NETWORK_FEE_SATS } from '../names/claimPersonal';
+import { stubGlobals } from '../../testing/stubGlobals';
 
 const BCORP = '1BoatSLRHtKNngkdXEeobR76b53LETtpyT';
 const ID = `${'a'.repeat(64)}_0`;
@@ -31,16 +32,14 @@ const FEE = deriveFeeAddress(ID) as string;
 
 // Minimal localStorage / window for the dismissal helpers.
 const store = new Map<string, string>();
-const g = globalThis as Record<string, unknown>;
-g.localStorage = {
-  getItem: (k: string) => store.get(k) ?? null,
-  setItem: (k: string, v: string) => void store.set(k, String(v)),
-  removeItem: (k: string) => void store.delete(k),
-};
-if (!g.window) g.window = globalThis;
-if (!g.Event) g.Event = class {};
-if (typeof (globalThis as { dispatchEvent?: unknown }).dispatchEvent !== 'function')
-  (globalThis as Record<string, unknown>).dispatchEvent = () => true;
+stubGlobals({
+  localStorage: {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, String(v)),
+    removeItem: (k: string) => void store.delete(k),
+  },
+  window: new EventTarget(),
+});
 
 beforeEach(() => store.clear());
 

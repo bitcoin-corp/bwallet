@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import { stubGlobals } from '../../testing/stubGlobals';
 
 const mem = new Map<string, string>();
-(globalThis as { localStorage?: unknown }).localStorage = {
-  getItem: (k: string) => mem.get(k) ?? null,
-  setItem: (k: string, v: string) => void mem.set(k, String(v)),
-  removeItem: (k: string) => void mem.delete(k),
-};
-if (!(globalThis as { window?: unknown }).window) (globalThis as { window?: unknown }).window = new EventTarget();
+stubGlobals({
+  localStorage: {
+    getItem: (k: string) => mem.get(k) ?? null,
+    setItem: (k: string, v: string) => void mem.set(k, String(v)),
+    removeItem: (k: string) => void mem.delete(k),
+  },
+  window: new EventTarget(),
+});
 
 const {
   SIG_MAX_BYTES,

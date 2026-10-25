@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import type { ChromeStorageService } from '../../services/ChromeStorage.service';
+import { keepGlobals } from '../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 const store = new Map<string, string>();
 (globalThis as unknown as { localStorage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> }).localStorage = {

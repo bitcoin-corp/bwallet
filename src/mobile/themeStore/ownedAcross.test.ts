@@ -10,6 +10,10 @@ const mem = new Map<string, string>();
 };
 import { ownedAcrossWallet, recalledOwned, rememberOwned } from './ownedAcross';
 import { yourThemes } from '../theme/yourThemes';
+import { keepGlobals } from '../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 const B0ASEY = '02cbe7d893a7515c726c9f069cdd56d379662c7634a4ba8eaf2279fcea76686ed8';
 const OTHER = '026607f69e27c84eb19bfbc430575c46abec2a587712eac91b3b3f58e7f262b59b';

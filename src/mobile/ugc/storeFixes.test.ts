@@ -32,6 +32,10 @@ import {
 } from '../account/deleteAccount';
 import { deletePaymail, signRequest } from '../names/paymail';
 import type { Http } from '../chat/api';
+import { keepGlobals } from '../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 const server = require('../../../site/lib/paymail.js');
 
 class MemStorage {

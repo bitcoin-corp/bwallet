@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { OneSatContext } from '@1sat/actions';
 import { P2PKH } from '@bsv/sdk';
+import { keepGlobals } from '../../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 // Offline: no chain, no indexer, no broadcast. The wallet and the indexer are fakes.
 const store = new Map<string, string>();
@@ -17,7 +21,11 @@ const P2PEPE = '0ed3811d11dfb91827d3d5c9946a9ec186162ca0d327ca2fa5bd759c58ded6a3
 const P2PEPE_FUND = '1BFy5kxyLydSikv5gBiHd6EozNkfwVKJYJ';
 
 const steps: string[] = [];
+// Keep the real exports: bun module mocks are process-wide, and a partial mock left behind breaks later files that
+// import other names from it.
+const realMintTicket = { ...(await import('../../tickets/mintTicket')) };
 mock.module('../../tickets/mintTicket', () => ({
+  ...realMintTicket,
   deployBsv21: async () => (steps.push('deploy'), VESTTEST),
   chatClient: async () => {
     steps.push('room');

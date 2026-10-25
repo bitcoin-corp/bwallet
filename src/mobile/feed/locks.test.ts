@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'bun:test';
+import { beforeEach, describe, expect, test } from 'bun:test';
+import { __resetExchangeRateForTests } from '../../utils/exchangeRate';
 import { Lock } from '@1sat/templates';
 import { P2PKH, PrivateKey, Script, Transaction, Utils } from '@bsv/sdk';
 import {
@@ -93,6 +94,8 @@ describe('ranking', () => {
 });
 
 describe('helpers', () => {
+  // formatLocked shows $ once a price is known; these cases are the no-price fallback, so pin "no price".
+  beforeEach(() => __resetExchangeRateForTests({ storage: null }));
   test('formatLocked', () => {
     expect(formatLocked(100_000)).toBe('0.001 BSV');
     expect(formatLocked(10_000_000)).toBe('0.1 BSV');

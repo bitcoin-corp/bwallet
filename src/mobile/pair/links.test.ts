@@ -3,19 +3,27 @@ import { describe, expect, mock, test } from 'bun:test';
 // Native app: a cold start hands the link over via getLaunchUrl, a warm one via appUrlOpen.
 const COLD = 'https://www.bwallet.space/pair?v=1&c=cold';
 let urlOpen: ((e: { url: string }) => void) | undefined;
+// The launch URL is held until the cold-start test releases it, so the result never depends on how many microtasks
+// have run or on which test (bun --randomize) goes first.
+let releaseLaunch!: () => void;
+const launch = new Promise<{ url: string }>((r) => (releaseLaunch = () => r({ url: COLD })));
 // bun's mock.module is process-wide, so keep the real exports (registerPlugin etc.) for later test files.
-const realCore = await import('@capacitor/core');
+const realCore = { ...(await import('@capacitor/core')) };
 mock.module('@capacitor/core', () => ({
   ...realCore,
   Capacitor: { ...realCore.Capacitor, isNativePlatform: () => true },
 }));
+// Keep the real exports: bun module mocks are process-wide, and a partial mock left behind breaks later files that
+// import other names from it.
+const realCapApp = { ...(await import('@capacitor/app')) };
 mock.module('@capacitor/app', () => ({
+  ...realCapApp,
   App: {
     addListener: (ev: string, fn: (e: { url: string }) => void) => {
       if (ev === 'appUrlOpen') urlOpen = fn;
       return Promise.resolve({ remove: () => undefined });
     },
-    getLaunchUrl: () => Promise.resolve({ url: COLD }),
+    getLaunchUrl: () => launch,
   },
 }));
 
@@ -41,7 +49,11 @@ describe('isPairLink', () => {
 
 describe('app link routing', () => {
   test('cold start: launch URL is held for the pairing screen', async () => {
-    await Promise.resolve();
+    const offered = new Promise<void>((r) => {
+      const off = onPairLink(() => (off(), r()));
+    });
+    releaseLaunch();
+    await offered;
     expect(takePairLink()).toBe(COLD);
     expect(takePairLink()).toBeNull();
   });

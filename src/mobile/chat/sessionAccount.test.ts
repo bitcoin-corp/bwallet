@@ -1,5 +1,9 @@
 import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
 import { BchatClient, loadSession, saveSession, setChatAccount, type Http } from './api';
+import { keepGlobals } from '../../testing/stubGlobals';
+
+// bun runs every test file in one process: put back the globals this file swaps so they can't leak into the next.
+keepGlobals('localStorage');
 
 // Minimal localStorage for bun.
 const store = new Map<string, string>();
