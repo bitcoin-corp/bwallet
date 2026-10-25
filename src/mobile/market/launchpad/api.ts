@@ -23,6 +23,12 @@ export type BoardCoin = {
   trades24: string | number;
   holders: string | number;
   sold24: string | number | null;
+  /** Ready-made price (sats per token) TokenBlaster is adding; derived from the curve when absent. */
+  price_sats?: string | number | null;
+  /** Optional store fields TokenBlaster is adding (read through exchange/tokenStore.ts). */
+  theme?: unknown;
+  room?: unknown;
+  merch_url?: unknown;
 };
 
 export const coinImage = (tokenId: string) => `https://ordfs.network/${tokenId.split('_')[0]}_0`;
@@ -55,6 +61,32 @@ export const sortBoard = (coins: BoardCoin[]): BoardCoin[] =>
       Number(b.trades24 ?? 0) - Number(a.trades24 ?? 0) ||
       Date.parse(b.created_at) - Date.parse(a.created_at),
   );
+
+/** Newest launches first ("New on TokenBlaster"). Rows with an unreadable date go last. */
+export const sortNewest = (coins: BoardCoin[]): BoardCoin[] => {
+  const t = (c: BoardCoin) => {
+    const v = Date.parse(c.created_at);
+    return Number.isFinite(v) ? v : 0;
+  };
+  return [...coins].sort((a, b) => t(b) - t(a));
+};
+
+/** Sats per token: the server's `price_sats` when it is a sane number, else from the curve. */
+export const boardPrice = (c: Pick<BoardCoin, 'sold' | 'price_sats'>): number => {
+  const p = Number(c.price_sats);
+  return c.price_sats !== null && c.price_sats !== undefined && Number.isFinite(p) && p > 0 ? p : price(big(c.sold));
+};
+
+/** "launched 3h ago" style age, plain English. */
+export const launchedAgo = (iso: string, now = Date.now()): string => {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return '';
+  const m = Math.max(0, Math.floor((now - t) / 60_000));
+  if (m < 60) return m <= 1 ? 'just now' : `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h}h ago`;
+  return `${Math.floor(h / 24)} days ago`;
+};
 
 const getJson = async <T>(path: string): Promise<T> => {
   const r = await fetch(`${BLASTPAD}${path}`);

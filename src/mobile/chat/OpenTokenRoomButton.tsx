@@ -16,11 +16,13 @@ export const OpenTokenRoomButton = ({
   id,
   className,
   style,
+  label = 'Chat',
 }: {
   kind?: 'bsv21' | 'coll';
   id: string | undefined;
   className?: string;
   style?: React.CSSProperties;
+  label?: string;
 }) => {
   const { handleSelect } = useBottomMenu();
   const key = id ? tokenKey(kind, id) : null;
@@ -40,7 +42,7 @@ export const OpenTokenRoomButton = ({
       style={style ?? { background: 'var(--bw-surface)', borderColor: '#3a2f0c', color: 'var(--bw-accent-hi)' }}
     >
       <MessageCircle size={14} />
-      Chat
+      {label}
     </button>
   );
 };

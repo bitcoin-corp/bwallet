@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { fiatLabel, unitPriceLabel, bsvLabel } from './exchangeData';
 import { openExternal } from './useTokenRowActions';
+import { TokenRoomStore } from './TokenRoomStore';
 import { MEMEPOOL_SORTS, fetchMemepoolCoins, memepoolTradeUrl, type MemepoolCoin, type MemepoolSort } from './memepool';
 
 /**
@@ -167,6 +168,7 @@ export const MemepoolMarket = ({ rate }: { rate: number }) => {
                 >
                   Trade on Memepool <ExternalLink size={14} />
                 </button>
+                <TokenRoomStore id={c.id} sym={c.sym} />
               </div>
             ))}
           </div>

@@ -12,7 +12,22 @@ import { useBackClose } from '../../backStack';
 import { useServiceContext } from '../../../hooks/useServiceContext';
 import { money, useBsvUsd } from '../../money/money';
 import { openDappBrowser } from '../../dappBrowser';
-import { big, change24, coinImage, fetchCoin, fetchCoins, sortBoard, wocTx, type BoardCoin } from './api';
+import {
+  big,
+  boardPrice,
+  change24,
+  coinImage,
+  fetchCoin,
+  fetchCoins,
+  launchedAgo,
+  sortBoard,
+  sortNewest,
+  wocTx,
+  type BoardCoin,
+} from './api';
+import { TokenRoomStore } from '../../exchange/TokenRoomStore';
+import { TOKENBLASTER_ORIGIN, parseTokenStore } from '../../exchange/tokenStore';
+import { unitPriceLabel } from '../../exchange/exchangeData';
 import {
   HOUSE_BPS,
   MAX_BUY,
@@ -80,10 +95,16 @@ export const LaunchpadPanel = () => {
   const [coins, setCoins] = useState<BoardCoin[] | null>(null);
   const [error, setError] = useState('');
   const [open, setOpen] = useState<BoardCoin | null>(null);
+  // "New on TokenBlaster" is the default view so fresh launches aren't buried under volume (owner, 25 Oct 2026).
+  const [order, setOrder] = useState<'new' | 'trending'>('new');
+  const sorted = useMemo(
+    () => (coins ? (order === 'new' ? sortNewest(coins) : sortBoard(coins)) : null),
+    [coins, order],
+  );
   const load = useCallback(() => {
     setError('');
     fetchCoins()
-      .then((c) => setCoins(sortBoard(c)))
+      .then((c) => setCoins(c))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(load, [load]);
@@ -100,7 +121,32 @@ export const LaunchpadPanel = () => {
         <Rocket size={16} /> Launch your own coin
       </button>
       <OurLaunches onOpen={(id) => navigate(tradeRoute(id))} />
-      <h3 className="text-xs font-bold uppercase tracking-wide text-[#98A2B3] m-0 mt-2">On BlastPad</h3>
+      <h3 className="text-xs font-bold uppercase tracking-wide text-[#98A2B3] m-0 mt-2">
+        {order === 'new' ? 'New on TokenBlaster' : 'Trending on TokenBlaster'}
+      </h3>
+      <div className="grid grid-cols-2 gap-2" role="group" aria-label="Sort TokenBlaster coins">
+        {(
+          [
+            ['new', 'Newest'],
+            ['trending', 'Trending'],
+          ] as const
+        ).map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            aria-pressed={order === k}
+            onClick={() => setOrder(k)}
+            className="rounded-xl px-3 py-2 text-sm font-bold cursor-pointer border"
+            style={{
+              background: order === k ? GOLD : 'var(--bw-surface)',
+              color: order === k ? '#000' : 'var(--bw-text, #fff)',
+              borderColor: order === k ? GOLD : LINE,
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {coins === null && !error && <p className="text-xs text-[#98A2B3] text-center py-8">Loading launched coins…</p>}
       {error && (
         <div className="flex flex-col items-center gap-3 py-8">
@@ -115,33 +161,43 @@ export const LaunchpadPanel = () => {
         </div>
       )}
       {coins?.length === 0 && <p className="text-xs text-[#98A2B3] text-center py-8">No coins launched yet.</p>}
-      {coins?.map((c, i) => {
-        const sold = big(c.sold);
-        const ch = change24(c);
-        return (
-          <button
-            key={c.token_id}
-            onClick={() => setOpen(c)}
-            className="flex items-center gap-3 rounded-xl bg-[var(--bw-surface)] px-3 py-3 text-left"
-          >
-            <span className="w-6 text-[11px] font-semibold text-[#667085]">{i + 1}</span>
-            <CoinArt id={c.token_id} />
-            <div className="min-w-0 flex-1 flex flex-col gap-1">
-              <div className={`text-sm font-semibold text-white ${ELLIPSIS}`}>
-                ${c.sym} {c.graduated_at && <GradBadge />}
+      <div className="grid gap-2 sm:grid-cols-2">
+        {sorted?.map((c, i) => {
+          const sold = big(c.sold);
+          const ch = change24(c);
+          return (
+            <button
+              key={c.token_id}
+              onClick={() => setOpen(c)}
+              className="flex items-center gap-3 rounded-xl bg-[var(--bw-surface)] px-3 py-3 text-left"
+            >
+              <span className="w-6 text-[11px] font-semibold text-[#667085]">{i + 1}</span>
+              <CoinArt id={c.token_id} />
+              <div className="min-w-0 flex-1 flex flex-col gap-1">
+                <div className={`text-sm font-semibold text-white ${ELLIPSIS}`}>
+                  ${c.sym} {c.graduated_at && <GradBadge />}
+                </div>
+                <div className={`text-[11px] text-[#98A2B3] ${ELLIPSIS}`}>{c.name}</div>
+                <div className={`text-[10px] text-[#667085] ${ELLIPSIS}`}>
+                  {unitPriceLabel(boardPrice(c))} · {Number(c.holders ?? 0).toLocaleString()} holder
+                  {Number(c.holders ?? 0) === 1 ? '' : 's'}
+                  {launchedAgo(c.created_at) ? ` · ${launchedAgo(c.created_at)}` : ''}
+                </div>
+                <Bar p={progress(sold)} />
               </div>
-              <div className={`text-[11px] text-[#98A2B3] ${ELLIPSIS}`}>{c.name}</div>
-              <Bar p={progress(sold)} />
-            </div>
-            <div className="text-right shrink-0">
-              <div className="text-xs font-semibold text-white">{money(marketCap(sold), rate)}</div>
-              <div className="text-[10px]" style={{ color: ch === null ? '#667085' : ch >= 0 ? '#A1FF8B' : '#F97066' }}>
-                {ch === null ? '—' : pct(ch)}
+              <div className="text-right shrink-0">
+                <div className="text-xs font-semibold text-white">{money(marketCap(sold), rate)}</div>
+                <div
+                  className="text-[10px]"
+                  style={{ color: ch === null ? '#667085' : ch >= 0 ? '#A1FF8B' : '#F97066' }}
+                >
+                  {ch === null ? '—' : pct(ch)}
+                </div>
               </div>
-            </div>
-          </button>
-        );
-      })}
+            </button>
+          );
+        })}
+      </div>
       {open && (
         <CoinSheet
           coin={open}
@@ -149,7 +205,7 @@ export const LaunchpadPanel = () => {
           onClose={() => setOpen(null)}
           onTraded={() => {
             fetchCoins()
-              .then((c) => setCoins(sortBoard(c)))
+              .then((c) => setCoins(c))
               .catch(() => undefined);
           }}
         />
@@ -364,6 +420,7 @@ const CoinSheet = ({
         </div>
         {coin.description && <p className="text-xs text-[#98A2B3] m-0 leading-relaxed">{coin.description}</p>}
         <TokenLinks tokenId={id} sym={coin.sym} extra={coin} />
+        <TokenRoomStore id={id} sym={coin.sym} info={parseTokenStore(coin, TOKENBLASTER_ORIGIN)} />
 
         <div className="flex flex-col gap-1.5 rounded-xl p-3" style={{ background: '#0F1013' }}>
           {row('Market cap', money(marketCap(sold), rate))}
