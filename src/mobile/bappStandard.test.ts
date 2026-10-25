@@ -49,7 +49,8 @@ describe('bApp standard', () => {
 describe('bApps cards (owner, 25 Oct 2026)', () => {
   test('one short line per card', () => {
     expect(shortLine('Tokenise your music; holders make the video with you')).toBe('Tokenise your music');
-    expect(shortLine('Watch and back tokenised films')).toBe('Watch and back tokenised films');
+    expect(shortLine('Watch and back films')).toBe('Watch and back films');
+    expect(shortLine('Watch and back tokenised films')).toBe('Watch and back tokenised…');
     expect(shortLine('Adults only. The NPGX brand, separate from NPG')).toBe('Adults only');
     const long = shortLine('Mint anything you like here: art, media, coins and archives forever and ever');
     expect(long.length).toBeLessThanOrEqual(25);
