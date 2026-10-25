@@ -1,3 +1,4 @@
+import { fetchNoRedirect } from './sameSiteFetch';
 import { BASE_LOOK } from './accents';
 import { contrast } from './colour';
 import { THEME_PACK_FORMAT, parseThemePack, type ThemeLook, type ThemePack } from './themePack';
@@ -95,12 +96,12 @@ export async function fetchSiteTheme(site: ThemeSite, f: typeof fetch = fetch): 
   const ctl = typeof AbortController === 'function' ? new AbortController() : null;
   const timer = ctl ? setTimeout(() => ctl.abort(), SITE_THEME_TIMEOUT_MS) : null;
   try {
-    const r = await f(`https://${site.host}${SITE_THEME_PATH}`, {
-      credentials: 'omit',
-      cache: 'no-store',
-      redirect: 'follow',
-      ...(ctl ? { signal: ctl.signal } : {}),
-    });
+    // Never follows a redirect; apex ↔ www is asked directly (sameSiteFetch.ts).
+    const r = await fetchNoRedirect(
+      `https://${site.host}${SITE_THEME_PATH}`,
+      { credentials: 'omit', cache: 'no-store', ...(ctl ? { signal: ctl.signal } : {}) },
+      f,
+    );
     if (!r.ok) return null;
     if (r.url) {
       const h = new URL(r.url).hostname.toLowerCase();

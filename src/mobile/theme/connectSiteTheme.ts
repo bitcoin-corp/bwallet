@@ -1,3 +1,4 @@
+import { fetchNoRedirect, sameSiteOrigin } from './sameSiteFetch';
 import { isPairedHost } from '../../services/originKey';
 import { contrast } from './colour';
 import { roomTicker } from '../chat/siteRoom';
@@ -252,15 +253,14 @@ async function fetchCapped(
   const ctl = typeof AbortController === 'function' ? new AbortController() : null;
   const timer = ctl ? setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS) : null;
   try {
-    const r = await f(url, {
-      credentials: 'omit',
-      cache: 'no-store',
-      redirect: 'follow',
-      referrerPolicy: 'no-referrer',
-      ...(ctl ? { signal: ctl.signal } : {}),
-    });
+    // Never follows a redirect; apex ↔ www is asked directly (sameSiteFetch.ts).
+    const r = await fetchNoRedirect(
+      url,
+      { credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', ...(ctl ? { signal: ctl.signal } : {}) },
+      f,
+    );
     if (!r.ok) return null;
-    if (r.url && new URL(r.url).origin !== origin) return null; // no redirect to another site
+    if (r.url && !sameSiteOrigin(r.url, origin)) return null; // never another site
     if (Number(r.headers?.get?.('content-length') ?? 0) > max) return null;
     const bytes = new Uint8Array(await r.arrayBuffer());
     if (bytes.byteLength > max) return null;
