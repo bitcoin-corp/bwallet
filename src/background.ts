@@ -97,6 +97,9 @@ import {
   type HealReport,
 } from './services/invalidSendHeal';
 import { refusalFor } from './services/broadcastRefusals';
+import { withSignedTx } from './services/siteResultTx';
+import { ConnectConsent, isConnectLine } from './services/connectConsent';
+import { bwxReq } from './services/reqLog';
 import { createWithSpentRetry, retryEligible } from './services/spentRetry';
 import {
   AUTO_RESYNC_DELAY_MS,
@@ -1004,9 +1007,10 @@ const ensureWallet = async (suppressPopup = false): Promise<WalletInterface> => 
   }
   return new Promise((resolve, reject) => {
     pendingWalletWaiters.push({ resolve, reject });
-    if (pendingWalletWaiters.length === 1) {
-      showUnlockUi();
-    }
+    // Every waiter surfaces the unlock (an existing window is focused, never duplicated): a request that arrived
+    // behind an earlier waiter whose window was lost used to wait silently (bwx-req, 25 Oct 2026).
+    bwxReq('locked: unlock needed', { locked: true, step: `${pendingWalletWaiters.length} waiting` });
+    showUnlockUi();
   });
 };
 
@@ -1090,6 +1094,12 @@ const basketDenials = new SessionBasketDenials({
   },
 });
 const manifestOnce = new ManifestOnce();
+/** One connect sheet covers the identity key and sign-in that follow (services/connectConsent.ts). */
+const connectConsent = new ConnectConsent({
+  isPaired: (o) => isPairedOriginator(o),
+  isReserved: (p) => isReservedProtocol(p as never),
+  normalize: (o) => normalizeOriginator(o),
+});
 /** A basket read the user refused: remember it for the session. */
 const noteBasketDenial = (r: { type?: string; basket?: unknown; usageType?: unknown; originator?: string }) => {
   if (r.originator && r.originator !== ADMIN_ORIGINATOR && isBasketRead(r))
@@ -1611,6 +1621,15 @@ const showPermissionPrompt = (request: PermissionRequest & { requestID: string }
           reject(new Error(BLOCKED_SITE_REFUSAL));
           return;
         }
+        // The connect sheet the user just approved named the identity key and sign-in: no second or third sheet.
+        if (accountContext?.wallet && connectConsent.covers(request, Date.now())) {
+          bwxReq('consent', { method: request.type, origin: request.originator, step: 'covered by connect sheet' });
+          accountContext.wallet
+            .grantPermission({ requestID: request.requestID, expiry: withDefaultExpiry(0) })
+            .then(() => resolve())
+            .catch((error: unknown) => reject(error instanceof Error ? error : new Error(String(error))));
+          return;
+        }
         if (trusted && accountContext?.wallet) {
           // A site the user said "don't ask again" for: routine requests go through without a sheet.
           accountContext.wallet
@@ -1743,6 +1762,7 @@ const siteTrustedFor = async (request: PermissionRequest & { requestID: string }
 
 /** Forget site, basket part: see revokeBasketGrantsForOriginator. Also clears the manager's recent-grant cover. */
 const revokeBasketGrantsFor = async (originator: string): Promise<void> => {
+  connectConsent.forget(originator);
   const store = accountContext?.permissionStore;
   if (!store || !originator) return;
   await revokeBasketGrantsForOriginator(store, originator, normalizeOriginator);
@@ -1823,14 +1843,19 @@ if (isInServiceWorker) {
     if (kind) params.set('kind', kind);
     if (requestID) params.set('requestID', requestID);
     const query = params.toString();
+    bwxReq('open attempted', { kind, surface: 'window' });
     chrome.windows.create(
       {
         url: chrome.runtime.getURL('prompt.html') + (query ? `?${query}` : ''),
         type: 'popup',
         width: 392,
         height: 567,
+        focused: true,
       },
       (window) => {
+        const err = chrome.runtime.lastError;
+        if (window?.id) bwxReq('opened', { kind, surface: 'window' });
+        else bwxReq('open failed', { kind, surface: 'window', error: err?.message ?? 'no window' });
         popupWindowId = window?.id;
         if (popupWindowId) {
           chrome.storage.local.set({
@@ -1859,6 +1884,12 @@ if (isInServiceWorker) {
 
   showPromptUi = (kind, requestID) => {
     console.log('[background] showPromptUi called', kind, requestID);
+    bwxReq('prompt queued', {
+      kind,
+      origin: requestID
+        ? (getPendingPromptPayload(kind, requestID) as { originator?: string } | undefined)?.originator
+        : undefined,
+    });
     void surfaceOverFullscreen(kind === 'usbCheck' ? undefined : tabForPrompt(kind, requestID));
 
     // Side panel open: show the prompt inside it (the panel's own unlock screen covers 'unlock').
@@ -1866,6 +1897,7 @@ if (isInServiceWorker) {
     // PanelPrompt, so a prompt sent there was never drawn and the site waited forever (bChatX in the bApp
     // frame stuck on "Connecting", 14 Oct 2026). They show prompts as overlays (windows.create below).
     if (promptsShowInPanel(activePopupPorts.size, chrome) && kind !== 'unlock') {
+      bwxReq('open attempted', { kind, surface: 'panel overlay' });
       promptInPanel = true;
       postToPanels({ action: 'SHOW_PROMPT_PANEL', kind, requestID });
       notifyPromptWindow(kind, requestID); // an overlay that is already up loads the next prompt
@@ -1935,12 +1967,15 @@ if (isInServiceWorker) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sp = (chrome as any).sidePanel;
     try {
+      bwxReq('open attempted', { kind, surface: 'side panel' });
       await sp.open({ tabId: tab.tabId, windowId: tab.windowId });
+      bwxReq('opened', { kind, surface: 'side panel' });
       // The panel connects its port in a moment; show the prompt there once it does.
       panelPromptOnConnect = { kind, requestID };
       return true;
-    } catch {
+    } catch (e) {
       /* no user gesture: fall through to the in-page sheet */
+      bwxReq('open failed', { kind, surface: 'side panel', error: e });
     }
     const token = crypto.randomUUID();
     const params = new URLSearchParams({ kind, inpage: token });
@@ -1951,7 +1986,11 @@ if (isInServiceWorker) {
         action: 'BWX_INPAGE_SHEET_SHOW',
         query: params.toString(),
       })) as { ok?: boolean } | undefined;
-      if (res?.ok) return true;
+      if (res?.ok) {
+        bwxReq('opened', { kind, surface: 'in-page sheet' });
+        return true;
+      }
+      bwxReq('open failed', { kind, surface: 'in-page sheet', error: 'not shown' });
     } catch {
       /* no content script here (chrome://, Web Store, tab gone) */
     }
@@ -1970,6 +2009,7 @@ if (isInServiceWorker) {
 
       if (existingPopup) {
         // Focus existing popup and push the new prompt into it
+        bwxReq('opened', { kind, surface: 'existing window' });
         chrome.windows.update(existingPopup.id!, { focused: true, drawAttention: true });
         popupWindowId = existingPopup.id;
         notifyPromptWindow(kind, requestID);
@@ -2008,10 +2048,34 @@ if (isInServiceWorker) {
     });
   };
 
+  /**
+   * Unlock watchdog: 4 s after asking, if a request still waits on the unlock and no wallet surface is up (no popup
+   * or panel port, no prompt window), open the unlock window. Covers a panel port left over from a closed panel, a
+   * popup Chrome said it opened but closed, and any other silent path.
+   */
+  let unlockWatchdog: ReturnType<typeof setTimeout> | undefined;
+  const armUnlockWatchdog = () => {
+    if (unlockWatchdog) clearTimeout(unlockWatchdog);
+    unlockWatchdog = setTimeout(() => {
+      unlockWatchdog = undefined;
+      if (pendingWalletWaiters.length === 0 || accountContext?.wallet) return;
+      chrome.windows.getAll({ populate: true }, (windows) => {
+        const promptUrl = chrome.runtime.getURL('prompt.html');
+        const up = windows.some((w) => w.tabs?.some((t) => t.url?.startsWith(promptUrl)));
+        if (up && popupWindowId) return;
+        bwxReq('no surface after 4s: opening window', { kind: 'unlock', surface: 'window', step: `ports=${activePopupPorts.size}` });
+        createNewPopup('unlock');
+      });
+    }, 4000);
+  };
+
   showUnlockUi = () => {
+    // Whatever surface is chosen, check shortly that one is really up; else open the unlock window ourselves.
+    armUnlockWatchdog();
     // The browser-action popup renders its own unlock UI; never force a
     // window over it just to unlock.
     if (activePopupPorts.size > 0) {
+      bwxReq('open attempted', { kind: 'unlock', surface: 'panel overlay' });
       // The panel shows its own unlock screen, but only if told (it may think it is unlocked after the
       // inactivity lock) and only if no stale prompt overlay covers it.
       promptInPanel = false;
@@ -2019,8 +2083,23 @@ if (isInServiceWorker) {
       panelUnlockMessages().forEach((m) => postToPanels(m));
       return;
     }
+    // The toolbar popup first (it shows unlock, then the waiting sheet in the same place); a window when Chrome
+    // refuses it (no focused window, older Chrome, or the call needs a gesture).
+    const action = (chrome as unknown as { action?: { openPopup?: () => Promise<void> } }).action;
+    if (action?.openPopup) {
+      bwxReq('open attempted', { kind: 'unlock', surface: 'popup' });
+      action
+        .openPopup()
+        .then(() => bwxReq('opened', { kind: 'unlock', surface: 'popup' }))
+        .catch((e: unknown) => {
+          bwxReq('open failed', { kind: 'unlock', surface: 'popup', error: e });
+          showPromptUi('unlock');
+        });
+      return;
+    }
     showPromptUi('unlock');
   };
+
 
   // Wire the 1Sat permission module's prompt bridge into the prompt flow.
   // Done once during background init so showOneSatPrompt has a working
@@ -2839,6 +2918,7 @@ if (!(
         // Connections log (History › Connections): which outside site or app called, and what.
         if (!isFromExtension && typeof message.originator === 'string' && message.originator !== ADMIN_ORIGINATOR) {
           const origin = message.originator;
+          bwxReq('received', { method: String(message.action), origin, locked: !accountContext?.wallet });
           void updateConnectionLog((l) => recordCall(l, origin, String(message.action)));
           gateAsk = reconnectGate(origin, String(message.action), message.params);
         }
@@ -4058,6 +4138,7 @@ if (!(
     }
     // Bound to exactly what was on screen: a missing or different hash grants nothing (permissionBundle.ts).
     const result = permissionBundler.resolve(response.bundleID, response.decisions ?? {}, response.seenHash ?? '');
+    bwxReq('user answered', { kind: 'bundle', origin: bundle?.originator, step: result ? `${result.granted.length} allowed` : 'expired' });
     if (!bundle || !result) {
       sendResponse({ type: 'BUNDLE_PERMISSION_RESPONSE', success: false, error: 'Request expired' });
       return true;
@@ -4076,6 +4157,10 @@ if (!(
       closeDappPopupIfNoUi();
       return true;
     }
+    // A connect sheet (it showed the identity-key line) also covers the sign-in that follows (connectConsent.ts).
+    if (!response.block && result.granted.some((r) => isConnectLine(r, (p) => isReservedProtocol(p as never))))
+      connectConsent.record(bundle.originator, Date.now());
+    else if (response.block) connectConsent.forget(bundle.originator);
     const remember = response.remember !== false;
     // Not remembered: the grants last this visit (an hour), then the site asks again.
     // Remembered: GRANT_DEFAULT_DAYS (services/grantExpiry.ts), not for ever (audit 24 Oct B1).
@@ -4221,6 +4306,7 @@ if (!(
     }
 
     pendingGroupedPermissionRequests.delete(response.requestID);
+    bwxReq('user answered', { kind: 'groupedPermission', origin: pending.request.originator, step: response.granted ? 'allow' : 'deny' });
 
     if (response.granted && !pairedGrantAllowed(pending.request.originator)) {
       accountContext?.wallet.denyGroupedPermission(response.requestID).catch(console.error);
@@ -4230,6 +4316,8 @@ if (!(
     }
 
     if (response.granted) {
+      // This sheet also named the identity key and sign-in: the calls that follow need no sheet of their own.
+      connectConsent.record(pending.request.originator, Date.now());
       accountContext?.wallet
         .grantGroupedPermission({
           requestID: response.requestID,
@@ -5365,7 +5453,9 @@ if (!(
           await withRepeatGuard((g) => g.record(recordedFingerprint, { origin: message.originator, txid: queued?.txid }));
           // With its txid, answer like a send (BRC-100 callers read txid) and say it's pending; else the old message.
           if (!queued) throw new Error(QUEUED_MESSAGE);
-          sendResponse({ type: CWIEventName.CREATE_ACTION, success: true, data: queued });
+          // Queued is still signed: the answer carries tx (AtomicBEEF) unless the site asked for the txid only.
+          const data = await withSignedTx(queued, message.params.options, atomicBeefFor);
+          sendResponse({ type: CWIEventName.CREATE_ACTION, success: true, data });
           return true;
         }
         throw err;
@@ -5424,6 +5514,8 @@ if (!(
         };
         void updateConnectionLog((l) => recordPayment(l, origin, payment));
       }
+      // BRC-100: tx (AtomicBEEF) with the txid, pending or not, unless options.returnTXIDOnly (siteResultTx.ts).
+      result = await withSignedTx(result, message.params.options, atomicBeefFor);
       sendResponse({
         type: CWIEventName.CREATE_ACTION,
         success: true,
@@ -5465,6 +5557,15 @@ if (!(
       }
     }
     return true;
+  };
+
+  /** The signed transaction storage holds for a txid, as AtomicBEEF, or null (siteResultTx.ts). */
+  const atomicBeefFor = async (txid: string): Promise<number[] | null> => {
+    if (!accountContext?.storage) return null;
+    return accountContext.storage.runAsStorageProvider(async (sp) => {
+      const beef = await sp.getBeefForTransaction(txid, {});
+      return beef.findTxid(txid) ? beef.toBinaryAtomic(txid) : null;
+    });
   };
 
   /** The txid storage holds for an action reference (the signed transaction), or null. */
@@ -5536,7 +5637,8 @@ if (!(
         console.warn('[signAction] queued for retry, answering pending:', queued.txid);
         await withRepeatGuard((g) => g.signed(message.params.reference, queued.txid));
         endChain();
-        sendResponse({ type: CWIEventName.SIGN_ACTION, success: true, data: queued });
+        const data = await withSignedTx(queued, message.params.options, atomicBeefFor);
+        sendResponse({ type: CWIEventName.SIGN_ACTION, success: true, data });
         return true;
       }
       console.error('[signAction] Error:', error);
@@ -5858,6 +5960,7 @@ if (!(
   };
 
   denyPendingPromptsFor = (originator: string) => {
+    connectConsent.forget(originator);
     for (const [requestID, pending] of takePendingFor(pendingPermissionRequests, originator)) {
       permissionBundler.removeRequest(requestID);
       accountContext?.wallet.denyPermission(requestID).catch(console.error);
@@ -5892,6 +5995,7 @@ if (!(
   // HANDLE WINDOW CLOSE *****************************************
   chrome.windows.onRemoved.addListener((closedWindowId) => {
     console.log('Window closed: ', closedWindowId);
+    if (closedWindowId === popupWindowId) bwxReq('approval window closed', { step: 'pending requests answered no' });
 
     if (selfClosedWindowIds.delete(closedWindowId)) {
       // Background closed it after checking nothing was pending. If a prompt was
