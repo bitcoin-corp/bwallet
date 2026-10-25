@@ -86,10 +86,12 @@ export function NpgMelt({
     if (!apiContext.services)
       return setP({ k: 'error', msg: 'Wallet services are not ready yet. Try again in a moment.', q });
     let reference = '';
+    let meltTxid = '';
     try {
       setP({ k: 'working', q, step: 'Signing…' });
       const built = await buildMeltTx(apiContext.wallet, apiContext.services, q, { location: jig.location, wif });
       reference = built.reference;
+      meltTxid = built.txid;
       setP({ k: 'working', q, step: 'Sending to NPG…' });
       await commitMelt(fetch, { quote_id: q.quote_id, rawtx_ef: built.ef, signature: signChallenge(q.challenge, wif) });
       setP({ k: 'working', q, step: 'Minting your element cards…' });
@@ -104,7 +106,7 @@ export function NpgMelt({
       setP({ k: 'done', q, s });
     } catch (e) {
       // Free the wallet's inputs only when NPG refused cleanly (4xx): it may have broadcast otherwise.
-      if (reference && e instanceof MeltRefusedError) await releaseMelt(apiContext.wallet, reference);
+      if (reference && e instanceof MeltRefusedError) await releaseMelt(apiContext.wallet, reference, meltTxid);
       setP({ k: 'error', msg: e instanceof Error ? e.message : String(e), q });
     }
   };

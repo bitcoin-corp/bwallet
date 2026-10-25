@@ -6,6 +6,12 @@
  */
 import { MessageBoxClient } from '@bsv/message-box-client';
 import { assertNotPaused } from '../config/killSwitch';
+import {
+  refusedBeforeBroadcast,
+  releaseAfterHandoff,
+  type ReleaseOpts,
+  type UnsentWallet,
+} from '../../services/unsentGuard';
 import { Beef, P2PKH, PublicKey, Transaction, Utils, type WalletInterface } from '@bsv/sdk';
 import {
   BMAIL_BOX,
@@ -170,6 +176,8 @@ export type SendDeps = {
   broadcastFetch?: typeof fetch;
   /** Delivery (default: the message box client). */
   deliver?: (body: string) => Promise<unknown>;
+  /** Chain checks for a guarded release after the relay refused (tests; default WhatsOnChain + 1Sat). */
+  unsent?: Omit<ReleaseOpts, 'notBroadcast'>;
 };
 
 /**
@@ -200,8 +208,16 @@ export const sendMail = async (wallet: WalletInterface, a: SendArgs, deps: SendD
     await a.onPostagePaid?.(postage, id);
   }
   const unbroadcast = state === 'signed' && !!postage;
-  const giveUp = async () => {
-    if (unbroadcast && postage) await releasePostage(wallet, postage.txid);
+  // handedOff: the envelope (with the stamp's rawtx) reached the relay; then only a guarded release (unsentGuard).
+  const giveUp = async (handedOff?: { cause: unknown }) => {
+    if (unbroadcast && postage) {
+      if (handedOff)
+        await releaseAfterHandoff(wallet as unknown as UnsentWallet, postage.txid, {
+          ...deps.unsent,
+          notBroadcast: refusedBeforeBroadcast(handedOff.cause) || isRefusal(handedOff.cause),
+        });
+      else await releasePostage(wallet, postage.txid);
+    }
     if (state !== 'given') dropPending(from, key);
   };
   if (postage) {
@@ -236,7 +252,7 @@ export const sendMail = async (wallet: WalletInterface, a: SendArgs, deps: SendD
     else await mbox(wallet).sendMessage({ recipient: a.to, messageBox: BMAIL_BOX, body, skipEncryption: true }, host);
   } catch (e) {
     // A refusal (4xx) will not change on retry: release an unpaid stamp. Network/5xx: keep it for the retry.
-    if (isRefusal(e) && state !== 'broadcast') await giveUp();
+    if (isRefusal(e) && state !== 'broadcast') await giveUp({ cause: e });
     if (/HTTP 413/.test(String((e as Error)?.message))) throw new LetterTooLargeError(TOO_LARGE_TEXT, bytes, limit);
     throw e;
   }

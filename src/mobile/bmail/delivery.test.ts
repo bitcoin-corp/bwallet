@@ -197,11 +197,35 @@ describe('sendMail: pay only after the relay accepts', () => {
       deliver: async () => {
         throw new Error('Message Box send failed with HTTP 413 (ERR_MESSAGE_TOO_LARGE).');
       },
+      unsent: { lookups: [async () => 'missing'], sleep: async () => {}, log: () => {} },
     }).catch((e) => e);
     expect(friendlyMailError(err)).toMatch(/too large to send/);
     expect(calls).toContain(`abort:${child.id('hex')}`);
     expect(calls.some((c) => c.startsWith('broadcast'))).toBe(false);
     expect(loadPending(ME)).toEqual([]);
+  });
+
+  test('relay refusal but the chain already has the stamp: kept, never aborted (unsentGuard)', async () => {
+    const { gp, child, sign } = chain(10);
+    mined(gp);
+    await sign();
+    const calls: Call[] = [];
+    const w = fakeWallet(Utils.toHex(child.toAtomicBEEF()), child.id('hex'), calls);
+    await sendMail(w, letter, {
+      limit: DEFAULT_MAX_BODY_BYTES,
+      fetchProof: null,
+      deliver: async () => {
+        throw new Error('Message Box send failed with HTTP 413 (ERR_MESSAGE_TOO_LARGE).');
+      },
+      unsent: {
+        lookups: [async () => 'seen'],
+        sleep: async () => {},
+        log: () => {},
+        settleDelaysMs: [],
+        background: false,
+      },
+    }).catch((e) => e);
+    expect(calls).not.toContain(`abort:${child.id('hex')}`);
   });
 
   test('wallet does not send it: the BEEF goes to ARC', async () => {

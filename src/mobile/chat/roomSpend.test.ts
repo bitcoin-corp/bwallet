@@ -159,13 +159,30 @@ describe('room spend: the wallet never broadcasts', () => {
     expect(calls[0].options?.noSend).toBe(true);
     expect(r).toEqual({ beef: '010203', txid: 'ab'.repeat(32) });
   });
-  test('a server refusal releases the signed tx (abortAction), so nothing is spent', async () => {
+  test('a server refusal (4xx) the chain confirms releases the signed tx (abortAction)', async () => {
     const aborted: string[] = [];
     const ctx = {
       wallet: { abortAction: async (a: { reference: string }) => void aborted.push(a.reference) },
     } as never;
-    await releasePayment(ctx, 'cd'.repeat(32));
+    const fast = { lookups: [async () => 'missing' as const], delaysMs: [0, 1], sleep: async () => {}, log: () => {} };
+    await releasePayment(ctx, 'cd'.repeat(32), { status: 402 }, fast);
     expect(aborted).toEqual(['cd'.repeat(32)]);
+  });
+  test('a 5xx / network error never aborts: the server may have broadcast', async () => {
+    const aborted: string[] = [];
+    const ctx = {
+      wallet: { abortAction: async (a: { reference: string }) => void aborted.push(a.reference) },
+    } as never;
+    const fast = {
+      lookups: [async () => 'missing' as const],
+      sleep: async () => {},
+      log: () => {},
+      background: false,
+      settleDelaysMs: [],
+    };
+    await releasePayment(ctx, 'cd'.repeat(32), { status: 502 }, fast);
+    await releasePayment(ctx, 'cd'.repeat(32), new TypeError('Failed to fetch'), fast);
+    expect(aborted).toEqual([]);
   });
   test('floors: 50 sats minimum, token rules any positive unit', () => {
     expect(spendFloorError('sats', '49')).not.toBeNull();

@@ -163,7 +163,7 @@ export async function payPlan(
         charge: { rule: string; charges: MessageCharge[]; unenforced: null; exempt: false };
       },
     ) => Promise<{ beef: string; txid: string }>;
-    releasePayment: (ctx: OneSatContext, txid: string) => Promise<void>;
+    releasePayment: (ctx: OneSatContext, txid: string, cause: unknown) => Promise<void>;
   },
 ): Promise<{ txid: string; paidThrough: number | null }> {
   const signed = await deps.payForMessage(ctx, {
@@ -176,7 +176,7 @@ export async function payPlan(
     const r = obj(await client.spacePaidAction(plan.ticker, { action: 'pay', plan, sig, beef: signed.beef }));
     return { txid: signed.txid, paidThrough: typeof r.paidThrough === 'number' ? r.paidThrough : null };
   } catch (e) {
-    void deps.releasePayment(ctx, signed.txid);
+    void deps.releasePayment(ctx, signed.txid, e);
     throw e;
   }
 }

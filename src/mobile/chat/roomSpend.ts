@@ -9,8 +9,8 @@
  *
  * Pure helpers (tested in roomSpend.test.ts) + `payForMessage`, which builds and SIGNS the tx
  * with `noSend` (the wallet never broadcasts it) and returns its AtomicBEEF. bit-sign verifies,
- * broadcasts and only then stores the message; if it refuses, nothing was spent and
- * `releasePayment` aborts the action so the wallet frees the inputs.
+ * broadcasts and only then stores the message; if it refuses before broadcasting, `releasePayment` aborts the
+ * action once the chain confirms it has no copy (services/unsentGuard.ts).
  */
 import { Hash, OP, P2PKH, PublicKey, Script, Utils } from '@bsv/sdk';
 import { BSV21 } from '@1sat/templates';
@@ -28,6 +28,12 @@ import { buildInputAssetLabel, buildTokenLabel, readAssetIdTag } from '@1sat/typ
 import { formatRaw } from './tokenRooms';
 import { withTokenKeyCheck } from '../../services/tokenSpendGuard';
 import { checkPayTo } from '../../services/guardedPay';
+import {
+  refusedBeforeBroadcast,
+  releaseAfterHandoff,
+  type ReleaseOpts,
+  type UnsentWallet,
+} from '../../services/unsentGuard';
 import { assertNotPaused } from '../config/killSwitch';
 
 /** Token id equality (dot or underscore outpoint form). */
@@ -219,13 +225,22 @@ export function needsConfirm(c: SpendCharge, prefs: SpendPrefs, spent: bigint): 
 /** Sign, never broadcast: bit-sign broadcasts after it verifies (owner, 8 Oct 2026). */
 export const NO_SEND = { randomizeOutputs: false, noSend: true } as const;
 
-/** bit-sign refused the message: drop the unsent action so its inputs are spendable again. */
-export async function releasePayment(ctx: OneSatContext, txid: string): Promise<void> {
-  try {
-    await ctx.wallet.abortAction({ reference: txid });
-  } catch {
-    /* already gone, or the wallet frees it on its own */
-  }
+/**
+ * The server answered with an error after the rawtx was handed to it. Drop the unsent action ONLY when that answer
+ * was an explicit refusal before broadcast (a 4xx) AND the chain has no copy after ~30 s of retries; otherwise
+ * keep it and settle it once the chain has it (services/unsentGuard.ts, P0 25 Oct 2026: a server that broadcast
+ * and then errored made the old unconditional abort lose 28.67 BSV of change).
+ */
+export async function releasePayment(
+  ctx: OneSatContext,
+  txid: string,
+  cause: unknown,
+  opts: Omit<ReleaseOpts, 'notBroadcast'> = {},
+): Promise<void> {
+  await releaseAfterHandoff(ctx.wallet as unknown as UnsentWallet, txid, {
+    ...opts,
+    notBroadcast: refusedBeforeBroadcast(cause),
+  });
 }
 
 /** Minimum charges (owner, 8 Oct 2026). Token rules: at least 1 raw unit. */

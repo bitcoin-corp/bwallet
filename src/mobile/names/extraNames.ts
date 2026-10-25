@@ -82,7 +82,8 @@ export async function addExtraName(
     try {
       await c.addHandle(alias, Utils.toHex(r.tx));
     } catch (err) {
-      await releasePayment(ctx, r.txid);
+      // Only a refusal before broadcast that the chain confirms frees it (services/unsentGuard.ts).
+      await releasePayment(ctx, r.txid, err);
       throw err;
     }
   }

@@ -14,7 +14,7 @@ import type { MyOrder, OrderForm } from './form';
  * Client for the theme order server (site/api/theme-orders.js). Every call is signed by the identity key
  * (same BRC-43 scheme as the paymail writes). Payment: the server's quote → ONE approval sheet → the wallet
  * builds the tx without sending it → claim (the server checks outputs + memo, then broadcasts). If the claim
- * fails the unsent tx is dropped, so no money moves.
+ * fails, the unsent tx is dropped only when the server refused before broadcast and the chain has no copy.
  */
 
 type Signer = Pick<WalletInterface, 'getPublicKey' | 'createSignature'>;
@@ -127,10 +127,9 @@ export const payQuote = async (ctx: OneSatContext, f: Fetch, q: Quote): Promise<
     const { order } = await post<{ order: MyOrder }>(f, 'claim', { ...signed, rawtx: Utils.toHex(r.tx) });
     return order;
   } catch (e) {
-    // Drop the unsent tx only when the server surely did not broadcast it (a refusal before broadcast). On a
-    // network error or 5xx it may be out: keep it, and claiming again with the same quote is safe.
-    if (e instanceof ThemeOrderError && (e.status < 500 || e.code === 'broadcast_failed'))
-      await releasePayment(ctx, r.txid);
+    // The rawtx has left the device. Drop it only on a refusal before broadcast (4xx) that the chain confirms;
+    // 'broadcast_failed' (502) can follow a broadcast the network took (tx 877d2505…, 25 Oct 2026): keep it.
+    await releasePayment(ctx, r.txid, e);
     throw e;
   }
 };
@@ -214,8 +213,8 @@ export const payBuyQuote = async (
     const { pack } = await post<{ pack: string }>(f, 'buy-claim', { ...signed, rawtx: Utils.toHex(r.tx) });
     return { pack, txid: r.txid, ...(receipt && q.receipt ? { receipt: q.receipt, receiptSvg: receipt.svg } : {}) };
   } catch (e) {
-    if (e instanceof ThemeOrderError && (e.status < 500 || e.code === 'broadcast_failed'))
-      await releasePayment(ctx, r.txid);
+    // Same rule as payQuote: never abort what the server may have broadcast (tx 877d2505…, 25 Oct 2026).
+    await releasePayment(ctx, r.txid, e);
     throw e;
   }
 };

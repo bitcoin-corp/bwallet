@@ -727,7 +727,7 @@ const Conversation = ({
           // Refused before broadcast: nothing was spent. Release the signed tx; the next send re-signs.
           const signed = paidFor.current.get(localId);
           paidFor.current.delete(localId);
-          if (signed) void releasePayment(apiContext, signed.txid);
+          if (signed) void releasePayment(apiContext, signed.txid, e);
           setError(e.message);
           loadCharge();
         } else if (!(e instanceof ChatApiError) && pay) setError(errText(e));

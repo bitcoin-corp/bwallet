@@ -1,4 +1,5 @@
 import { BSM, OP, P2PKH, PrivateKey, Script, Transaction, Utils } from '@bsv/sdk';
+import { chainSaysUnknown } from '../services/unsentGuard';
 import { deriveDepositAddresses, type OneSatContext } from '@1sat/actions';
 import { splitOutpoint } from './runIdentify';
 
@@ -316,6 +317,17 @@ export async function buildMeltTx(
  * 5xx or a network error: the server may have broadcast, and freeing spent inputs makes the next send fail
  * (UTXO_SPENT, owner's $1 send, 17 Oct 2026).
  */
-export async function releaseMelt(wallet: MeltWallet, reference: string): Promise<void> {
+export async function releaseMelt(
+  wallet: MeltWallet,
+  reference: string,
+  txid?: string,
+  opts: Parameters<typeof chainSaysUnknown>[1] = {},
+): Promise<boolean> {
+  // The rawtx left the device: abort only once the chain confirms it has no copy (services/unsentGuard.ts).
+  if (!txid || !(await chainSaysUnknown(txid, opts))) {
+    console.warn(`[bwx-unsent] melt ${txid ?? reference}: kept, not aborted (the chain has it or can't say)`);
+    return false;
+  }
   await wallet.abortAction({ reference }).catch(() => undefined);
+  return true;
 }
