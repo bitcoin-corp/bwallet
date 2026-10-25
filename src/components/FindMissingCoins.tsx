@@ -72,7 +72,9 @@ export const FindMissingCoins = () => {
       <div className="flex items-start gap-2.5">
         <Search size={16} className="shrink-0 mt-0.5" style={{ color: '#FDB022' }} />
         <div className="flex-1">
-          <p className="text-xs font-semibold mb-1">Find missing coins</p>
+          <p className="text-xs font-semibold mb-1" style={{ color: '#F2F4F7' }}>
+            Find missing coins
+          </p>
           <p className="text-[10px] leading-relaxed" style={{ color: '#D0D5DD' }}>
             {line || 'Coins on chain that the wallet stopped counting. We check this device and your backups.'}
           </p>
@@ -80,7 +82,9 @@ export const FindMissingCoins = () => {
       </div>
       {confirm && found.length > 0 ? (
         <div className="space-y-2" role="dialog" aria-label="Add missing coins back">
-          <p className="text-sm font-semibold">{scan!.headline}</p>
+          <p className="text-sm font-semibold" style={{ color: '#F2F4F7' }}>
+            {scan!.headline}
+          </p>
           <ul className="space-y-1">
             {found.map((c) => (
               <li key={c.txid} className="text-[11px]" style={{ color: '#D0D5DD' }}>
@@ -93,13 +97,20 @@ export const FindMissingCoins = () => {
           <p className="text-[10px]" style={{ color: '#98A2B3' }}>
             Nothing is sent. The wallet just counts these coins again.
           </p>
-          <Button theme={theme} type="primary" label="Add it back" onClick={() => void runRestore()} />
+          <Button
+            theme={theme}
+            type="primary"
+            style={{ background: '#FDB022', color: '#0A0A0B' }}
+            label="Add it back"
+            onClick={() => void runRestore()}
+          />
           <Button theme={theme} type="secondary" label="Not now" onClick={() => setConfirm(false)} />
         </div>
       ) : (
         <Button
           theme={theme}
-          type="secondary"
+          type="primary"
+          style={{ background: '#FDB022', color: '#0A0A0B' }}
           label={busy === 'scan' ? 'Checking…' : busy === 'restore' ? 'Adding back…' : 'Find missing coins'}
           onClick={runScan}
           disabled={!!busy}
