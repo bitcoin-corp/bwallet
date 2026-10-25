@@ -167,6 +167,8 @@ export async function loadRoomLook(
  * plain because tokenblaster.lol was never connected inside the app). Two sources, both tied to the room's own site
  * (metadata.site, set by the room's owner on bit-sign), so one site can never dress another's room:
  *
+ * Either way the site's own theme file must name this room (proof that the site agrees); without it the room is plain.
+ *
  * 1. `metadata.look` on the room: the same fields as a theme file ({name, mode, accent, accentHi, bg, surface, text,
  *    logo, roomArt | cardArt}), run through parseConnectTheme with origin = metadata.site, so every picture must be an
  *    https URL on that site and is fetched by the wallet (size-capped, kept as a data: URL).
@@ -179,6 +181,7 @@ type Fetch = typeof fetch;
 const SERVER_KEY = 'bwx.roomLook.server';
 type ServerEntry = { at: number; look: RoomLook | null };
 const serverMem = new Map<string, ServerEntry>();
+const SERVER_MEM_MAX = 32;
 const serverInflight = new Map<string, Promise<RoomLook | null>>();
 
 async function lookFromSite(origin: string, ticker: string, f: Fetch): Promise<RoomLook | null> {
@@ -212,16 +215,23 @@ export async function serverRoomLook(
   const running = serverInflight.get(key);
   if (running) return running;
   const p = (async () => {
+    // Proof first (bridge audit 25 Oct 2026, B5): metadata.site is only the room owner's say-so on bit-sign. The
+    // room is dressed only when that site's own theme file (root or a `paths` sub-theme) names this room; otherwise
+    // anyone could make a room that wears tokenblaster.lol's look and "from tokenblaster.lol" label.
+    const proven = await lookFromSite(owner, want, f);
+    if (!proven) return null;
     if (declared) {
       const parsed = parseConnectTheme({ ...declared, room: want }, owner);
-      if (parsed.theme) return roomLookFrom(await withImages(parsed.theme, owner, f), want);
+      if (parsed.theme) return roomLookFrom(await withImages(parsed.theme, owner, f), want) ?? proven;
     }
-    return lookFromSite(owner, want, f);
+    return proven;
   })()
     .catch(() => null)
     .then((look) => {
       const entry = { at: now, look };
       serverMem.set(key, entry);
+      // Each owner edit is a new key: keep the memory copy small too.
+      while (serverMem.size > SERVER_MEM_MAX) serverMem.delete(serverMem.keys().next().value as string);
       writeServer(s, key, entry);
       return look;
     })

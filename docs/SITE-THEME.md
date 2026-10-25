@@ -135,6 +135,9 @@ as the game maker updates the theme file. Code: `src/mobile/chat/roomLook.ts`.
 | `logo`              | the room's picture (room list and header) and the room agent's picture, when they have none |
 | `name`              | "<name> look · from <host>" under the room name, and the agent's label ("<NAME> · AI")      |
 
+- **The site must name the room (25 Oct 2026).** A room's `metadata.look` on bChatX is used only when the site's own
+  theme file (root or a `paths` sub-theme) has `room` set to that ticker. Without that, the room is plain: anyone can
+  set `metadata.site`, so the site's own file is the proof that the site agrees.
 - **Ownership: a site only dresses a room it owns.** The room must name the site as its own in its bChatX room
   metadata, `site: "https://www.tokenblaster.lol"` (set by the room's owner), and the theme file must come from
   exactly that origin (`www.` and the bare domain differ). A room with no `site`, or another site's, is never dressed,

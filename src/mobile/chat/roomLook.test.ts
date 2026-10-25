@@ -118,10 +118,24 @@ describe('serverRoomLook', () => {
       return { ok: true, url, headers: new Headers({ 'content-type': type }), arrayBuffer: async () => bytes.buffer };
     }) as unknown as typeof fetch;
 
-  it('wears metadata.look without any connection, images only from metadata.site', async () => {
+  it('ATTACK: a room claiming a site whose theme file does not name it stays plain', async () => {
+    const { serverRoomLook } = await import('./roomLook');
+    // A scam room sets metadata.site = tokenblaster.lol and TokenBlaster's colours; the site's file names another room.
+    const files = { [`${O}/.well-known/bwalletx-theme.json`]: { ...BASE, room: 'TOKENBLASTER' } };
+    const meta = { site: O, look: { ...BASE, name: 'TokenBlaster' } };
+    expect(await serverRoomLook('SCAM', meta, { s: mem(), f: fakeFetch(files) })).toBeNull();
+    // No theme file at all: plain too.
+    expect(await serverRoomLook('SCAM', meta, { s: mem(), f: fakeFetch({}) })).toBeNull();
+  });
+
+  it('wears metadata.look without any connection once the site names the room, images only from metadata.site', async () => {
     const { serverRoomLook } = await import('./roomLook');
     const meta = { site: O, look: { ...BASE, name: 'Assault on Terrornode', logo: '/brand/a.png' } };
-    const l = await serverRoomLook('ASSAULT', meta, { s: mem(), f: fakeFetch({ [`${O}/brand/a.png`]: png }) });
+    const proof = { [`${O}/.well-known/bwalletx-theme.json`]: { ...BASE, room: 'ASSAULT' } };
+    const l = await serverRoomLook('ASSAULT', meta, {
+      s: mem(),
+      f: fakeFetch({ ...proof, [`${O}/brand/a.png`]: png }),
+    });
     expect(l?.name).toBe('Assault on Terrornode');
     expect(l?.logoData?.startsWith('data:image/png;base64,')).toBe(true);
     const bad = { site: O, look: { ...BASE, logo: 'https://evil.example/a.png' } };
