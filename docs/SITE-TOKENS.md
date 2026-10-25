@@ -129,13 +129,106 @@ await wallet.signAction({ reference: signableTransaction.reference, spends: pool
 - The site knows the user's coin outpoints because it built them: the buy's token output, and the token change of
   each sell. It can also watch the addresses of the receive keys it was given.
 
+### 4. See one token's coins (sell coins you did not deliver)
+
+Coins the user bought in bWalletX's own Exchange, in another browser, or before site tokens are not ones you
+built, so you do not know their outpoints. Ask for exactly one token:
+
+```ts
+const r = await wallet.listOutputs({ basket: 'bsv21', tags: [`bsv21:${tokenId}`] });
+// r = {
+//   totalOutputs: 2,
+//   outputs: [
+//     { outpoint: '<txid>.<vout>', satoshis: 1, spendable: true, amount: '1000000' }, // amount: raw units, string
+//     ...
+//   ],
+// }
+```
+
+- The first time a site asks for a token, bWalletX shows one sheet: `<site> wants to see your $SYM balance`. Yes is
+  remembered for that site and that token; another token, or another site, asks again. No throws
+  `You said no: this site cannot see that balance`.
+- The answer is only those four fields, for coins of that token id. No locking scripts, no BEEF, no
+  `customInstructions`, no keys, no tags, no other tokens. `include`, `includeCustomInstructions`, `includeTags`
+  are ignored. `limit` (default 100, max 1000) and `offset` work.
+- `tags` must be exactly one `bsv21:<txid>_<vout>`. Any other listing of `bsv21` (no tag, two tags,
+  `bsv21:deploy`…) is still refused, and `relinquishOutput` stays refused.
+- Sell them with step 3: name the outpoints as inputs. The wallet signs with the keys on its own records, so coins
+  from the Exchange or another device sell the same way as coins you delivered.
+
+### What the wallet gives back (for verifying a sell on your server)
+
+- `createAction(...).signableTransaction.tx` is an AtomicBEEF (`number[]`) of the unsigned tx. It holds the raw
+  source transaction of **every** input, including the wallet's own token inputs (no merkle proofs at this stage).
+- `signAction(...)` returns `{ txid, tx }`. `tx` is an AtomicBEEF (`number[]`) of the signed tx together with the
+  input BEEF (source transactions, with proofs where the wallet has them). Read it with
+  `Transaction.fromAtomicBEEF(tx)`; `tx` is left out only if you pass `options.returnTXIDOnly: true`. With
+  `signAndProcess` left on, `createAction` returns the same `{ txid, tx }`.
+
+### 5. Deploy a token and inscribe its icon
+
+The owner-only deploy (BSV-21 deploy+mint to a wallet key) and the icon inscription no longer need `[0,'onesat']`.
+
+```ts
+// a) receive keys, picked by the wallet
+const dep = await wallet.getPublicKey({ protocolID: [1, 'bwalletx token receive'], keyID: 'deploy', counterparty: 'self' });
+// dep = { publicKey, keyID: 'deploy-<ms>' }
+const ico = await wallet.getPublicKey({ protocolID: [1, 'bwalletx ordinal receive'], keyID: 'ordinal', counterparty: 'self' });
+// ico = { publicKey, keyID: 'ordinal-<ms>' }
+
+// b) the icon: an image inscription to the ordinal key, into '1sat' (createAction or internalizeAction)
+{
+  lockingScript: inscription(contentType, bytes, icoAddress), // see below
+  satoshis: 1,
+  basket: '1sat',
+  customInstructions: JSON.stringify({ keyID: ico.keyID }),
+}
+
+// c) the deploy: build it as a plain output (no basket) in your createAction, sign it, then take it in:
+const { txid, tx } = await wallet.createAction({
+  description: 'Deploy $SYM',
+  outputs: [{ lockingScript: deployMint.toHex(), satoshis: 1, outputDescription: 'Deploy $SYM' }],
+});
+await wallet.internalizeAction({
+  tx,
+  description: 'Your new $SYM',
+  outputs: [
+    {
+      outputIndex: 0,
+      protocol: 'basket insertion',
+      insertionRemittance: { basket: 'bsv21', customInstructions: JSON.stringify({ keyID: dep.keyID }) },
+    },
+  ],
+});
+// the token id is `${txid}_0`
+```
+
+The scripts, each followed by P2PKH to the key's address and nothing else:
+
+```
+icon:   OP_0 OP_IF "ord" OP_1 "<image/png|jpeg|gif|webp|svg+xml|avif>" OP_0 <bytes> OP_ENDIF
+deploy: OP_0 OP_IF "ord" OP_1 "application/bsv-20" OP_0 '{"p":"bsv-20","op":"deploy+mint","sym":"SYM","amt":"1000000000","dec":"0","icon":"_1"}' OP_ENDIF
+```
+
+- Deploy JSON: only `p`, `op`, `sym`, `amt`, optional `dec` (0–18), optional `icon` (`_<vout>` or
+  `<txid>_<vout>`), all strings, any order. `amt` has no leading zeros. The wallet rebuilds the script from what it
+  read and refuses it unless every byte matches. Icon body: 1 byte to 1 MB.
+- A deploy goes in only with `internalizeAction`: its token id is its own outpoint, which exists once the tx is
+  signed. A deploy into `bsv21` inside `createAction` is refused: `A token deploy goes into your wallet with
+internalizeAction once it is signed`.
+- The wallet writes the records: the deploy gets `{ id, amt, op: 'deploy+mint', sym, dec, icon, protocolID, keyID }`
+  with tags `bsv21:deploy` and `bsv21:<id>`; the icon gets `{ protocolID, keyID }` with tag `type:<contentType>`.
+  Whatever you sent there is thrown away.
+- A deploy key takes only a deploy, an ordinal key only an image inscription, a transfer key only its token's
+  transfer. `bwalletx ordinal receive` is `getPublicKey` only, like `bwalletx token receive`.
+
 ## What a site still cannot do
 
 | Attempt                                                                                                             | Answer                                                                            |
 | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `getPublicKey` / `createSignature` / any crypto call with `[0,'onesat']`                                            | `This protocol is reserved for bWalletX itself: "onesat"`                         |
 | `createSignature` (or encrypt, HMAC, linkage) with `[1,'bwalletx token receive']`                                   | `bwalletx token receive is for getPublicKey only`                                 |
-| `listOutputs` / `relinquishOutput` on `bsv21`                                                                       | `This basket is reserved for bWalletX itself: "bsv21"`                            |
+| `listOutputs` on `bsv21` without exactly one `bsv21:<tokenId>` tag; `relinquishOutput` on `bsv21`                   | `This basket is reserved for bWalletX itself: "bsv21"`                            |
 | Output into `bsv21` to an address the wallet did not give this site, a different token id, 2+ sats, or extra script | `bWalletX takes a token into your wallet only to a receive key it gave this site` |
 | Fake symbol, icon, amount or key in `customInstructions`                                                            | Ignored: the wallet writes the record from the script and its own key             |
 | Outputs into `1sat`, `lock`, `opns`, `default`…                                                                     | Refused as before (`reservedBaskets.ts`)                                          |

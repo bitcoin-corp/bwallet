@@ -15,6 +15,11 @@ import { guardReservedBaskets, RESERVED_BASKET_REFUSAL } from './reservedBaskets
 import { guardReservedProtocols, RESERVED_REFUSAL } from './reservedProtocols';
 import {
   BAD_DELIVERY_REFUSAL,
+  DEPLOY_NEEDS_TXID,
+  LIST_REJECTED,
+  SITE_ORDINAL_RECEIVE,
+  readImageInscription,
+  readTokenDeploy,
   RECEIVE_ONLY_REFUSAL,
   SELL_REJECTED,
   SITE_SPENDS_REFUSAL,
@@ -36,7 +41,7 @@ const OTHER_TOKEN = `${'cd'.repeat(32)}_1`;
  * asks ensureBasketAccess for every basketed output (like the toolbox) and returns a signable tx whose token inputs
  * come from listOutputs, signAction records the spends it was given.
  */
-const setup = (opts: { approve?: boolean } = {}) => {
+const setup = (opts: { approve?: boolean | ((r: any) => boolean) } = {}) => {
   const proto = new ProtoWallet(PrivateKey.fromRandom());
   const calls: string[] = [];
   const signed: Record<number, unknown>[] = [];
@@ -101,7 +106,8 @@ const setup = (opts: { approve?: boolean } = {}) => {
     async signAction(a: { reference: string; spends: Record<number, unknown> }, o?: string) {
       calls.push(`signAction:${o}`);
       signed.push(a.spends);
-      return { txid: pendingTx.get(a.reference)?.id('hex') };
+      const t = pendingTx.get(a.reference);
+      return { txid: t?.id('hex'), tx: t?.toAtomicBEEF() };
     },
     async abortAction() {
       calls.push('abort');
@@ -125,7 +131,7 @@ const setup = (opts: { approve?: boolean } = {}) => {
     normalize: (o) => o,
     prompt: async (r) => {
       prompts.push(r);
-      return opts.approve ?? true;
+      return typeof opts.approve === 'function' ? opts.approve(r) : (opts.approve ?? true);
     },
   }) as Record<string, (a: unknown, o?: string) => Promise<any>>;
   /** A coin the wallet holds, written the way its own trades write one. */
@@ -410,5 +416,310 @@ describe('readTokenTransfer', () => {
     expect(readTokenTransfer(bsv21(TOKEN, 42n, address).toHex())).toEqual({ id: TOKEN, amt: 42n, address });
     expect(readTokenTransfer(new P2PKH().lock(address).toHex())).toBeNull();
     expect(readTokenTransfer(Utils.toHex([0x51]))).toBeNull();
+  });
+});
+
+const OP_HEX = (s: string) => Utils.toHex(Utils.toArray(s, 'utf8'));
+/** OP_0 OP_IF "ord" OP_1 <type> OP_0 <body> OP_ENDIF + P2PKH, the standard envelope. */
+const inscribe = (type: string, body: number[], address: string) =>
+  LockingScript.fromASM(
+    `OP_0 OP_IF ${OP_HEX('ord')} OP_1 ${OP_HEX(type)} OP_0 ${Utils.toHex(body)} OP_ENDIF ${new P2PKH().lock(address).toASM()}`,
+  );
+const deployScript = (fields: Record<string, string>, address: string) =>
+  inscribe('application/bsv-20', Utils.toArray(JSON.stringify(fields), 'utf8'), address);
+
+describe('site tokens: seeing one token (listOutputs)', () => {
+  const list = (wallet: Record<string, (a: unknown, o?: string) => Promise<any>>, args: unknown, o = SITE) =>
+    wallet.listOutputs(args, o);
+
+  test('one sheet per site per token, remembered; answers outpoint + satoshis + amount of THAT token only', async () => {
+    const { wallet, hold, prompts } = setup();
+    const a = await hold(TOKEN, 1234n);
+    await hold(OTHER_TOKEN, 99n);
+    const r = await list(wallet, {
+      basket: 'bsv21',
+      tags: [`bsv21:${TOKEN}`],
+      includeCustomInstructions: true,
+      includeTags: true,
+      include: 'entire transactions',
+    });
+    expect(prompts).toHaveLength(1);
+    expect(JSON.stringify(prompts[0])).toContain(`${SITE} wants to see your $TN balance`);
+    expect(r).toEqual({
+      totalOutputs: 1,
+      outputs: [{ outpoint: a.outpoint, satoshis: 1, spendable: true, amount: '1234' }],
+    });
+    expect(r.BEEF).toBeUndefined();
+    await list(wallet, { basket: 'bsv21', tags: [`bsv21:${TOKEN}`] });
+    expect(prompts).toHaveLength(1); // remembered
+  });
+
+  test('a listed coin bought elsewhere sells through the normal sheet; the wallet signs with its own record key', async () => {
+    const { wallet, hold, signed } = setup();
+    const coin = await hold(TOKEN, 50n, `${TOKEN}-1700000000000`);
+    const r = await list(wallet, { basket: 'bsv21', tags: [`bsv21:${TOKEN}`] });
+    const res = await wallet.createAction(
+      {
+        description: 'Sell',
+        inputs: [{ outpoint: r.outputs[0].outpoint, unlockingScriptLength: 108, inputDescription: 'your TN' }],
+        outputs: [{ lockingScript: new P2PKH().lock('1BoatSLRHtKNngkdXEeobR76b53LETtpyT').toHex(), satoshis: 9 }],
+        options: { signAndProcess: false },
+      },
+      SITE,
+    );
+    // The signable BEEF carries the source tx of the wallet's token input (needed to check the sell).
+    const tx = Transaction.fromAtomicBEEF(res.signableTransaction.tx);
+    expect(tx.inputs[0].sourceTransaction?.id('hex')).toBe(coin.outpoint.split('.')[0]);
+    const done = await wallet.signAction({ reference: res.signableTransaction.reference, spends: {} }, SITE);
+    expect((signed[0][0] as { unlockingScript: string }).unlockingScript.endsWith(coin.publicKey)).toBe(true);
+    // signAction's answer is passed back untouched: txid + tx (AtomicBEEF of the signed tx).
+    expect(Transaction.fromAtomicBEEF(done.tx).id('hex')).toBe(done.txid);
+  });
+
+  test('ATTACK: listing another token needs its own sheet; saying no shows nothing', async () => {
+    const { wallet, hold } = setup({ approve: (r) => !JSON.stringify(r).includes(OTHER_TOKEN) });
+    await hold(TOKEN, 1n);
+    await hold(OTHER_TOKEN, 2n);
+    await list(wallet, { basket: 'bsv21', tags: [`bsv21:${TOKEN}`] });
+    await expect(list(wallet, { basket: 'bsv21', tags: [`bsv21:${OTHER_TOKEN}`] })).rejects.toThrow(LIST_REJECTED);
+  });
+
+  test('ATTACK: another site does not inherit the first site’s yes', async () => {
+    const { wallet, hold, prompts } = setup();
+    await hold(TOKEN, 1n);
+    await list(wallet, { basket: 'bsv21', tags: [`bsv21:${TOKEN}`] });
+    await list(wallet, { basket: 'bsv21', tags: [`bsv21:${TOKEN}`] }, EVIL);
+    expect(prompts).toHaveLength(2);
+  });
+
+  test('ATTACK: no tag, two tags, a non-token tag, or another wallet basket stays refused', async () => {
+    const { wallet, hold, prompts } = setup();
+    await hold(TOKEN, 1n);
+    for (const args of [
+      { basket: 'bsv21' },
+      { basket: 'bsv21', tags: [] },
+      { basket: 'bsv21', tags: [`bsv21:${TOKEN}`, `bsv21:${OTHER_TOKEN}`] },
+      { basket: 'bsv21', tags: ['bsv21:deploy'] },
+      { basket: 'bsv21', tags: [`bsv21:${TOKEN}`, 'id:x'] },
+      { basket: '1sat', tags: [`bsv21:${TOKEN}`] },
+      { basket: 'lock', tags: [`bsv21:${TOKEN}`] },
+    ])
+      await expect(list(wallet, args)).rejects.toThrow(RESERVED_BASKET_REFUSAL);
+    expect(prompts).toHaveLength(0);
+  });
+
+  test('ATTACK: the answer never carries keys, records, scripts or tags', async () => {
+    const { wallet, hold } = setup();
+    const c = await hold(TOKEN, 7n);
+    const r = await list(wallet, { basket: 'bsv21', tags: [`bsv21:${TOKEN}`], includeCustomInstructions: true });
+    const text = JSON.stringify(r);
+    for (const leak of ['keyID', 'protocolID', 'onesat', 'customInstructions', 'lockingScript', 'tags', c.keyID])
+      expect(text).not.toContain(leak);
+  });
+});
+
+describe('site tokens: deploy + icon', () => {
+  test('deploy and ordinal receive keys are fresh wallet keys the wallet names', async () => {
+    const { wallet, proto } = setup();
+    const d = await wallet.getPublicKey(
+      { protocolID: SITE_TOKEN_RECEIVE, keyID: 'deploy', counterparty: 'self' },
+      SITE,
+    );
+    expect(d.keyID).toMatch(/^deploy-\d{13}$/);
+    expect(d.publicKey).toBe(
+      (await proto.getPublicKey({ protocolID: ONESAT, keyID: d.keyID, counterparty: 'self' })).publicKey,
+    );
+    const o = await wallet.getPublicKey(
+      { protocolID: SITE_ORDINAL_RECEIVE, keyID: 'ordinal', counterparty: 'self' },
+      SITE,
+    );
+    expect(o.keyID).toMatch(/^ordinal-\d{13}$/);
+    await expect(
+      wallet.getPublicKey({ protocolID: SITE_ORDINAL_RECEIVE, keyID: 'x', counterparty: 'self' }, SITE),
+    ).rejects.toThrow("'ordinal'");
+    await expect(
+      wallet.createSignature({ protocolID: SITE_ORDINAL_RECEIVE, keyID: 'ordinal', data: [1] }, SITE),
+    ).rejects.toThrow(RECEIVE_ONLY_REFUSAL);
+  });
+
+  const deployTx = (script: LockingScript) => {
+    const tx = new Transaction();
+    tx.addInput({ sourceTransaction: fakeSource(), sourceOutputIndex: 0, unlockingScript: new UnlockingScript() });
+    tx.addOutput({ lockingScript: script, satoshis: 1 });
+    return tx;
+  };
+
+  test('a deploy+mint to a deploy key is internalized into bsv21 with the wallet’s record (id = its outpoint)', async () => {
+    const { wallet, last } = setup();
+    const d = await wallet.getPublicKey(
+      { protocolID: SITE_TOKEN_RECEIVE, keyID: 'deploy', counterparty: 'self' },
+      SITE,
+    );
+    const address = PublicKey.fromString(d.publicKey).toAddress();
+    const tx = deployTx(
+      deployScript(
+        { p: 'bsv-20', op: 'deploy+mint', sym: 'TERRORNODE', amt: '1000000000', dec: '0', icon: '_1' },
+        address,
+      ),
+    );
+    await wallet.internalizeAction(
+      {
+        tx: tx.toAtomicBEEF(),
+        description: 'deploy',
+        outputs: [
+          {
+            outputIndex: 0,
+            protocol: 'basket insertion',
+            insertionRemittance: { basket: 'bsv21', customInstructions: '{"sym":"FAKE"}', tags: ['x'] },
+          },
+        ],
+      },
+      SITE,
+    );
+    const rem = last().outputs[0].insertionRemittance;
+    const id = `${tx.id('hex')}_0`;
+    expect(rem.basket).toBe('bsv21');
+    expect(JSON.parse(rem.customInstructions)).toEqual({
+      id,
+      amt: '1000000000',
+      op: 'deploy+mint',
+      sym: 'TERRORNODE',
+      dec: '0',
+      icon: '_1',
+      protocolID: ONESAT,
+      keyID: d.keyID,
+      counterparty: 'self',
+    });
+    expect(rem.tags.slice(0, 2)).toEqual(['bsv21:deploy', `bsv21:${id}`]);
+    expect(_ticketsFor(SITE)).toBe(0);
+  });
+
+  test('ATTACK: a deploy in createAction (no txid yet), to a transfer key, or with extra fields is refused', async () => {
+    const { wallet } = setup();
+    const d = await wallet.getPublicKey(
+      { protocolID: SITE_TOKEN_RECEIVE, keyID: 'deploy', counterparty: 'self' },
+      SITE,
+    );
+    const addr = PublicKey.fromString(d.publicKey).toAddress();
+    const good = deployScript({ p: 'bsv-20', op: 'deploy+mint', sym: 'TN', amt: '5' }, addr);
+    await expect(
+      wallet.createAction(
+        { description: 'x', outputs: [{ lockingScript: good.toHex(), satoshis: 1, basket: 'bsv21' }] },
+        SITE,
+      ),
+    ).rejects.toThrow(DEPLOY_NEEDS_TXID);
+    const t = await receive(wallet);
+    const toTransferKey = deployTx(
+      deployScript(
+        { p: 'bsv-20', op: 'deploy+mint', sym: 'TN', amt: '5' },
+        PublicKey.fromString(t.publicKey).toAddress(),
+      ),
+    );
+    const ins = (tx: Transaction, ci?: string) =>
+      wallet.internalizeAction(
+        {
+          tx: tx.toAtomicBEEF(),
+          description: 'd',
+          outputs: [
+            {
+              outputIndex: 0,
+              protocol: 'basket insertion',
+              insertionRemittance: { basket: 'bsv21', customInstructions: ci },
+            },
+          ],
+        },
+        SITE,
+      );
+    await expect(ins(toTransferKey, JSON.stringify({ keyID: t.keyID }))).rejects.toThrow(BAD_DELIVERY_REFUSAL);
+    const extra = deployTx(deployScript({ p: 'bsv-20', op: 'deploy+mint', sym: 'TN', amt: '5', lim: '1' }, addr));
+    await expect(ins(extra)).rejects.toThrow(BAD_DELIVERY_REFUSAL);
+    // Another site cannot use a deploy key it was not given (even naming the keyID derives a key it holds nothing of).
+    const stranger = deployTx(
+      deployScript({ p: 'bsv-20', op: 'deploy+mint', sym: 'TN', amt: '5' }, PrivateKey.fromRandom().toAddress()),
+    );
+    await expect(ins(stranger, JSON.stringify({ keyID: d.keyID }))).rejects.toThrow(BAD_DELIVERY_REFUSAL);
+  });
+
+  test('an image inscription to an ordinal key goes into 1sat with the wallet’s record', async () => {
+    const { wallet, last } = setup();
+    const o = await wallet.getPublicKey(
+      { protocolID: SITE_ORDINAL_RECEIVE, keyID: 'ordinal', counterparty: 'self' },
+      SITE,
+    );
+    const script = inscribe(
+      'image/png',
+      [0x89, 0x50, 0x4e, 0x47, 1, 2, 3],
+      PublicKey.fromString(o.publicKey).toAddress(),
+    );
+    await wallet.createAction(
+      {
+        description: 'icon',
+        outputs: [
+          {
+            lockingScript: script.toHex(),
+            satoshis: 1,
+            basket: '1sat',
+            customInstructions: '{"keyID":"evil"}',
+            tags: ['origin:fake'],
+          },
+        ],
+      },
+      SITE,
+    );
+    const out = last().outputs[0];
+    expect(out.basket).toBe('1sat');
+    expect(JSON.parse(out.customInstructions)).toEqual({ protocolID: ONESAT, keyID: o.keyID, counterparty: 'self' });
+    expect(out.tags).toEqual(['type:image/png']);
+    expect(_ticketsFor(SITE, '1sat')).toBe(0);
+  });
+
+  test('ATTACK: icons to a key not given, token ops dressed as icons, extra script, 2 sats: all refused', async () => {
+    const { wallet } = setup();
+    const o = await wallet.getPublicKey(
+      { protocolID: SITE_ORDINAL_RECEIVE, keyID: 'ordinal', counterparty: 'self' },
+      SITE,
+    );
+    const addr = PublicKey.fromString(o.publicKey).toAddress();
+    const send = (hex: string, satoshis = 1) =>
+      wallet.createAction({ description: 'x', outputs: [{ lockingScript: hex, satoshis, basket: '1sat' }] }, SITE);
+    await expect(send(inscribe('image/png', [1], PrivateKey.fromRandom().toAddress()).toHex())).rejects.toThrow(
+      BAD_DELIVERY_REFUSAL,
+    );
+    await expect(
+      send(deployScript({ p: 'bsv-20', op: 'deploy+mint', sym: 'X', amt: '1' }, addr).toHex()),
+    ).rejects.toThrow(BAD_DELIVERY_REFUSAL);
+    await expect(send(inscribe('image/png', [1], addr).toHex() + '51')).rejects.toThrow(BAD_DELIVERY_REFUSAL);
+    await expect(send(inscribe('image/png', [1], addr).toHex(), 2)).rejects.toThrow(BAD_DELIVERY_REFUSAL);
+    // the ordinal key is not a token key, and a deploy key is not an ordinal key
+    const t = await receive(wallet);
+    await expect(
+      send(inscribe('image/png', [1], PublicKey.fromString(t.publicKey).toAddress()).toHex()),
+    ).rejects.toThrow(BAD_DELIVERY_REFUSAL);
+    await expect(
+      wallet.createAction(
+        {
+          description: 'x',
+          outputs: [{ lockingScript: bsv21(TOKEN, 5n, addr).toHex(), satoshis: 1, basket: 'bsv21' }],
+        },
+        SITE,
+      ),
+    ).rejects.toThrow(BAD_DELIVERY_REFUSAL);
+  });
+
+  test('readTokenDeploy / readImageInscription read only exact scripts', () => {
+    const a = PrivateKey.fromRandom().toAddress();
+    expect(readTokenDeploy(deployScript({ p: 'bsv-20', op: 'deploy+mint', sym: 'X', amt: '1' }, a).toHex())?.sym).toBe(
+      'X',
+    );
+    expect(
+      readTokenDeploy(deployScript({ p: 'bsv-20', op: 'deploy+mint', sym: 'X', amt: '01' }, a).toHex()),
+    ).toBeNull();
+    expect(readTokenDeploy(bsv21(TOKEN, 1n, a).toHex())).toBeNull();
+    expect(readImageInscription(inscribe('image/webp', [9, 9], a).toHex())).toEqual({
+      contentType: 'image/webp',
+      bytes: 2,
+      address: a,
+    });
+    expect(readImageInscription(inscribe('text/html', [9], a).toHex())).toBeNull();
   });
 });

@@ -23,20 +23,36 @@
  *     listing the tokens that leave and where every output goes; on Allow it signs those inputs itself at
  *     signAction (spends for them from the site are refused). The site never gets a token signature.
  *  4. The receive protocol is for getPublicKey only: createSignature, encrypt, HMAC, linkage with it are refused.
+ *  5. Seeing one token. listOutputs({ basket: 'bsv21', tags: ['bsv21:<tokenId>'] }) answers, after one sheet per site
+ *     per token (remembered), only { outpoint, satoshis, amount } of the wallet's own coins of THAT token: no
+ *     scripts, no records, no keys, no other token. So a site can sell coins it did not deliver (bought in the
+ *     wallet's Exchange, in another browser, before site tokens). Any other listing of 'bsv21' stays refused.
+ *  6. Deploying a token / inscribing its icon. getPublicKey with keyID 'deploy' (SITE_TOKEN_RECEIVE) or 'ordinal'
+ *     (SITE_ORDINAL_RECEIVE) answers a fresh wallet key `deploy-<ms>` / `ordinal-<ms>` the same way as (1). A BSV-21
+ *     deploy+mint to a deploy key is taken into 'bsv21' by internalizeAction (its token id is its own outpoint, so
+ *     the tx must be signed first); an image inscription to an ordinal key is taken into '1sat'. Both scripts must
+ *     rebuild byte for byte, and the wallet writes the record.
  */
-import { PublicKey, Transaction, Utils, type WalletInterface, type WalletProtocol } from '@bsv/sdk';
+import { OP, P2PKH, PublicKey, Script, Transaction, Utils, type WalletInterface, type WalletProtocol } from '@bsv/sdk';
 import type { PromptRequest } from '@1sat/permission-module';
 import { ONESAT, bsv21, tokenOutputTags, tokenSpends } from '../mobile/market/launchpad/tokens';
+import { randomIdTag } from './tokenSendHeal';
 
 /** The receive-key request protocol (a name only: the key answered is a wallet token key, see above). */
 export const SITE_TOKEN_RECEIVE: WalletProtocol = [1, 'bwalletx token receive'];
+/** The ordinal (token icon) receive-key request protocol: keyID 'ordinal'. */
+export const SITE_ORDINAL_RECEIVE: WalletProtocol = [1, 'bwalletx ordinal receive'];
 export const TOKEN_BASKET = 'bsv21';
+export const ORDINAL_BASKET = '1sat';
 const TOKEN_BASKETS = new Set(['bsv21', 'p 1sat bsv21']);
 
 export const RECEIVE_ONLY_REFUSAL = 'bwalletx token receive is for getPublicKey only';
 export const BAD_DELIVERY_REFUSAL = 'bWalletX takes a token into your wallet only to a receive key it gave this site';
 export const SITE_SPENDS_REFUSAL = 'bWalletX signs its own token inputs; a site may not supply them';
 export const SELL_REJECTED = 'You said no: nothing was signed';
+export const LIST_REJECTED = 'You said no: this site cannot see that balance';
+export const DEPLOY_NEEDS_TXID =
+  'A token deploy goes into your wallet with internalizeAction once it is signed (its token id is its own outpoint)';
 
 const TOKEN_ID = /^[0-9a-f]{64}_\d{1,6}$/;
 const MAX_ISSUED_PER_SITE = 500;
@@ -53,12 +69,13 @@ const PROTOCOL_METHODS = [
 ] as const;
 
 type Protocolish = { protocolID?: unknown };
-const isReceiveProtocol = (p: unknown) =>
+const isProtocol = (p: unknown, want: WalletProtocol) =>
   Array.isArray(p) &&
   p.length === 2 &&
-  p[0] === SITE_TOKEN_RECEIVE[0] &&
+  p[0] === want[0] &&
   typeof p[1] === 'string' &&
-  p[1].trim().toLowerCase() === SITE_TOKEN_RECEIVE[1];
+  p[1].trim().toLowerCase() === want[1];
+const isReceiveProtocol = (p: unknown) => isProtocol(p, SITE_TOKEN_RECEIVE) || isProtocol(p, SITE_ORDINAL_RECEIVE);
 
 const normOutpoint = (op: string) => (op.length > 64 && op[64] === '_' ? `${op.slice(0, 64)}.${op.slice(65)}` : op);
 
@@ -70,6 +87,107 @@ export const parseReceiveKeyID = (keyID: unknown): { tokenId: string; ms: number
   if (typeof keyID !== 'string') return null;
   const m = /^([0-9a-f]{64}_\d{1,6})-(\d{13})$/.exec(keyID);
   return m ? { tokenId: m[1], ms: Number(m[2]) } : null;
+};
+
+/** What a receive key is for: a transfer of one token id, a token deploy+mint, or an ordinal (icon). */
+export type ReceiveKind = { kind: 'transfer'; tokenId: string } | { kind: 'deploy' } | { kind: 'ordinal' };
+
+/** Parse any keyID the wallet mints for a site: transfer `${tokenId}-${ms}`, `deploy-${ms}`, `ordinal-${ms}`. */
+export const parseIssuedKeyID = (keyID: unknown): (ReceiveKind & { ms: number }) | null => {
+  const t = parseReceiveKeyID(keyID);
+  if (t) return { kind: 'transfer', tokenId: t.tokenId, ms: t.ms };
+  if (typeof keyID !== 'string') return null;
+  const m = /^(deploy|ordinal)-(\d{13})$/.exec(keyID);
+  return m ? { kind: m[1] as 'deploy' | 'ordinal', ms: Number(m[2]) } : null;
+};
+
+const sameKind = (a: ReceiveKind, b: ReceiveKind) =>
+  a.kind === b.kind && (a.kind !== 'transfer' || (b.kind === 'transfer' && a.tokenId === b.tokenId));
+
+const p2pkhTail = (scriptHex: string) => /76a914([0-9a-f]{40})88ac$/i.exec(scriptHex);
+
+/** An ordinal inscription envelope + P2PKH, built the standard way (OP_0 OP_IF "ord" OP_1 <type> OP_0 <body> OP_ENDIF). */
+const inscriptionScript = (contentType: number[], body: number[], address: string) => {
+  const env = new Script()
+    .writeOpCode(OP.OP_0)
+    .writeOpCode(OP.OP_IF)
+    .writeBin(Utils.toArray('ord', 'utf8'))
+    .writeOpCode(OP.OP_1)
+    .writeBin(contentType)
+    .writeOpCode(OP.OP_0)
+    .writeBin(body)
+    .writeOpCode(OP.OP_ENDIF);
+  return env.toHex() + new P2PKH().lock(address).toHex();
+};
+
+const DEPLOY_KEYS = new Set(['p', 'op', 'sym', 'amt', 'dec', 'icon']);
+
+/**
+ * Read a BSV-21 deploy+mint output: `{"p":"bsv-20","op":"deploy+mint","sym",...,"amt"[,"dec"][,"icon"]}` inscribed
+ * as application/bsv-20, then P2PKH, nothing else. Only those keys (any order), each checked; the script must
+ * rebuild byte for byte from them. Null when it is anything else.
+ */
+export const readTokenDeploy = (
+  scriptHex: string,
+): { sym: string; amt: bigint; dec?: string; icon?: string; address: string } | null => {
+  try {
+    const m = p2pkhTail(scriptHex);
+    if (!m) return null;
+    const address = Utils.toBase58Check(Utils.toArray(m[1], 'hex'), [0]);
+    const ascii = Utils.toUTF8(Utils.toArray(scriptHex.slice(0, scriptHex.length - 50), 'hex'));
+    const start = ascii.indexOf('{"p":"bsv-20"');
+    const end = ascii.lastIndexOf('}');
+    if (start < 0 || end < start) return null;
+    const data = JSON.parse(ascii.slice(start, end + 1)) as Record<string, unknown>;
+    if (Object.keys(data).some((k) => !DEPLOY_KEYS.has(k))) return null;
+    if (Object.values(data).some((v) => typeof v !== 'string')) return null;
+    const d = data as Record<string, string>;
+    if (d.p !== 'bsv-20' || d.op !== 'deploy+mint') return null;
+    // eslint-disable-next-line no-control-regex -- refuse control characters in a ticker
+    if (typeof d.sym !== 'string' || !d.sym.trim() || d.sym.length > 32 || /[\u0000-\u001f\u007f]/.test(d.sym))
+      return null;
+    if (typeof d.amt !== 'string' || !/^[1-9]\d{0,30}$/.test(d.amt)) return null;
+    if (d.dec !== undefined && !/^(1[0-8]|\d)$/.test(d.dec)) return null;
+    if (d.icon !== undefined && !/^([0-9a-f]{64})?_\d{1,6}$/.test(d.icon)) return null;
+    const rebuilt = inscriptionScript(
+      Utils.toArray('application/bsv-20', 'utf8'),
+      Utils.toArray(JSON.stringify(data), 'utf8'),
+      address,
+    );
+    if (rebuilt !== scriptHex.toLowerCase()) return null;
+    return { sym: d.sym, amt: BigInt(d.amt), dec: d.dec, icon: d.icon, address };
+  } catch {
+    return null;
+  }
+};
+
+const ICON_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml', 'image/avif']);
+const MAX_ICON_BYTES = 1_000_000;
+
+/**
+ * Read an image ordinal inscription (a token icon): OP_0 OP_IF "ord" OP_1 <image/*> OP_0 <body> OP_ENDIF, then P2PKH,
+ * nothing else, rebuilt byte for byte. Never application/bsv-20 (that is a token op, not an icon). Null otherwise.
+ */
+export const readImageInscription = (
+  scriptHex: string,
+): { contentType: string; bytes: number; address: string } | null => {
+  try {
+    const m = p2pkhTail(scriptHex);
+    if (!m) return null;
+    const address = Utils.toBase58Check(Utils.toArray(m[1], 'hex'), [0]);
+    const chunks = Script.fromHex(scriptHex.slice(0, scriptHex.length - 50)).chunks;
+    if (chunks.length !== 8) return null;
+    const [c0, cIf, cOrd, cField, cType, cSep, cBody, cEnd] = chunks;
+    if (c0.op !== OP.OP_0 || cIf.op !== OP.OP_IF || cField.op !== OP.OP_1 || cSep.op !== OP.OP_0) return null;
+    if (cEnd.op !== OP.OP_ENDIF || !cOrd.data || Utils.toUTF8(cOrd.data) !== 'ord') return null;
+    if (!cType.data || !cBody.data || cBody.data.length === 0 || cBody.data.length > MAX_ICON_BYTES) return null;
+    const contentType = Utils.toUTF8(cType.data);
+    if (!ICON_TYPES.has(contentType)) return null;
+    if (inscriptionScript(cType.data, cBody.data, address) !== scriptHex.toLowerCase()) return null;
+    return { contentType, bytes: cBody.data.length, address };
+  } catch {
+    return null;
+  }
 };
 
 /**
@@ -101,7 +219,70 @@ export const readTokenTransfer = (scriptHex: string): { id: string; amt: bigint;
 export const deliveredNote = (id: string, amt: bigint, keyID: string) =>
   JSON.stringify({ id, amt: amt.toString(), op: 'transfer', protocolID: ONESAT, keyID, counterparty: 'self' });
 
+/** The record the wallet writes on a deploy+mint it took in: the token id is the output's own outpoint. */
+export const deployNote = (id: string, d: { sym: string; amt: bigint; dec?: string; icon?: string }, keyID: string) =>
+  JSON.stringify({
+    id,
+    amt: d.amt.toString(),
+    op: 'deploy+mint',
+    sym: d.sym,
+    ...(d.dec !== undefined ? { dec: d.dec } : {}),
+    ...(d.icon ? { icon: d.icon } : {}),
+    protocolID: ONESAT,
+    keyID,
+    counterparty: 'self',
+  });
+
+/** The record on an ordinal (icon) it took in: the key only, as the wallet's own ordinals carry. */
+export const ordinalNote = (keyID: string) => JSON.stringify({ protocolID: ONESAT, keyID, counterparty: 'self' });
+
 type Issued = { keyID: string; at: number };
+
+/** "Let this site see my $SYM balance" answers, per site per token. Remembered across restarts when persisted. */
+export type ListConsentStore = {
+  has(site: string, tokenId: string): Promise<boolean>;
+  add(site: string, tokenId: string): Promise<void>;
+};
+
+export const memoryConsentStore = (): ListConsentStore => {
+  const s = new Set<string>();
+  return {
+    has: async (site, id) => s.has(`${site}|${id}`),
+    add: async (site, id) => void s.add(`${site}|${id}`),
+  };
+};
+
+/** chrome.storage.local where it exists (extension, mobile shim), else memory. Failures fall back to asking again. */
+export const chromeConsentStore = (): ListConsentStore => {
+  const KEY = 'bwalletx.siteTokenListConsent';
+  const mem = memoryConsentStore();
+  type Area = {
+    get(k: string): Promise<Record<string, unknown>>;
+    set(v: Record<string, unknown>): Promise<void>;
+  };
+  const local = (globalThis as { chrome?: { storage?: { local?: Area } } }).chrome?.storage?.local;
+  if (!local) return mem;
+  const read = async (): Promise<string[]> => {
+    try {
+      const r = await local.get(KEY);
+      return Array.isArray(r?.[KEY]) ? (r[KEY] as string[]) : [];
+    } catch {
+      return [];
+    }
+  };
+  return {
+    has: async (site, id) => (await mem.has(site, id)) || (await read()).includes(`${site}|${id}`),
+    add: async (site, id) => {
+      await mem.add(site, id);
+      try {
+        const all = await read();
+        await local.set({ [KEY]: [...all.filter((x) => x !== `${site}|${id}`), `${site}|${id}`].slice(-2000) });
+      } catch {
+        /* memory only */
+      }
+    },
+  };
+};
 
 export type SiteTokenDeps = {
   adminOriginator: string;
@@ -110,6 +291,8 @@ export type SiteTokenDeps = {
   prompt: (req: PromptRequest) => Promise<boolean>;
   /** Time source (tests). */
   now?: () => number;
+  /** Where "see my balance" answers are kept (default: memory). */
+  listConsent?: ListConsentStore;
 };
 
 type AnyFn = (args: never, originator?: string) => Promise<unknown>;
@@ -139,6 +322,8 @@ type SignArgs = { reference?: string; spends?: Record<number, unknown> } & Recor
 
 type TokenCoinRec = {
   outpoint: string;
+  satoshis: number;
+  amtRaw: string;
   id: string;
   amt: bigint;
   sym?: string;
@@ -156,31 +341,39 @@ type PendingSell = {
  * guarded call holds its own ticket (one per output it validated) and drops whatever is left when it returns.
  */
 type Ticket = { left: number };
-const tickets = new Map<string, Ticket[]>();
+const tickets = new Map<string, Ticket[]>(); // `${originator}|${basket}`
+const TICKET_BASKETS = new Set([TOKEN_BASKET, ORDINAL_BASKET]);
 
-/** Called by reservedBaskets.ensureBasketAccess: consume one validated-delivery ticket for this originator. */
+/** Called by reservedBaskets.ensureBasketAccess: consume one validated-delivery ticket for this originator+basket. */
 export const takeTokenInsertionTicket = (originator: unknown, basket: unknown, usage: unknown): boolean => {
   if (typeof originator !== 'string' || typeof basket !== 'string') return false;
-  if (basket.trim().toLowerCase() !== TOKEN_BASKET || (usage !== undefined && usage !== 'insertion')) return false;
-  const t = tickets.get(originator)?.find((x) => x.left > 0);
+  const b = basket.trim().toLowerCase();
+  if (!TICKET_BASKETS.has(b) || (usage !== undefined && usage !== 'insertion')) return false;
+  const t = tickets.get(`${originator}|${b}`)?.find((x) => x.left > 0);
   if (!t) return false;
   t.left--;
   return true;
 };
 
-const addTickets = (originator: string, n: number) => {
-  if (n <= 0) return () => undefined;
-  const t: Ticket = { left: n };
-  tickets.set(originator, [...(tickets.get(originator) ?? []), t]);
-  return () => {
-    const rest = (tickets.get(originator) ?? []).filter((x) => x !== t);
-    if (rest.length) tickets.set(originator, rest);
-    else tickets.delete(originator);
-  };
+const addTickets = (originator: string, counts: Record<string, number>) => {
+  const releases: (() => void)[] = [];
+  for (const [basket, n] of Object.entries(counts)) {
+    if (n <= 0) continue;
+    const key = `${originator}|${basket}`;
+    const t: Ticket = { left: n };
+    tickets.set(key, [...(tickets.get(key) ?? []), t]);
+    releases.push(() => {
+      const rest = (tickets.get(key) ?? []).filter((x) => x !== t);
+      if (rest.length) tickets.set(key, rest);
+      else tickets.delete(key);
+    });
+  }
+  return () => releases.forEach((r) => r());
 };
 
 /** Test hook. */
-export const _ticketsFor = (originator: string) => (tickets.get(originator) ?? []).reduce((n, t) => n + t.left, 0);
+export const _ticketsFor = (originator: string, basket = TOKEN_BASKET) =>
+  (tickets.get(`${originator}|${basket}`) ?? []).reduce((n, t) => n + t.left, 0);
 
 /**
  * Wrap the outermost wallet (the one background.ts hands every site): receive keys, validated deliveries and
@@ -209,12 +402,18 @@ export function guardSiteTokens<T extends object>(wallet: T, deps: SiteTokenDeps
     return { publicKey, address: PublicKey.fromString(publicKey).toAddress() };
   };
 
-  /** The keyID that locks `address` for this site, or null: an issued key, or a receive-shaped keyID that derives it. */
-  const keyFor = async (site: string, tokenId: string, address: string, claimed?: unknown): Promise<string | null> => {
+  /** The keyID that locks `address` for this site, or null: an issued key, or an issued-shape keyID that derives it. */
+  const keyFor = async (
+    site: string,
+    want: ReceiveKind,
+    address: string,
+    claimed?: unknown,
+  ): Promise<string | null> => {
     const hit = issued.get(site)?.get(address);
-    if (hit && parseReceiveKeyID(hit.keyID)?.tokenId === tokenId) return hit.keyID;
-    const parsed = parseReceiveKeyID(claimed);
-    if (!parsed || parsed.tokenId !== tokenId || parsed.ms > now() + ISSUED_TTL_MS) return null;
+    const hitKind = hit ? parseIssuedKeyID(hit.keyID) : null;
+    if (hit && hitKind && sameKind(hitKind, want)) return hit.keyID;
+    const parsed = parseIssuedKeyID(claimed);
+    if (!parsed || !sameKind(parsed, want) || parsed.ms > now() + ISSUED_TTL_MS) return null;
     const d = await deriveAddress(claimed as string);
     return d.address === address ? (claimed as string) : null;
   };
@@ -228,27 +427,134 @@ export function guardSiteTokens<T extends object>(wallet: T, deps: SiteTokenDeps
     }
   };
 
-  /** Validate and rewrite one delivered output in place; throws BAD_DELIVERY_REFUSAL otherwise. */
-  const checkDelivery = async (site: string, scriptHex: string, sats: number, ci: unknown) => {
+  /**
+   * Validate one delivered output and give the record the wallet writes; throws BAD_DELIVERY_REFUSAL otherwise.
+   * `basket` is TOKEN_BASKET or ORDINAL_BASKET; `outpoint` is known only for internalizeAction (signed tx).
+   */
+  const checkDelivery = async (
+    site: string,
+    basket: string,
+    scriptHex: string,
+    sats: number,
+    ci: unknown,
+    outpoint?: { txid: string; vout: number },
+  ): Promise<{ customInstructions: string; tags: string[] }> => {
+    const unknownKey = `${BAD_DELIVERY_REFUSAL} (unknown receive key; ask getPublicKey again)`;
+    if (sats !== 1) throw new Error(`${BAD_DELIVERY_REFUSAL} (a delivery is exactly 1 sat)`);
+    if (basket === ORDINAL_BASKET) {
+      const ins = readImageInscription(scriptHex);
+      if (!ins) throw new Error(`${BAD_DELIVERY_REFUSAL} (not an image inscription to a P2PKH key)`);
+      const keyID = await keyFor(site, { kind: 'ordinal' }, ins.address, claimedKeyID(ci));
+      if (!keyID) throw new Error(unknownKey);
+      return { customInstructions: ordinalNote(keyID), tags: [`type:${ins.contentType}`] };
+    }
     const t = readTokenTransfer(scriptHex);
-    if (!t || sats !== 1) throw new Error(`${BAD_DELIVERY_REFUSAL} (not a 1-sat BSV-21 transfer)`);
-    const keyID = await keyFor(site, t.id, t.address, claimedKeyID(ci));
-    if (!keyID) throw new Error(`${BAD_DELIVERY_REFUSAL} (unknown receive key; ask getPublicKey again)`);
-    return { customInstructions: deliveredNote(t.id, t.amt, keyID), tags: tokenOutputTags(t.id) };
+    if (t) {
+      const keyID = await keyFor(site, { kind: 'transfer', tokenId: t.id }, t.address, claimedKeyID(ci));
+      if (!keyID) throw new Error(unknownKey);
+      return { customInstructions: deliveredNote(t.id, t.amt, keyID), tags: tokenOutputTags(t.id) };
+    }
+    const d = readTokenDeploy(scriptHex);
+    if (!d) throw new Error(`${BAD_DELIVERY_REFUSAL} (not a 1-sat BSV-21 transfer or deploy+mint)`);
+    if (!outpoint) throw new Error(DEPLOY_NEEDS_TXID);
+    const keyID = await keyFor(site, { kind: 'deploy' }, d.address, claimedKeyID(ci));
+    if (!keyID) throw new Error(unknownKey);
+    const id = `${outpoint.txid}_${outpoint.vout}`;
+    return {
+      customInstructions: deployNote(id, d, keyID),
+      tags: ['bsv21:deploy', `bsv21:${id}`, randomIdTag(outpoint.vout)],
+    };
   };
+
+  /**
+   * Which wallet basket a site output is a delivery into, or null to leave it alone (any other '1sat' or reserved
+   * basket then meets reservedBaskets' refusal). Every 'bsv21' output is checked; a '1sat' output only when it is an
+   * inscription at all, so plain misuse keeps its old answer.
+   */
+  const deliveryBasket = (basket: unknown, scriptHex: unknown): string | null => {
+    if (typeof basket !== 'string') return null;
+    const b = basket.trim().toLowerCase();
+    if (TOKEN_BASKETS.has(b)) return TOKEN_BASKET;
+    if (b === ORDINAL_BASKET && typeof scriptHex === 'string' && /^0063036f7264/i.test(scriptHex))
+      return ORDINAL_BASKET;
+    return null;
+  };
+
+  // 5. One token's coins for a site: outpoint, satoshis, amount. Nothing else.
+  const listConsent = deps.listConsent ?? memoryConsentStore();
+  const listOutputs = w.listOutputs as AnyFn | undefined;
+  if (typeof listOutputs === 'function')
+    w.listOutputs = async (
+      args: { basket?: unknown; tags?: unknown; limit?: unknown; offset?: unknown },
+      originator?: string,
+    ) => {
+      const basket = typeof args?.basket === 'string' ? args.basket.trim().toLowerCase() : '';
+      const tags = Array.isArray(args?.tags) ? args.tags : [];
+      const tokenId =
+        tags.length === 1 && typeof tags[0] === 'string' && tags[0].startsWith('bsv21:')
+          ? tags[0].slice(6).trim().replace('.', '_')
+          : '';
+      // Anything but exactly one token's tag on the token basket goes on unchanged (reservedBaskets refuses it).
+      if (!outside(originator) || !TOKEN_BASKETS.has(basket) || !TOKEN_ID.test(tokenId))
+        return call('listOutputs', args, originator);
+      const site = deps.normalize(originator!);
+      const coins = [...(await walletTokenCoins()).values()].filter((c) => c.id === tokenId && c.amt > 0n);
+      if (!(await listConsent.has(site, tokenId))) {
+        const sym = coins.find((c) => c.sym)?.sym;
+        const name = sym ? `$${sym.replace(/^\$/, '')}` : `${tokenId.slice(0, 8)}…${tokenId.slice(-4)} token`;
+        const ok = await deps.prompt({
+          kind: 'basketAccess',
+          originator: site,
+          summary: `${site} wants to see your ${name} balance`,
+          payload: {
+            baskets: [
+              {
+                basket: name,
+                description: `${site} wants to see your ${name} balance, so it can offer to sell them for you. It sees how many you hold and where, nothing else. It cannot move them without asking you.`,
+                scope: 'token',
+                value: tokenId,
+              },
+            ],
+          },
+        });
+        if (!ok) throw new Error(LIST_REJECTED);
+        await listConsent.add(site, tokenId);
+      }
+      const limit = Math.min(Math.max(Number(args?.limit) || 100, 1), 1000);
+      const offset = Math.max(Number(args?.offset) || 0, 0);
+      return {
+        totalOutputs: coins.length,
+        outputs: coins.slice(offset, offset + limit).map((c) => ({
+          outpoint: c.outpoint,
+          satoshis: c.satoshis,
+          spendable: true,
+          amount: c.amtRaw,
+        })),
+      };
+    };
 
   // 1. Receive keys.
   const getPublicKey = w.getPublicKey as AnyFn | undefined;
   if (typeof getPublicKey === 'function')
     w.getPublicKey = async (args: Protocolish & { keyID?: unknown; counterparty?: unknown }, originator?: string) => {
       if (!outside(originator) || !isReceiveProtocol(args?.protocolID)) return call('getPublicKey', args, originator);
-      const tokenId = typeof args.keyID === 'string' ? args.keyID.trim().replace('.', '_') : '';
-      if (!TOKEN_ID.test(tokenId)) throw new Error('keyID must be the BSV-21 token id (txid_vout)');
       if (args.counterparty !== undefined && args.counterparty !== 'self')
         throw new Error("counterparty must be 'self' for a token receive key");
+      const asked = typeof args.keyID === 'string' ? args.keyID.trim() : '';
+      let mint: (ms: number) => string;
+      if (isProtocol(args.protocolID, SITE_ORDINAL_RECEIVE)) {
+        if (asked !== 'ordinal') throw new Error("keyID must be 'ordinal' for an ordinal receive key");
+        mint = (ms) => `ordinal-${ms}`;
+      } else if (asked === 'deploy') {
+        mint = (ms) => `deploy-${ms}`;
+      } else {
+        const tokenId = asked.replace('.', '_');
+        if (!TOKEN_ID.test(tokenId)) throw new Error("keyID must be the BSV-21 token id (txid_vout) or 'deploy'");
+        mint = (ms) => receiveKeyID(tokenId, ms);
+      }
       const site = deps.normalize(originator!);
       const ms = (lastMs = Math.max(now(), lastMs + 1));
-      const keyID = receiveKeyID(tokenId, ms);
+      const keyID = mint(ms);
       const { publicKey, address } = await deriveAddress(keyID);
       let mine = issued.get(site);
       if (!mine) issued.set(site, (mine = new Map()));
@@ -272,7 +578,13 @@ export function guardSiteTokens<T extends object>(wallet: T, deps: SiteTokenDeps
     const out = new Map<string, TokenCoinRec>();
     for (const basket of TOKEN_BASKETS) {
       const r = await call<{
-        outputs: { outpoint: string; spendable?: boolean; customInstructions?: string; tags?: string[] }[];
+        outputs: {
+          outpoint: string;
+          satoshis?: number;
+          spendable?: boolean;
+          customInstructions?: string;
+          tags?: string[];
+        }[];
       }>('listOutputs', { basket, includeCustomInstructions: true, includeTags: true, limit: 10000 }, admin).catch(
         () => null,
       );
@@ -285,10 +597,13 @@ export function guardSiteTokens<T extends object>(wallet: T, deps: SiteTokenDeps
           continue;
         }
         if (!Array.isArray(ci.protocolID) || typeof ci.keyID !== 'string' || typeof ci.id !== 'string') continue;
+        const amtRaw = typeof ci.amt === 'string' && /^\d{1,40}$/.test(ci.amt) ? ci.amt : '0';
         out.set(normOutpoint(o.outpoint), {
           outpoint: normOutpoint(o.outpoint),
-          id: ci.id,
-          amt: BigInt(typeof ci.amt === 'string' && /^\d+$/.test(ci.amt) ? ci.amt : '0'),
+          satoshis: typeof o.satoshis === 'number' ? o.satoshis : 1,
+          amtRaw,
+          id: ci.id.replace('.', '_'),
+          amt: BigInt(amtRaw),
           sym: typeof ci.sym === 'string' ? ci.sym : undefined,
           protocolID: ci.protocolID as WalletProtocol,
           keyID: ci.keyID,
@@ -352,25 +667,25 @@ export function guardSiteTokens<T extends object>(wallet: T, deps: SiteTokenDeps
       if (!outside(originator)) return call('createAction', args, originator);
       const site = deps.normalize(originator!);
       // 2. Deliveries into the token basket: rewrite the record, or refuse.
-      let deliveries = 0;
+      const deliveries: Record<string, number> = {};
       let next: CreateArgs = args;
-      if (
-        args?.outputs?.some((o) => typeof o?.basket === 'string' && TOKEN_BASKETS.has(o.basket.trim().toLowerCase()))
-      ) {
+      if (args?.outputs?.some((o) => deliveryBasket(o?.basket, o?.lockingScript))) {
         const outputs: Out[] = [];
         for (const o of args.outputs) {
-          if (typeof o?.basket !== 'string' || !TOKEN_BASKETS.has(o.basket.trim().toLowerCase())) {
+          const basket = deliveryBasket(o?.basket, o?.lockingScript);
+          if (!basket) {
             outputs.push(o);
             continue;
           }
           const rec = await checkDelivery(
             site,
+            basket,
             String(o.lockingScript ?? ''),
             Number(o.satoshis),
             o.customInstructions,
           );
-          outputs.push({ ...o, basket: TOKEN_BASKET, ...rec });
-          deliveries++;
+          outputs.push({ ...o, basket, ...rec });
+          deliveries[basket] = (deliveries[basket] ?? 0) + 1;
         }
         next = { ...args, outputs };
       }
@@ -440,32 +755,46 @@ export function guardSiteTokens<T extends object>(wallet: T, deps: SiteTokenDeps
   const internalize = w.internalizeAction as AnyFn | undefined;
   if (typeof internalize === 'function')
     w.internalizeAction = async (args: InternalizeArgs, originator?: string) => {
-      const hits = (args?.outputs ?? []).filter(
-        (o) =>
-          o?.protocol === 'basket insertion' &&
-          typeof o.insertionRemittance?.basket === 'string' &&
-          TOKEN_BASKETS.has(o.insertionRemittance.basket.trim().toLowerCase()),
+      if (!outside(originator)) return call('internalizeAction', args, originator);
+      const insertions = (args?.outputs ?? []).filter(
+        (o) => o?.protocol === 'basket insertion' && typeof o.insertionRemittance?.basket === 'string',
       );
-      if (!outside(originator) || hits.length === 0) return call('internalizeAction', args, originator);
+      const named = (b: unknown) => (typeof b === 'string' ? b.trim().toLowerCase() : '');
+      if (
+        !insertions.some(
+          (o) =>
+            TICKET_BASKETS.has(named(o.insertionRemittance?.basket)) ||
+            TOKEN_BASKETS.has(named(o.insertionRemittance?.basket)),
+        )
+      )
+        return call('internalizeAction', args, originator);
       const site = deps.normalize(originator!);
       const tx = Transaction.fromAtomicBEEF(Array.from(args.tx ?? []));
+      const txid = tx.id('hex');
       const outputs = [];
+      const counts: Record<string, number> = {};
       for (const o of args.outputs ?? []) {
-        if (!hits.includes(o)) {
+        const out = insertions.includes(o) ? tx.outputs[o.outputIndex] : undefined;
+        const basket = insertions.includes(o)
+          ? deliveryBasket(o.insertionRemittance?.basket, out?.lockingScript.toHex())
+          : null;
+        if (!basket) {
           outputs.push(o);
           continue;
         }
-        const out = tx.outputs[o.outputIndex];
         if (!out) throw new Error(`${BAD_DELIVERY_REFUSAL} (no output ${o.outputIndex})`);
         const rec = await checkDelivery(
           site,
+          basket,
           out.lockingScript.toHex(),
           Number(out.satoshis),
           o.insertionRemittance?.customInstructions,
+          { txid, vout: o.outputIndex },
         );
-        outputs.push({ ...o, insertionRemittance: { basket: TOKEN_BASKET, ...rec } });
+        outputs.push({ ...o, insertionRemittance: { basket, ...rec } });
+        counts[basket] = (counts[basket] ?? 0) + 1;
       }
-      const release = addTickets(originator!, hits.length);
+      const release = addTickets(originator!, counts);
       try {
         return await call('internalizeAction', { ...args, outputs }, originator);
       } finally {

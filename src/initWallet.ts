@@ -24,7 +24,7 @@ import {
 import { preserveOriginalErrors } from './services/permissionAbortGuard';
 import { guardReservedBaskets, revokeReservedBasketGrants } from './services/reservedBaskets';
 import { guardLabelsOnSpend } from './services/labelsOnSpend';
-import { guardSiteTokens } from './services/siteTokens';
+import { chromeConsentStore, guardSiteTokens } from './services/siteTokens';
 import { guardReservedProtocols, revokeReservedProtocolGrants } from './services/reservedProtocols';
 import { guardAllowance } from './services/allowanceGuard';
 import { ALLOWANCES_ENABLED } from './services/allowanceFlag';
@@ -464,7 +464,12 @@ export const initWallet = async (
       ),
       { adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
     ),
-    { adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator, prompt: showOneSatPrompt },
+    {
+      adminOriginator: ADMIN_ORIGINATOR,
+      normalize: normalizeOriginator,
+      prompt: showOneSatPrompt,
+      listConsent: chromeConsentStore(),
+    },
   );
   // Upgrade migration (C1): grants a site already holds for a reserved protocol are removed. Idempotent.
   await revokeReservedProtocolGrants(permissionStore, ADMIN_ORIGINATOR)

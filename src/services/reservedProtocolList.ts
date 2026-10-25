@@ -72,5 +72,7 @@ export const EXTERNAL_OK: readonly (readonly [number, string, string])[] = [
   // Token receive keys for sites (services/siteTokens.ts, docs/SITE-TOKENS.md): getPublicKey only, answered with a
   // fresh wallet token key the wallet picks; every signing/crypto method with it is refused for apps.
   [1, 'bwalletx token receive', 'Site token receive keys: getPublicKey only (siteTokens.ts)'],
+  // Ordinal (token icon) receive keys for sites, the same way: getPublicKey only (siteTokens.ts).
+  [1, 'bwalletx ordinal receive', 'Site ordinal receive keys: getPublicKey only (siteTokens.ts)'],
   [1, 'sigma', 'SIGMA post signatures: the wallet asks for it with a first post (permissionBundle.ts POST_PROTOCOL)'],
 ];
