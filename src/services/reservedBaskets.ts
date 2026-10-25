@@ -29,6 +29,28 @@ const RESERVED = new Set([
 
 export const RESERVED_BASKET_REFUSAL = 'This basket is reserved for bWalletX itself';
 
+export const OWN_COIN_REFUSAL = "A site can't spend your wallet's own coins, ordinals or names as its inputs";
+
+/** Baskets whose coins a site's createAction may never name: all reserved ones but the tokens (sold via siteTokens). */
+const SITE_SELLABLE = new Set(['bsv21', 'p 1sat bsv21']);
+const normOutpoint = (op: string) => (op.length > 64 && op[64] === '_' ? `${op.slice(0, 64)}.${op.slice(65)}` : op);
+type ListFn = (a: unknown, o?: string) => Promise<{ outputs?: { outpoint?: string }[] }>;
+
+/** Outpoints of the wallet's own coins in reserved baskets. null when a listing failed (refuse: can't tell). */
+const walletOutpoints = async (list: ListFn, self: unknown, admin: string): Promise<Set<string> | null> => {
+  const out = new Set<string>();
+  for (const basket of RESERVED) {
+    if (SITE_SELLABLE.has(basket) || basket.startsWith('bwalletx.')) continue;
+    try {
+      const r = await list.call(self, { basket, limit: 10000 }, admin);
+      for (const o of r?.outputs ?? []) if (typeof o.outpoint === 'string') out.add(normOutpoint(o.outpoint));
+    } catch {
+      return null;
+    }
+  }
+  return out;
+};
+
 export const isReservedBasket = (basket: unknown): boolean => {
   if (typeof basket !== 'string') return false;
   const b = basket.trim().toLowerCase();
@@ -82,6 +104,25 @@ export function guardReservedBaskets<T extends object>(manager: T, adminOriginat
       if (args?.originator !== adminOriginator && isReservedBasket(args?.basket))
         throw new Error(`${RESERVED_BASKET_REFUSAL}: "${String(args.basket)}"`);
       return (ensure as (a: unknown) => Promise<boolean>).call(manager, args);
+    };
+  }
+  // b-Aware 25 Oct 2026: a site naming one of the wallet's own coins (BSV, ordinals, locks, names…) as an input of its
+  // createAction. The coin was counted as the site's own money, so the sheet priced only a fee (or none) while the
+  // wallet's coin left. Refused before anything is built; the wallet's token coins are sold only behind the sell
+  // sheet in siteTokens.ts (outermost), so 'bsv21' coins pass here.
+  const create = m.createAction;
+  const list = m.listOutputs;
+  if (typeof create === 'function' && typeof list === 'function') {
+    m.createAction = async (args: { inputs?: { outpoint?: unknown }[] }, originator?: string) => {
+      const named = (args?.inputs ?? [])
+        .map((i) => (typeof i?.outpoint === 'string' ? normOutpoint(i.outpoint) : ''))
+        .filter(Boolean);
+      if (originator !== adminOriginator && named.length) {
+        const own = await walletOutpoints(list as ListFn, manager, adminOriginator);
+        const hit = named.find((op) => own === null || own.has(op));
+        if (hit !== undefined) throw new Error(OWN_COIN_REFUSAL);
+      }
+      return (create as (a: unknown, o?: string) => Promise<unknown>).call(manager, args, originator);
     };
   }
   // A 'p <scheme> …' basket goes to its permission module, not ensureBasketAccess: refuse a reserved one first.

@@ -9,6 +9,7 @@ import {
 import {
   guardReservedBaskets,
   isReservedBasket,
+  OWN_COIN_REFUSAL,
   revokeBasketGrantsForOriginator,
   revokeReservedBasketGrants,
   withoutReservedBaskets,
@@ -120,5 +121,52 @@ describe('reserved baskets', () => {
       { type: 'basket', originator: 'other.example', basket: 'posts' },
       { type: 'protocol', originator: 'site.example' },
     ]);
+  });
+});
+
+describe("b-Aware 25 Oct: a site can't name the wallet's own coins as inputs", () => {
+  const T = 'ab'.repeat(32);
+  const make = () => {
+    const created: unknown[] = [];
+    const m = {
+      listOutputs: async (a: { basket: string }) => ({
+        outputs:
+          a.basket === '1sat'
+            ? [{ outpoint: `${T}.0` }]
+            : a.basket === 'default'
+              ? [{ outpoint: `${T}.1` }]
+              : a.basket === 'bsv21'
+                ? [{ outpoint: `${T}.2` }]
+                : [],
+      }),
+      createAction: async (a: unknown) => (created.push(a), { txid: 'x' }),
+    };
+    return { m: guardReservedBaskets(m, ADMIN), created };
+  };
+  test('an ordinal or BSV coin of the wallet named by a site is refused before createAction', async () => {
+    for (const op of [`${T}.0`, `${T}_1`]) {
+      const { m, created } = make();
+      await expect(m.createAction({ inputs: [{ outpoint: op }] }, 'site.example')).rejects.toThrow(OWN_COIN_REFUSAL);
+      expect(created).toHaveLength(0);
+    }
+  });
+  test("the site's own inputs, token coins (sell sheet) and the wallet itself still work", async () => {
+    const { m, created } = make();
+    await m.createAction({ inputs: [{ outpoint: `${'cd'.repeat(32)}.0` }] }, 'site.example');
+    await m.createAction({ inputs: [{ outpoint: `${T}.2` }] }, 'site.example');
+    await m.createAction({ inputs: [{ outpoint: `${T}.0` }] }, ADMIN);
+    expect(created).toHaveLength(3);
+  });
+  test('when the wallet cannot list its coins, named inputs are refused', async () => {
+    const m = guardReservedBaskets(
+      {
+        listOutputs: async () => Promise.reject(new Error('down')),
+        createAction: async () => ({ txid: 'x' }),
+      },
+      ADMIN,
+    );
+    await expect(m.createAction({ inputs: [{ outpoint: `${T}.9` }] }, 'site.example')).rejects.toThrow(
+      OWN_COIN_REFUSAL,
+    );
   });
 });
