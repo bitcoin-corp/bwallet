@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { gateIconUrl, lacksGate, lockedLine, roomTokenGate } from './roomGate';
+import { gateIconUrl, lacksGate, lockedForMe, lockedLine, ownsGatedRoom, roomTokenGate } from './roomGate';
 
 const ID = 'd5ffbbfd8310dcb6763c7180b8dbc725b708d0ce990f93cd27d00ff24aa0de02_1';
 const META = {
@@ -21,6 +21,20 @@ describe('roomGate', () => {
     expect(lacksGate(g, null)).toBe(false);
     expect(lacksGate(g, undefined)).toBe(false);
     expect(lacksGate(null, '0')).toBe(false);
+  });
+  it('keeps the creator / issuer exemption', () => {
+    const room = { metadata: META, created_by_handle: 'tokenblaster' };
+    // Creator holding 0 sees and enters.
+    expect(lockedForMe(room, '$TokenBlaster', '0')).toBeNull();
+    // Another non-holder sees it locked.
+    expect(lockedForMe(room, 'alice', '0')?.symbol).toBe('TERRORNODE');
+    // A holder sees it.
+    expect(lockedForMe(room, 'alice', '1')).toBeNull();
+    // Claimed issuer or bit-sign's you_are_issuer holding 0 gets in.
+    expect(lockedForMe(room, 'bob', '0', { issuer: { handle: 'bob', claimed: true } })).toBeNull();
+    expect(lockedForMe(room, 'bob', '0', { issuer: { handle: 'bob', claimed: false } })).not.toBeNull();
+    expect(lockedForMe(room, null, '0', { youAreIssuer: true })).toBeNull();
+    expect(ownsGatedRoom({ created_by_handle: '' }, '', null)).toBe(false);
   });
   it('says what to hold', () => {
     const g = roomTokenGate(META)!;

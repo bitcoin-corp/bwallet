@@ -29,6 +29,37 @@ export function lacksGate(gate: TokenGate | null, heldRaw: string | null | undef
   return BigInt(heldRaw) < BigInt(gate.minRaw);
 }
 
+const norm = (h: unknown) => (typeof h === 'string' ? h.trim().replace(/^[$@]/, '').toLowerCase() : '');
+
+/**
+ * Owner, 25 Oct 2026 ("keep the exemption"): a room's creator, or its token's claimed issuer, always sees and enters
+ * their own gated room even holding 0. Creator = the room row's created_by_handle; issuer = bit-sign's
+ * `you_are_issuer`, or the claimed issuer handle, from GET /rooms/token-gated.
+ */
+export function ownsGatedRoom(
+  room: { created_by_handle?: unknown } | null | undefined,
+  me: string | null | undefined,
+  lookup?: { youAreIssuer?: boolean; issuer?: { handle: string | null; claimed: boolean } | null } | null,
+): boolean {
+  if (lookup?.youAreIssuer) return true;
+  const mine = norm(me);
+  if (!mine) return false;
+  if (norm(room?.created_by_handle) === mine) return true;
+  return !!lookup?.issuer?.claimed && norm(lookup.issuer.handle) === mine;
+}
+
+/** Locked for me: the gate is known unmet and I'm not the room's creator or issuer. */
+export function lockedForMe(
+  room: { metadata?: unknown; created_by_handle?: unknown },
+  me: string | null | undefined,
+  heldRaw: string | null | undefined,
+  lookup?: Parameters<typeof ownsGatedRoom>[2],
+): TokenGate | null {
+  const gate = roomTokenGate(room.metadata);
+  if (!gate || !lacksGate(gate, heldRaw) || ownsGatedRoom(room, me, lookup)) return null;
+  return gate;
+}
+
 /** "1", "2.5": a raw amount in whole tokens for the lock line. */
 function whole(raw: string, dec: number): string {
   if (!dec) return raw;

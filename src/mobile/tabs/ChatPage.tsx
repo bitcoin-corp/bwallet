@@ -92,7 +92,7 @@ import { HandleFlow } from '../names/HandleFlow';
 import { avatarFor, B_AVATAR, pendingBQuestions, rememberAvatar, useAvatars } from '../chat/avatars';
 import { ChatAvatar as Avatar } from '../chat/ChatAvatar';
 import { roomHeaderBackground, roomOwnerOrigin, useRoomLook } from '../chat/roomLook';
-import { gateIconUrl, lacksGate, lockedLine, roomTokenGate } from '../chat/roomGate';
+import { gateIconUrl, lockedForMe, lockedLine, roomTokenGate } from '../chat/roomGate';
 import { roomSetupState, shouldOfferRoomSetup } from '../chat/roomSetupPrompt';
 import type { ReplyRef } from '../chat/api';
 import {
@@ -2732,6 +2732,8 @@ const RoomsPage = ({ header }: { header: React.ReactNode }) => {
   // Open rooms that also carry a token gate (chat/roomGate.ts): bit-sign's count of what I hold, per gate key.
   // A room I don't qualify for leaves "Your rooms" and shows only as a locked card under Public rooms.
   const [gateHeld, setGateHeld] = useState<Record<string, string | null>>({});
+  // bit-sign's issuer answer per gate key: the creator / claimed issuer always gets in (chat/roomGate.ts).
+  const [gateLook, setGateLook] = useState<Record<string, TokenRoomLookup | null>>({});
   useEffect(() => {
     const keys = [
       ...new Set((rooms ?? []).map((r) => roomTokenGate(r.metadata)?.key).filter((k): k is string => !!k)),
@@ -2739,18 +2741,22 @@ const RoomsPage = ({ header }: { header: React.ReactNode }) => {
     if (!handle || !keys.length) return;
     let live = true;
     void Promise.all(
-      keys.map(async (k) => [k, parseLookup(await client.tokenRoom(k).catch(() => null))?.heldRaw ?? null] as const),
-    ).then((r) => live && setGateHeld((cur) => ({ ...cur, ...Object.fromEntries(r) })));
+      keys.map(async (k) => [k, parseLookup(await client.tokenRoom(k).catch(() => null))] as const),
+    ).then((r) => {
+      if (!live) return;
+      setGateLook((cur) => ({ ...cur, ...Object.fromEntries(r) }));
+      setGateHeld((cur) => ({ ...cur, ...Object.fromEntries(r.map(([k, l]) => [k, l?.heldRaw ?? null])) }));
+    });
     return () => {
       live = false;
     };
   }, [rooms, handle, client]); // eslint-disable-line react-hooks/exhaustive-deps
   const gateLacking = useCallback(
     (r: ChatRoom) => {
-      const g = roomTokenGate(r.metadata);
-      return !!g && lacksGate(g, gateHeld[g.key]);
+      const k = roomTokenGate(r.metadata)?.key;
+      return !!k && !!lockedForMe(r, handle, gateHeld[k], gateLook[k]);
     },
-    [gateHeld],
+    [gateHeld, gateLook, handle],
   );
   const myOpen = useMemo(
     () =>
@@ -2873,8 +2879,9 @@ const RoomsPage = ({ header }: { header: React.ReactNode }) => {
 
   const openOpenRoom = (room: ChatRoom, joinSpace = false) => {
     // A token-gated room I don't qualify for never opens: show its lock with the real terms instead.
-    const gate = roomTokenGate(room.metadata);
-    if (gate && lacksGate(gate, gateHeld[gate.key])) {
+    const k = roomTokenGate(room.metadata)?.key ?? '';
+    const gate = lockedForMe(room, handle, gateHeld[k], gateLook[k]);
+    if (gate) {
       setLocked({ gate, heldRaw: gateHeld[gate.key] ?? null, members: room.party_count ?? null });
       return;
     }
