@@ -109,6 +109,12 @@ export const boundHosts = (text: string): string[] => {
 export const CROSS_SITE_REFUSAL = 'This message is for a different site than the one asking you to sign it';
 export const BLIND_SIGN_REFUSAL = 'Sites cannot ask for a signature over a hash the wallet cannot read';
 
+/** Our own sites that sign BSM digests (AIP posts, boost sighashes, escrow arbiter digests) through hashToDirectlySign. */
+const BLIND_HASH_SITES = ['bchatx.com', 'chat.bwalletx.com', 'bit-sign.online'];
+/** The caller is one of them or a subdomain of one (never a parent: bwalletx.com is not chat.bwalletx.com). */
+export const blindHashAllowed = (caller: string) =>
+  BLIND_HASH_SITES.some((site) => caller === site || caller.endsWith(`.${site}`));
+
 const printable = (text: string) => {
   if (!text) return false;
   let n = 0;
@@ -173,8 +179,11 @@ export const crossSiteSignRefusal = (originator: string | undefined, args: unkno
   if (!originator || !args || typeof args !== 'object') return null;
   const caller = bareHost(originator);
   if (!caller) return null;
-  // A bare hash can't be read, so it can't be checked: an outside caller must send the data itself.
-  if ((args as { hashToDirectlySign?: unknown }).hashToDirectlySign !== undefined) return BLIND_SIGN_REFUSAL;
+  // A bare hash can't be read, so it can't be checked: an outside caller must send the data itself. Our own
+  // chat sites are the exception: bChatX AIP-signs every post over a BSM digest, which `data` can't stand in for
+  // (owner, 25 Oct 2026: posting broke after the blind-sign refusal).
+  if ((args as { hashToDirectlySign?: unknown }).hashToDirectlySign !== undefined && !blindHashAllowed(caller))
+    return BLIND_SIGN_REFUSAL;
   const text = decodeText((args as { data?: unknown }).data);
   if (text === null) return null;
   const hosts = [...new Set(textVariants(text).flatMap(boundHosts))];

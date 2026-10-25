@@ -160,6 +160,22 @@ describe('b-Aware 24-25 Oct: encoded and blind challenges', () => {
   test('a hash to sign blind is refused for outside callers', () => {
     expect(crossSiteSignRefusal(caller, { hashToDirectlySign: [1, 2, 3] })).toBe(BLIND_SIGN_REFUSAL);
   });
+  test('our chat sites may sign a hash (bChatX AIP posts), look-alikes and parents may not', () => {
+    for (const ok of [
+      'https://bchatx.com',
+      'https://www.bchatx.com',
+      'https://chat.bwalletx.com',
+      'https://bit-sign.online',
+    ])
+      expect(crossSiteSignRefusal(ok, { hashToDirectlySign: [1, 2, 3] })).toBeNull();
+    for (const bad of [
+      'https://bwalletx.com',
+      'https://evilbchatx.com',
+      'https://bchatx.com.evil.io',
+      'https://web.bwalletx.com',
+    ])
+      expect(crossSiteSignRefusal(bad, { hashToDirectlySign: [1, 2, 3] })).toBe(BLIND_SIGN_REFUSAL);
+  });
   test('the caller signing its own encoded challenge, and plain posts, still work', () => {
     expect(crossSiteSignRefusal('https://good.example', { data: bytes(btoa(msg)) })).toBeNull();
     expect(crossSiteSignRefusal(caller, { data: bytes('hello world, a plain post') })).toBeNull();
