@@ -26,3 +26,20 @@
 # Player-to-player token listings: list, buy, cancel (checked before signing) + the 5% index-fund fee.
 ^src/mobile/p2p/
 ^src/mobile/sell/(sell|sellActions)\.ts$
+# Key handling at rest and on export (key audit 25 Oct 2026): where the encrypted keystore and the unlock key live,
+# biometric sealing of the unlock key, re-keying, restore, lock timing, seed/WIF export screens, passkey hand-offs,
+# and the filters that stop a pasted secret leaving the device.
+^src/mobile/hub\.ts$
+^src/mobile/native\.ts$
+^src/mobile/biometricUnlock\.ts$
+^src/mobile/desktop/storage\.ts$
+^src/utils/masterImporter\.ts$
+^src/utils/lockTimeout\.ts$
+^src/services/usbRekey(Background)?\.ts$
+^src/backup/WalletBackupService\.ts$
+^src/mobile/agents/ExportForCli\.tsx$
+^src/mobile/backup/BackupStep\.tsx$
+^src/components/BackupPromo\.tsx$
+^src/mobile/passkey/(extHandoff|extHandoffStore|openHere)\.ts$
+^src/mobile/passkey/OpenHereSheet\.tsx$
+^src/mobile/errors/(phraseGuard|errorReport)\.ts$
