@@ -161,7 +161,8 @@ export const SOURCE_REGISTRY: Record<Source, SourceInfo> = {
     id: 'coingeek',
     label: 'CoinGeek',
     icon: coingeekIcon,
-    color: '#FFFFFF',
+    // CoinGeek's own blue (coingeek.com), with its official CG logo (owner, 25 Oct 2026).
+    color: '#0072D6',
     matches: (a) => a === 'coingeek',
     postUrl: (p) => coingeekArticleUrl(p.txid),
     actions: READ_ONLY,

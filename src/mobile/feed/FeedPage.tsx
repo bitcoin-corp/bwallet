@@ -415,8 +415,11 @@ const Avatar = ({
   const [broken, setBroken] = useState(false);
   // Treechat exposes no avatar (not on chain, not in the overlay): its authors get a gold bAvatar
   // seeded by username, with a Treechat-purple ring. Never a bare letter.
-  const ring = source === 'treechat' ? `2px solid ${SOURCE_REGISTRY.treechat.color}` : `1px solid ${LINE}`;
-  const photo = avatarUrl(author.avatar);
+  const ring =
+    source === 'treechat' || source === 'coingeek' ? `2px solid ${SOURCE_REGISTRY[source].color}` : `1px solid ${LINE}`;
+  // CoinGeek posts wear CoinGeek's official CG logo (bundled; owner, 25 Oct 2026). avatarUrl would read a
+  // bundled /assets path as a Treechat one, so it is used as is.
+  const photo = source === 'coingeek' ? SOURCE_REGISTRY.coingeek.icon : avatarUrl(author.avatar);
   // Feeds: a still first frame of an animated picture, played on press/hover (names/animatedAvatar.ts).
   const play = useAvatarPlayback(photo, place);
   const real = photo && !broken;
