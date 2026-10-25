@@ -659,6 +659,8 @@ export const BundleSheet = (props: {
     const tiles: { label: string; icon: ReactNode }[] = [
       { label: types.has('certificate') ? 'Your details' : 'Your name', icon: <PersonIcon /> },
     ];
+    // One connect sheet covers the sign-in that follows (services/connectConsent.ts).
+    tiles.push({ label: 'Sign in', icon: <PenIcon /> });
     if (types.has('protocol')) tiles.push({ label: 'Sign posts', icon: <PenIcon /> });
     if (types.has('basket')) tiles.push({ label: 'Keep items', icon: <BagIcon /> });
     body = (

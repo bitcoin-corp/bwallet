@@ -191,6 +191,21 @@ export const GroupedPermissionRequestPage = (props: GroupedPermissionRequestProp
         </motion.div>
       </Show>
 
+      {/* One sheet on first connect (services/connectConsent.ts): this Allow also covers the identity key and the
+          sign-in the site asks for next, so no second or third sheet follows. Plain lines, nothing to tick. */}
+      <div
+        className="w-full rounded-2xl px-4 py-3 mb-3 flex flex-col gap-1"
+        style={{ background: theme.color.global.row, border: '1px solid rgba(255,255,255,0.06)' }}
+        data-testid="connect-includes"
+      >
+        <span className="text-xs font-semibold" style={{ color: theme.color.global.contrast }}>
+          ✓ Connect, and share your public identity key
+        </span>
+        <span className="text-xs font-semibold" style={{ color: theme.color.global.contrast }}>
+          ✓ Sign you in (proves it's you; no money moves)
+        </span>
+      </div>
+
       {/* Permissions list */}
       <motion.div
         className="w-full rounded-2xl px-4 py-2 mb-5"
