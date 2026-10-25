@@ -289,7 +289,7 @@ describe('store edition text', () => {
     const t = read({});
     expect(t.name).toBe('bWalletX');
     expect(t.banner).toBe('A free handle people can pay, plus your own chat room.');
-    expect(t.agent).toBe('Free for now, or use your own AI key');
+    expect(t.agent).toBe('b, or use your own AI key');
     expect(t.tokens).toContain('their rooms');
   });
 });

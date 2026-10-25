@@ -6,11 +6,11 @@ import { DAILY_LIMITS, useAgentPrefs, type AgentMode } from '../agent/agentPrefs
 import { PROVIDERS, PROVIDER_IDS, callProvider, cleanModel, type ProviderId } from '../agent/providers';
 import { deleteKey, loadKey, maskKey, saveKey } from '../agent/keyStore';
 import { STORE_AGENT_NOTE, STORE_BUILD } from '../storeBuild';
-import { ASK_B_FREE, ASK_B_FREE_TEXT } from '../agent/agent';
+import { ASK_B_DISCLOSURE, ASK_B_FREE } from '../agent/agent';
 import { consentInfo, consentTarget, hasConsent, revokeConsent } from '../agent/consent';
 
 /**
- * Settings › b agent: how the b agent runs. bCorp's service (free for now, ASK_B_FREE; else pay per message in
+ * Settings › b agent: how the b agent runs. bCorp's service (ASK_B_FREE: no charge and no price shown; else pay per message in
  * BSV with a daily limit) or the user's own provider key (kept in the device's secure storage, sent only to that provider).
  */
 const GOLD = 'var(--bw-accent-hi)';
@@ -70,7 +70,7 @@ const Pills = <T extends string | number>({
 );
 
 const MODES: { id: AgentMode; label: string }[] = [
-  { id: 'paid', label: ASK_B_FREE ? 'Free' : 'Pay per message' },
+  { id: 'paid', label: ASK_B_FREE ? 'b' : 'Pay per message' },
   { id: 'own', label: 'Own API key' },
 ];
 
@@ -257,7 +257,7 @@ export const AgentSettings = ({ Section, Row, Divider }: Props) => {
               ? STORE_AGENT_NOTE
               : prefs.mode === 'paid'
                 ? ASK_B_FREE
-                  ? ASK_B_FREE_TEXT
+                  ? ASK_B_DISCLOSURE
                   : 'Pay per message from this wallet'
                 : 'Use your own AI provider key'
           }

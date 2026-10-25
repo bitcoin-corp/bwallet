@@ -14,7 +14,8 @@ import { kycClient, signedInClient } from '../kyc/kycWallet';
 import { oneClick } from '../settings/oneClick';
 import {
   ASK_B_FREE,
-  ASK_B_FREE_TEXT,
+  ASK_B_DISCLOSURE,
+  ASK_B_MORE_URL,
   MAX_INPUT,
   SECRET_WARNING,
   looksLikeSecret,
@@ -78,7 +79,7 @@ import { money } from '../money/money';
 /**
  * The b agent conversation (status, messages, composer). Shown on the full page (/m/ask-b, AgentPage.tsx).
  * Helps people use bWallet (guide.ts).
- * Either the user's own provider key (direct from the device) or bCorp's service: free for now
+ * Either the user's own provider key (direct from the device) or bCorp's service: no charge
  * (ASK_B_FREE, bit-sign /agent/free with a daily cap), else pay per message in BSV (paid.ts). See agent.ts.
  */
 const GOLD = 'var(--bw-accent-hi)';
@@ -92,6 +93,22 @@ const MUTED = '#98A2B3';
  */
 const MUTED_X = '#98A2B3';
 const NUDGE_KEY = 'bwallet.agent.keyNudgeDismissed';
+const DISCLOSURE_KEY = 'bwallet.agent.disclosureSeen';
+/** The once-only "we read these chats" line (ASK_B_DISCLOSURE): hidden on this device after ✕. */
+const disclosureSeen = () => {
+  try {
+    return localStorage.getItem(DISCLOSURE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+const dismissDisclosure = () => {
+  try {
+    localStorage.setItem(DISCLOSURE_KEY, '1');
+  } catch {
+    /* storage unavailable: it shows again next time */
+  }
+};
 /** The own-key nudge, once dismissed, stays hidden for that account on this device. */
 const keyNudgeDismissed = (account: string | null | undefined) => {
   try {
@@ -564,10 +581,12 @@ export const AgentConversation = ({
   };
 
   const [nudgeHidden, setNudgeHidden] = useState(() => keyNudgeDismissed(accountId));
+  const [disclosureHidden, setDisclosureHidden] = useState(disclosureSeen);
   useEffect(() => setNudgeHidden(keyNudgeDismissed(accountId)), [accountId]);
   const today = spentToday(loadSpend(), Date.now());
+  // Free mode: no status line at all (owner, 25 Oct 2026: "Don't tell them either way. Just let them talk.").
   const status = freeNow
-    ? ASK_B_FREE_TEXT
+    ? ''
     : prefs.mode === 'own'
       ? keyReady === false
         ? 'No AI key yet: what you type here goes to the team as feedback. Add a key in Settings › b agent for answers.'
@@ -739,6 +758,34 @@ export const AgentConversation = ({
           />
         </div>
       )}
+      {/* Once, in b's voice: we read these chats (owner, 25 Oct 2026). One quiet line, ✕ to hide, not a consent wall.
+          Only where the team can see the chat: bCorp's mode, or own-key mode without a key (messages go to us). */}
+      {(prefs.mode !== 'own' || keyReady === false) && !disclosureHidden && (
+        <div
+          role="note"
+          className="relative z-10 shrink-0 w-full flex items-center"
+          style={{ background: PANEL, borderBottom: `1px solid ${LINE}` }}
+        >
+          <p className="flex-1 min-w-0 m-0 pl-4 py-1.5 text-[11px] leading-snug" style={{ color: MUTED }}>
+            {ASK_B_DISCLOSURE}{' '}
+            <a href={ASK_B_MORE_URL} target="_blank" rel="noopener noreferrer" style={{ color: GOLD }}>
+              More
+            </a>
+          </p>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => {
+              dismissDisclosure();
+              setDisclosureHidden(true);
+            }}
+            className="shrink-0 px-3 py-1.5 text-sm border-0 bg-transparent"
+            style={{ color: MUTED }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {/* Own-key nudge (owner, 5 Oct 2026): most people never find Settings › b agent. With their own key, messages
           go from this device straight to their AI provider instead of through bCorp's paid service. */}
       {/* Shown until dismissed (✕), remembered per account on this device (owner, 8 Oct 2026: "a lot of text"). */}
@@ -872,14 +919,16 @@ export const AgentConversation = ({
       <div className="relative z-10 shrink-0">{bar('page')}</div>
       {/* Price / key status: a small, quiet line under the composer (owner, 14 Oct 2026: the full-width yellow banner
           was too loud). Tap for Settings. */}
-      <button
-        type="button"
-        onClick={() => navigate('/m/settings')}
-        className="askb-meta relative z-10 shrink-0 self-center max-w-full px-4 pb-2 text-[11px] leading-tight text-center border-0 bg-transparent overflow-hidden text-ellipsis whitespace-nowrap"
-        style={{ color: MUTED }}
-      >
-        {status}
-      </button>
+      {status && (
+        <button
+          type="button"
+          onClick={() => navigate('/m/settings')}
+          className="askb-meta relative z-10 shrink-0 self-center max-w-full px-4 pb-2 text-[11px] leading-tight text-center border-0 bg-transparent overflow-hidden text-ellipsis whitespace-nowrap"
+          style={{ color: MUTED }}
+        >
+          {status}
+        </button>
+      )}
       {reportingReply && (
         <ReportSheet
           title="Report this response"

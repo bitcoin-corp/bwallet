@@ -3,7 +3,7 @@
  * device only (localStorage, like Settings › Preferences): which bApps
  * show in the dock and in the Feed's bApps reel, what Ask b may see, and the optional Ask b add-ons.
  *
- * No money flows here. Add-ons do not cost extra: Ask b is free for now (agent/agent.ts ASK_B_FREE), and
+ * No money flows here. Add-ons do not cost extra: no price is shown while ASK_B_FREE is on (agent/agent.ts), and
  * otherwise each message is priced as it always is (agent/paid.ts quote, or your own AI key). The enabled
  * add-ons are added to b's instructions and sent as `addOns` with each turn so the server can log/route them.
  */
@@ -42,7 +42,7 @@ export const ADD_ONS: readonly AddOn[] = [
 ];
 export const ADD_ON_IDS = ADD_ONS.map((a) => a.id);
 export const ADD_ON_PRICE_NOTE = ASK_B_FREE
-  ? 'No extra charge: talking to b is free for now'
+  ? 'No extra charge'
   : 'No extra charge: uses your normal Ask b message price';
 
 export type Privacy = {

@@ -23,6 +23,22 @@ describe('looksLikeSecret', () => {
     expect(looksLikeSecret('KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn')).toBe(true);
     expect(looksLikeSecret('a'.repeat(64))).toBe(true);
   });
+  test('numbered and labelled recovery phrases are caught (#42)', () => {
+    const w = 'abandon ability able about above absent absorb abstract absurd abuse access accident'.split(' ');
+    expect(looksLikeSecret(w.map((x, i) => `${i + 1}. ${x}`).join(' '))).toBe(true);
+    expect(looksLikeSecret(w.map((x, i) => `${i + 1}) ${x}`).join('\n'))).toBe(true);
+    expect(looksLikeSecret(`my seed: ${w.join(' ')}`)).toBe(true);
+  });
+  test('passwords are caught before anything is sent (chats are kept by the team)', () => {
+    expect(looksLikeSecret('my password is hunter2')).toBe(true);
+    expect(looksLikeSecret('Password: Tr0ub4dor&3')).toBe(true);
+    expect(looksLikeSecret('pin = 4821')).toBe(true);
+    expect(looksLikeSecret('passphrase: correct horse battery')).toBe(true);
+  });
+  test('talking about passwords without giving one passes', () => {
+    expect(looksLikeSecret('how do I change my password?')).toBe(false);
+    expect(looksLikeSecret('I forgot my PIN, what now')).toBe(false);
+  });
   test('normal questions pass', () => {
     expect(looksLikeSecret('how do I send bsv to a paymail address')).toBe(false);
     expect(looksLikeSecret('What is a ticket?')).toBe(false);

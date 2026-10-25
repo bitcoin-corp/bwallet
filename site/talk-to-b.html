@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Talk to b · bWalletX</title>
+    <meta name="description" content="Who reads your chats with b, what is kept, and how to opt out." />
+    <meta name="theme-color" content="#000000" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        margin: 0;
+        background: #000000;
+        color: #e4e7ec;
+        font:
+          15px/1.7 'IBM Plex Sans',
+          system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: max(24px, env(safe-area-inset-top)) 16px 48px;
+      }
+      h1,
+      h2 {
+        font-family: 'Space Grotesk', system-ui, sans-serif;
+      }
+      h1 {
+        font-size: 28px;
+        line-height: 1.2;
+        margin: 8px 0 4px;
+        color: #fff;
+      }
+      h2 {
+        font-size: 17px;
+        margin: 32px 0 8px;
+        color: #fff;
+      }
+      p,
+      li {
+        color: #c0c6d0;
+      }
+      a {
+        color: #f5b800;
+      }
+      .meta {
+        color: #667085;
+        font-size: 13px;
+      }
+      .notice {
+        padding: 12px 14px;
+        border: 1px solid #f5b80040;
+        background: #f5b8000d;
+        border-radius: 12px;
+        color: #fcd9a0;
+        font-size: 13px;
+      }
+      code {
+        background: #17191e;
+        padding: 1px 6px;
+        border-radius: 6px;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p><a href="/">← bWallet</a></p>
+      <h1>Talk to b</h1>
+      <p class="meta">bWalletX · 25 October 2026</p>
+
+      <p class="notice">
+        I'm b, the bWalletX team. We read these chats to fix bugs and improve b. Don't share your recovery phrase or
+        passwords.
+      </p>
+
+      <h2>What we keep</h2>
+      <p>
+        When you talk to b without your own AI key, each message you send, b's reply and when it happened are kept,
+        linked to your account. Anything that looks like a recovery phrase, private key or password is refused by the
+        app and hidden again by our server before a chat is stored. Chats are deleted after 180 days.
+      </p>
+
+      <h2>Who sees it</h2>
+      <p>
+        The bWalletX team at The Bitcoin Corporation Ltd, to fix bugs and improve b. Your messages pass through
+        Anthropic, who run the model. We never sell your chats.
+      </p>
+
+      <h2>Opting out</h2>
+      <p>
+        If you don't want your chats used to train anything, email
+        <a href="mailto:support@bwalletx.com">support@bwalletx.com</a> and we'll exclude them. To keep chats off our
+        server entirely, add your own AI key in Settings › b agent: messages then go straight from your device to your
+        provider.
+      </p>
+
+      <p>More in the <a href="/privacy">privacy policy</a>.</p>
+    </main>
+  </body>
+</html>

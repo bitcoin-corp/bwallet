@@ -347,7 +347,7 @@ export const MY_TOKENS_DESC = STORE_BUILD
 export const MY_TOKENS_NOTE = STORE_BUILD
   ? 'Listing a token shows it in other wallets and the Market. You confirm the price before anything is sent.'
   : 'Setting up a token’s room lists it in other wallets and the Market and opens its chat room. You confirm the price before anything is sent.';
-export const B_AGENT_DESC = STORE_BUILD ? 'Use your own AI key' : 'Free for now, or use your own AI key';
+export const B_AGENT_DESC = STORE_BUILD ? 'Use your own AI key' : 'b, or use your own AI key';
 export const SUBSCRIPTIONS_DESC = STORE_BUILD
   ? 'Regular payments to people, from pots you fill'
   : 'Regular payments from pots you fill';

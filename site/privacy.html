@@ -147,10 +147,11 @@
         <li>
           <b>$b assistant (optional):</b> nothing is sent until you allow it in the app. In bWallet from the App Store
           and Google Play, $b uses your own AI provider key (Anthropic, OpenAI or OpenRouter) and your message and the
-          recent conversation go straight from your phone to that provider. In bWalletX's pay-per-message mode, they go
-          to our server (bchatx.com), which passes them to Anthropic; our server also sees the payment's transaction id
-          and your bChat sign-in, and Anthropic does not. Your keys, balances, addresses, contacts, chats and files are
-          never sent. You can withdraw consent in Settings › b agent.
+          recent conversation go straight from your phone to that provider. In bWalletX, when you talk to b without your
+          own key, they go to our server (bchatx.com), which passes them to Anthropic. I'm b, the bWalletX team. We read
+          these chats to fix bugs and improve b. Don't share your recovery phrase or passwords; the app refuses to send
+          messages that look like one, and our server hides any it finds before storing a chat. Your keys, balances,
+          addresses, contacts, chats and files are never sent. You can withdraw consent in Settings › b agent.
         </li>
         <li>
           <b>Websites you open</b> in the in-app browser receive the requests you make and the responses you approve.
@@ -175,6 +176,13 @@
           <b>Contacts:</b> the contacts, friends and blocked users you keep in the app (not your phone's address book).
         </li>
         <li><b>Other content you create:</b> bookmarks, and items you report for review.</li>
+        <li>
+          <b>Conversations with b:</b> when you talk to b without your own AI key, each message (with anything that
+          looks like a recovery phrase, private key or password hidden), b's reply and when it happened, linked to your
+          account. The bWalletX team reads these to fix bugs and improve b. If you don't want your chats used to train
+          anything, email support@bwalletx.com and we'll exclude them. They are never sold. They are deleted after 180
+          days.
+        </li>
         <li>
           <b>Wallet details for rooms and tickets:</b> your wallet addresses and the token holdings needed to check
           access to token rooms and tickets.

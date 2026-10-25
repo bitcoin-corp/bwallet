@@ -14,7 +14,15 @@ import { containsPhrase } from '../errors/phraseGuard';
  * confirm; bit-sign answers free under a daily cap. Off: the old pay-per-message flow (paid.ts) comes back as is.
  */
 export const ASK_B_FREE = true;
-export const ASK_B_FREE_TEXT = 'Talking to b is free for now.';
+/**
+ * Owner, 25 Oct 2026: no price talk either way ("Just let them talk"). Conversations with b are kept so the team gets
+ * fast, unfiltered feedback ("They're talking to US; we are b."), so this is said once, plainly (UK GDPR
+ * transparency): the first-open line in Ask b, Settings › b agent, the consent sheet and bwalletx.com/privacy.
+ */
+/** Where the first-open line's "More" goes. */
+export const ASK_B_MORE_URL = 'https://bwalletx.com/talk-to-b';
+export const ASK_B_DISCLOSURE =
+  "I'm b, the bWalletX team. We read these chats to fix bugs and improve b. Don't share your recovery phrase or passwords.";
 
 export type AgentRole = 'user' | 'assistant';
 export type AgentMessage = { role: AgentRole; text: string };
@@ -30,6 +38,9 @@ export const transcript = (messages: AgentMessage[]): AgentMessage[] =>
     .slice(-MAX_TURNS)
     .map((m) => ({ role: m.role, text: m.text }));
 
+const SECRET_LABELLED =
+  /\b(password|passphrase|passcode|pin|seed|mnemonic|recovery (?:phrase|words?)|private key|privkey|wif|secret key)\s*(?:is|was|=|:)\s*\S+/i;
+
 /** Rough guard: things that look like a seed phrase or a private key must never leave the device. */
 export const looksLikeSecret = (text: string): boolean => {
   const t = text.trim();
@@ -37,6 +48,8 @@ export const looksLikeSecret = (text: string): boolean => {
   if (/\b[5KL][1-9A-HJ-NP-Za-km-z]{50,51}\b/.test(t)) return true;
   if (/\b[0-9a-fA-F]{64}\b/.test(t)) return true;
   if (/\bxprv[1-9A-HJ-NP-Za-km-z]{100,}/.test(t)) return true;
+  // A labelled password / passphrase / PIN / key ("my password is hunter2", "pin: 4821").
+  if (SECRET_LABELLED.test(t)) return true;
   // Recovery words however written: numbered, one per line, in a grid, capitals, after a label (phraseGuard.ts).
   if (containsPhrase(t)) return true;
   // 12 / 15 / 18 / 21 / 24 lowercase words and nothing else: a recovery phrase.
@@ -45,4 +58,4 @@ export const looksLikeSecret = (text: string): boolean => {
 };
 
 export const SECRET_WARNING =
-  'That looks like a recovery phrase or a private key, so it was not sent. Never share it with anyone, including b. If you think it was exposed, move your funds to a new wallet.';
+  'That looks like a recovery phrase, a private key or a password, so it was not sent. Never share it with anyone, including b. If you think it was exposed, move your funds to a new wallet.';

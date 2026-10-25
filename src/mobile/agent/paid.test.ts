@@ -12,7 +12,9 @@ import {
   freeFallbackReply,
   FREE_REST_TEXT,
 } from './paid';
-import { ASK_B_FREE, ASK_B_FREE_TEXT } from './agent';
+import { ASK_B_DISCLOSURE, ASK_B_FREE } from './agent';
+import { BWALLET_GUIDE as GUIDE } from './guide';
+import { consentInfo } from './consent';
 import { ADD_ON_PRICE_NOTE } from '../bweb/bweb';
 import { addSpend, dayOf, parseAgentPrefs, spentToday } from './agentPrefs';
 
@@ -95,10 +97,15 @@ describe('paid backend', () => {
 });
 
 describe('free Ask b', () => {
-  test('is on, and the copy says so plainly', () => {
+  test('is on, with no price talk either way, and the chats are disclosed once plainly', () => {
     expect(ASK_B_FREE).toBe(true);
-    expect(ASK_B_FREE_TEXT).toBe('Talking to b is free for now.');
-    expect(ADD_ON_PRICE_NOTE).toMatch(/free for now/);
+    expect(ADD_ON_PRICE_NOTE).toBe('No extra charge');
+    expect(ASK_B_DISCLOSURE).toBe(
+      "I'm b, the bWalletX team. We read these chats to fix bugs and improve b. Don't share your recovery phrase or passwords.",
+    );
+    expect(GUIDE).not.toMatch(/free for now/i);
+    expect(GUIDE).toMatch(/no charge to talk to b/);
+    expect(consentInfo('paid').summary).toMatch(/team reads these chats/);
   });
   test('a free turn calls /agent/free only: no quote, no txid, no payment, never a key', async () => {
     const calls: { path: string; body: unknown }[] = [];
