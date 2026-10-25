@@ -105,6 +105,7 @@ import { useRelayxAccount } from '../mobile/sweep/useRelayxAccount';
 import relayxIcon from '../mobile/brand/restore/relayx.svg';
 import { describeWalletError } from '../brand/walletError';
 import { publishBalance } from '../mobile/wallet/balanceStore';
+import { HomeShortcuts } from '../components/HomeShortcuts';
 import {
   BALANCE_TIMEOUT_MS,
   RATE_TIMEOUT_MS,
@@ -1890,6 +1891,7 @@ export const BsvWallet = () => {
             <ArrowRight size={14} className="shrink-0" />
           </button>
         </div>
+        <HomeShortcuts />
         {relayxOpen && <RelayxRecoverScreen xpub={relayxXpub} onBack={() => setRelayxOpen(false)} />}
 
       </motion.div>
