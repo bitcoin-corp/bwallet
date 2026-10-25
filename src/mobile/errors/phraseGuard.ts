@@ -17,7 +17,8 @@ const WORDS = new Set(bip39.wordlists.english);
 const MIN_WORDS = 11;
 const MIN_DENSITY = 0.8;
 const MAX_GAP = 2;
-const TOKEN = /[^\s,;|/\\•·▪◦●*–—-]+/g;
+// '.', '+' and '_' split words too: a phrase joined as word.word.word or word+word+word was one token (audit 25 Oct 2026).
+const TOKEN = /[^\s,;|/\\•·▪◦●*–—.+_-]+/g;
 
 type Token = { start: number; end: number; kind: 'bip' | 'other' | 'noise' };
 

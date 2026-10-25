@@ -84,3 +84,27 @@ describe('Ask b bug report', () => {
     for (const s of [WIF, xprv, HEX, 'abandon', '1.5']) expect(m).not.toContain(s);
   });
 });
+
+describe('secrets written without spaces (audit 25 Oct 2026)', () => {
+  const variants = {
+    dots: PHRASE12.split(' ').join('.'),
+    plus: PHRASE12.split(' ').join('+'),
+    underscores: PHRASE12.split(' ').join('_'),
+    wifInUnderscores: `key_${WIF}_`,
+    hexAfterLetters: `priv0x${HEX}`,
+    hexInUnderscores: `k_${HEX}_x`,
+  };
+  for (const [name, text] of Object.entries(variants)) {
+    test(`redacts ${name}`, () => {
+      const out = redactSecrets(text);
+      expect(out).not.toContain(WIF);
+      expect(out).not.toContain(HEX);
+      expect(out).not.toContain('absurd');
+    });
+  }
+  test('ordinary dotted prose is left alone', () => {
+    expect(redactSecrets('See the docs at example.com. It works, e.g. on phones.')).toBe(
+      'See the docs at example.com. It works, e.g. on phones.',
+    );
+  });
+});

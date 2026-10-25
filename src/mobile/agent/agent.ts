@@ -45,9 +45,9 @@ const SECRET_LABELLED =
 export const looksLikeSecret = (text: string): boolean => {
   const t = text.trim();
   // WIF (5/K/L…, base58, 51–52 chars) or 64-hex private key.
-  if (/\b[5KL][1-9A-HJ-NP-Za-km-z]{50,51}\b/.test(t)) return true;
-  if (/\b[0-9a-fA-F]{64}\b/.test(t)) return true;
-  if (/\bxprv[1-9A-HJ-NP-Za-km-z]{100,}/.test(t)) return true;
+  if (/(?<![1-9A-HJ-NP-Za-km-z])[5KL][1-9A-HJ-NP-Za-km-z]{50,51}(?![1-9A-HJ-NP-Za-km-z])/.test(t)) return true;
+  if (/(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])/.test(t)) return true;
+  if (/(?<![1-9A-HJ-NP-Za-km-z])[xt]prv[1-9A-HJ-NP-Za-km-z]{100,}/.test(t)) return true;
   // A labelled password / passphrase / PIN / key ("my password is hunter2", "pin: 4821").
   if (SECRET_LABELLED.test(t)) return true;
   // Recovery words however written: numbered, one per line, in a grid, capitals, after a label (phraseGuard.ts).

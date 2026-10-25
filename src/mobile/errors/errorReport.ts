@@ -13,9 +13,10 @@ import { hidePhrases } from './phraseGuard';
 
 const SECRET_LABEL =
   /\b(password|passphrase|pass|pin|seed|mnemonic|recovery words?|private key|priv(?:ate)?key|wif|secret)\s*[:=]\s*\S+/gi;
-const WIF = /\b[5KL][1-9A-HJ-NP-Za-km-z]{50,51}\b/g;
-const XPRV = /\b[xt]prv[1-9A-HJ-NP-Za-km-z]{100,112}\b/g;
-const HEX64 = /\b(?:0x)?[0-9a-fA-F]{64}\b/g;
+// Base58 / hex lookarounds, not \b: "_" is a word character, so \b missed a key written as key_<wif>_ (audit 25 Oct 2026).
+const WIF = /(?<![1-9A-HJ-NP-Za-km-z])[5KL][1-9A-HJ-NP-Za-km-z]{50,51}(?![1-9A-HJ-NP-Za-km-z])/g;
+const XPRV = /(?<![1-9A-HJ-NP-Za-km-z])[xt]prv[1-9A-HJ-NP-Za-km-z]{100,112}(?![1-9A-HJ-NP-Za-km-z])/g;
+const HEX64 = /(?:0x)?(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])/g;
 const BALANCE =
   /\b(balance|total|you have|available)\b([^.\n]{0,40}?)\d[\d,]*(?:\.\d+)?\s*(bsv|sats?|satoshis|usd|\$)?/gi;
 const MONEY = /(?:\$\s?\d[\d,]*(?:\.\d+)?|\b\d[\d,]*(?:\.\d+)?\s*(?:bsv|sats?|satoshis)\b)/gi;

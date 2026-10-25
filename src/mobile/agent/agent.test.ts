@@ -64,3 +64,19 @@ describe('guide', () => {
     expect(BWALLET_GUIDE).toContain('never brush people off');
   });
 });
+
+describe('looksLikeSecret: secrets written without spaces (audit 25 Oct 2026)', () => {
+  const PHRASE = 'abandon ability able about above absent absorb abstract absurd abuse access accident';
+  const WIF = 'L1aW4aubDFB7yfras2S1mN3bqg9nwySY8nkoLmJebSLD5BWv3ENZ';
+  const HEX = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+  test.each([
+    ['dots', PHRASE.split(' ').join('.')],
+    ['plus', PHRASE.split(' ').join('+')],
+    ['underscores', PHRASE.split(' ').join('_')],
+    ['wif in underscores', `key_${WIF}_`],
+    ['hex after letters', `priv0x${HEX}`],
+  ])('%s', (_name, text) => expect(looksLikeSecret(text)).toBe(true));
+  test('ordinary question is not a secret', () => {
+    expect(looksLikeSecret('How do I send 5.00 to my friend? e.g. via paymail.')).toBe(false);
+  });
+});
