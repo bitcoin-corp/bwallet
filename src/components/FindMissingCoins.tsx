@@ -6,7 +6,11 @@ import { useSnackbar } from '../hooks/useSnackbar';
 import { sendMessageAsync } from '../utils/chromeHelpers';
 import type { ScanReport } from '../services/findMissingCoins';
 
-type ScanAnswer = { success: boolean; error?: string; data?: { report: ScanReport; headline: string; note: string } };
+export type ScanAnswer = {
+  success: boolean;
+  error?: string;
+  data?: { report: ScanReport; headline: string; note: string };
+};
 type RestoreAnswer = { success: boolean; error?: string; data?: { summary: string } };
 
 const bsv = (sats: number) => (sats / 1e8).toFixed(8).replace(/\.?0+$/, '');
@@ -14,15 +18,16 @@ const day = (ms?: number) => (ms ? new Date(ms).toLocaleDateString() : '');
 
 /**
  * Settings › Storage (and Troubleshooting): Find missing coins (services/findMissingCoins.ts). Scan is read only;
- * one confirm sheet; the restore never broadcasts or moves coins.
+ * one confirm sheet; the restore never broadcasts or moves coins. initialScan: a scan already run (the home
+ * DON'T PANIC run) opens straight on the same confirm.
  */
-export const FindMissingCoins = () => {
+export const FindMissingCoins = ({ initialScan }: { initialScan?: ScanAnswer['data'] } = {}) => {
   const { theme } = useTheme();
   const { addSnackbar } = useSnackbar();
   const [busy, setBusy] = useState<'' | 'scan' | 'restore'>('');
-  const [scan, setScan] = useState<ScanAnswer['data'] | null>(null);
+  const [scan, setScan] = useState<ScanAnswer['data'] | null>(initialScan ?? null);
   const [line, setLine] = useState('');
-  const [confirm, setConfirm] = useState(false);
+  const [confirm, setConfirm] = useState(!!initialScan?.report.found.length);
 
   const runScan = async () => {
     if (busy) return;
