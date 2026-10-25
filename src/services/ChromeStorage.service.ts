@@ -14,7 +14,7 @@ import {
   HOSTED_YOURS_IMAGE,
   MAINNET_ADDRESS_PREFIX,
 } from '../utils/constants';
-import { decrypt, encrypt, generateRandomSalt } from '../utils/crypto';
+import { decrypt, encrypt, generateWalletSalt, isLegacySalt } from '../utils/crypto';
 import { NEVER_LOCK, lockTimeoutMs } from '../utils/lockTimeout';
 import { derivePassKey, type UsbUnlockMaterial } from './passKey';
 import { probeSticks } from './UsbKey.service';
@@ -631,7 +631,7 @@ export class ChromeStorageService {
     if (!passKey) throw new Error('Unlock the wallet first');
     const { accounts, keyRekey } = await this.get(['accounts', 'keyRekey']);
     if (keyRekey) throw new Error('Wallet keys are being re-encrypted; try again in a moment');
-    const salt = generateRandomSalt();
+    const salt = generateWalletSalt();
     const newKey = await derivePassKey(newPassword, salt, undefined);
     const next: Record<string, Account> = {};
     for (const [id, acct] of Object.entries((accounts || {}) as Record<string, Account>)) {
@@ -650,6 +650,54 @@ export class ChromeStorageService {
     await this.set({ accounts: next, salt } as Partial<ChromeStorageObject>);
     await this.setPassKey(newKey);
     await this.getAndSetStorage();
+  };
+
+  /**
+   * Move a wallet still on the old 100,000-iteration password key to 600,000 (security audit 25 Oct 2026, owner
+   * approved). Called right after a successful password unlock, with that password. Same steps as changePassword:
+   * every account's keys are decrypted with the session key, re-encrypted under the new key (fresh salt that names
+   * its iteration count), each one checked to open again, then accounts + salt are written in ONE set and the
+   * session key swapped. Anything unexpected and nothing is written: the old key and blobs stay exactly as they were
+   * and the next unlock tries again. Skipped with the USB security key on (its re-key has its own flow).
+   * Returns true only when the wallet was upgraded.
+   */
+  upgradeKdf = async (password: string): Promise<boolean> => {
+    try {
+      const { salt, accounts, keyRekey, usbSecurity } = await this.get(['salt', 'accounts', 'keyRekey', 'usbSecurity']);
+      if (!password || !isLegacySalt(salt) || keyRekey || usbSecurity?.enabled) return false;
+      const passKey = await this.getPassKey();
+      if (!passKey) return false;
+      // The session key must be this password's key, or we would re-encrypt under a key the user can't reproduce.
+      if ((await derivePassKey(password, salt as string, undefined)) !== passKey) return false;
+      const nextSalt = generateWalletSalt();
+      const newKey = await derivePassKey(password, nextSalt, undefined);
+      const next: Record<string, Account> = {};
+      for (const [id, acct] of Object.entries((accounts || {}) as Record<string, Account>)) {
+        if (!acct?.encryptedKeys) {
+          next[id] = acct;
+          continue;
+        }
+        const plain = await decrypt(acct.encryptedKeys, passKey);
+        JSON.parse(plain);
+        const sealed = await encrypt(plain, newKey);
+        if ((await decrypt(sealed, newKey)) !== plain) return false;
+        next[id] = { ...acct, encryptedKeys: sealed };
+      }
+      // Re-read just before writing: a change made meanwhile (new account, password change) wins, we retry later.
+      const now = await this.get(['salt', 'accounts', 'keyRekey']);
+      if (now.salt !== salt || now.keyRekey || JSON.stringify(now.accounts ?? {}) !== JSON.stringify(accounts ?? {})) {
+        return false;
+      }
+      // Recovery note first (one item, one write), then the swap, then clear the note.
+      await this.set({ kdfPending: { prevSalt: salt as string, salt: nextSalt } });
+      await this.set({ accounts: next, salt: nextSalt } as Partial<ChromeStorageObject>);
+      await this.setPassKey(newKey);
+      await this.set({ kdfPending: null }).catch(() => undefined);
+      return true;
+    } catch (err) {
+      console.warn('[ChromeStorageService] password key upgrade deferred:', err instanceof Error ? err.name : 'error');
+      return false;
+    }
   };
 
   /**
@@ -695,6 +743,42 @@ export class ChromeStorageService {
     // Once USB security is on every blob has been rewritten as v2 by the
     // re-key; the unauthenticated legacy path must not be reachable.
     if (usbSecurity?.enabled && !account.encryptedKeys.startsWith('v2:')) return false;
+    const ok = await this.tryPassword(password, salt, account, selectedAccount, usbSecurity, material);
+    if (ok || usbSecurity?.enabled) return ok;
+    return this.repairInterruptedKdfUpgrade(password, salt, account, selectedAccount);
+  };
+
+  /**
+   * An upgrade cut off between its two writes (phones: separate secure items) can leave the stored salt not matching
+   * the stored keys. Try the salts the upgrade noted; the one that opens the keys with this password becomes the salt.
+   */
+  private repairInterruptedKdfUpgrade = async (
+    password: string,
+    salt: string,
+    account: Account,
+    selectedAccount: string | undefined,
+  ): Promise<boolean> => {
+    const { kdfPending } = await this.get(['kdfPending']).catch(() => ({ kdfPending: undefined }));
+    if (!kdfPending) return false;
+    for (const candidate of [kdfPending.salt, kdfPending.prevSalt]) {
+      if (!candidate || candidate === salt) continue;
+      if (await this.tryPassword(password, candidate, account, selectedAccount, undefined, undefined)) {
+        await this.set({ salt: candidate, kdfPending: null } as Partial<ChromeStorageObject>);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  private tryPassword = async (
+    password: string,
+    salt: string,
+    account: Account,
+    selectedAccount: string | undefined,
+    usbSecurity: UsbSecurity | undefined,
+    material: UsbUnlockMaterial | undefined,
+  ): Promise<boolean> => {
+    if (!account.encryptedKeys) return false;
     try {
       const derivedKey = await derivePassKey(password, salt, usbSecurity, material);
       // Attempt decryption — throws if password is wrong

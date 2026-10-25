@@ -9,9 +9,14 @@ import type { HostOp, Sender, StorageArea, StorageChanges, ToEndpoint, ToHub } f
  * - storage.local is persisted in native secure storage (iOS Keychain,
  *   this-device-only and excluded from backups; Android Keystore-wrapped
  *   prefs) so the encrypted keystore survives WebView storage eviction.
- * - storage.session lives in the WebView's sessionStorage: it survives a
- *   location.reload() (as chrome.storage.session survives a popup reload) but
- *   is gone when the app process dies, matching "cleared on browser close".
+ * - storage.session on phones is mirrored to the WebView's sessionStorage: it
+ *   survives a location.reload() (as chrome.storage.session survives a popup
+ *   reload) and is gone when the app process dies.
+ * - storage.session on web and Desktop is memory only (`persistSession: false`).
+ *   A desktop browser writes sessionStorage to the profile on disk for session
+ *   restore, and the session holds the unlock key, so nothing from it may land
+ *   there. A reload asks for the one-tap unlock again; with auto-lock "Never"
+ *   the wallet stays open for the life of the page.
  */
 
 type Endpoint = { post: (json: string) => void; sender: Sender };
@@ -27,6 +32,27 @@ const LOCAL_PREFIX = 'chrome.storage.local:';
 const SESSION_KEY = 'chrome.storage.session';
 const NO_RECEIVER = 'Could not establish connection. Receiving end does not exist.';
 const PORT_CLOSED = 'The message port closed before a response was received.';
+
+export interface HubOptions {
+  /** Mirror storage.session to sessionStorage so it survives a reload. Phones only; see the note above. */
+  persistSession?: boolean;
+}
+
+/** Read the persisted session mirror, or drop it when this edition keeps the session in memory. */
+export const initialSession = (persist: boolean, store: Pick<Storage, 'getItem' | 'removeItem'>) => {
+  try {
+    if (!persist) {
+      // Older builds mirrored the session (unlock key included) here; remove it.
+      store.removeItem(SESSION_KEY);
+      return new Map<string, unknown>();
+    }
+    return new Map<string, unknown>(
+      Object.entries(JSON.parse(store.getItem(SESSION_KEY) ?? '{}') as Record<string, unknown>),
+    );
+  } catch {
+    return new Map<string, unknown>();
+  }
+};
 
 export type HostHandler = (op: HostOp, args: unknown[]) => Promise<unknown>;
 
@@ -79,9 +105,8 @@ export class Hub {
   private portOwners = new Map<string, string>();
   private nextHubReqId = 1;
   private local = new Map<string, unknown>();
-  private session = new Map<string, unknown>(
-    Object.entries(JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? '{}') as Record<string, unknown>),
-  );
+  private session: Map<string, unknown>;
+  private persistSession: boolean;
   private persistQueue: Promise<unknown> = Promise.resolve();
   private storageReady: Promise<void>;
   private backgroundReady: Promise<void>;
@@ -90,7 +115,11 @@ export class Hub {
   constructor(
     private host: HostHandler,
     private backend: LocalBackend = nativeLocalBackend,
+    options: HubOptions = {},
   ) {
+    this.persistSession = options.persistSession ?? true;
+    this.session = initialSession(this.persistSession, sessionStorage);
+    this.markUnlocked();
     this.storageReady = this.loadLocal();
     this.backgroundReady = new Promise((resolve) => (this.resolveBackgroundReady = resolve));
   }
@@ -226,7 +255,8 @@ export class Hub {
       if (msg.area === 'local' && changes) {
         await this.persist(Object.entries(changes).map(([key, change]) => [key, change.newValue]));
       } else if (changes) {
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify(Object.fromEntries(this.session)));
+        if (this.persistSession) sessionStorage.setItem(SESSION_KEY, JSON.stringify(Object.fromEntries(this.session)));
+        this.markUnlocked();
       }
       this.send(from, { t: 'storageResult', reqId: msg.reqId, result });
       // Chrome fires onChanged in every context, the writer included.
@@ -235,6 +265,15 @@ export class Hub {
       }
     } catch (error) {
       this.send(from, { t: 'storageResult', reqId: msg.reqId, error: String(error) });
+    }
+  }
+
+  /** A yes/no (never the key) for the web build check, which must not reload an unlocked page by itself. */
+  private markUnlocked() {
+    try {
+      (globalThis as { __bwxUnlocked?: boolean }).__bwxUnlocked = this.session.has('passKey');
+    } catch {
+      /* not in a page */
     }
   }
 

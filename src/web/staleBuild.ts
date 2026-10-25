@@ -8,8 +8,8 @@
  * to the tab: the page flashed, the scroll and the open view were lost and the stream player stopped.
  *
  * Now focus only *checks* (at most once a minute). A newer build is applied on the next in-app navigation, which
- * already changes the whole view, and never while audio or video is playing. The keys stay encrypted in localStorage
- * and the unlock session in sessionStorage, both survive that load.
+ * already changes the whole view, and never while audio or video is playing or the wallet is unlocked: the unlock
+ * key is held in memory only (src/mobile/hub.ts), so a load would lock the wallet. The pill still offers the update.
  *
  * A home-screen web app (iOS standalone) can sit on one view for days and resumes without a navigation, so it never
  * reached that load (owner, 19 Oct 2026: chat "wouldn't connect" on an old build). So a found build is also offered
@@ -26,6 +26,8 @@ export type StaleEnv = {
   now: () => number;
   /** Offer the newer build: a quiet "tap to update" pill. Called once, when the check first finds one. */
   offer?: () => void;
+  /** True while the wallet is unlocked; a navigation then never swaps in the new build by itself. */
+  unlocked?: () => boolean;
 };
 
 export function installStaleBuildCheck(env?: StaleEnv): { check: () => Promise<void>; stale: () => boolean } | null {
@@ -34,6 +36,7 @@ export function installStaleBuildCheck(env?: StaleEnv): { check: () => Promise<v
     win: window,
     fetchText: (u) => fetch(u, { cache: 'no-store' }).then((r) => (r.ok ? r.text() : '')),
     now: () => Date.now(),
+    unlocked: () => (window as unknown as { __bwxUnlocked?: boolean }).__bwxUnlocked === true,
     offer: () => {
       if (document.getElementById('bwx-update')) return;
       const b = document.createElement('button');
@@ -79,7 +82,7 @@ export function installStaleBuildCheck(env?: StaleEnv): { check: () => Promise<v
   const push = e.win.history.pushState;
   e.win.history.pushState = function (this: History, data: unknown, unused: string, url?: string | URL | null) {
     // A newer build is out: load it as this navigation's page instead of swapping the view in place.
-    if (stale && url != null && !playing()) {
+    if (stale && url != null && !playing() && !(e.unlocked && e.unlocked())) {
       e.win.location.assign(String(url));
       return;
     }

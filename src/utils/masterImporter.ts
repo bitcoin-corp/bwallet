@@ -67,7 +67,7 @@ export const restoreMasterFromZip = async (
       throw new Error('Invalid backup file: chromeStorage.json is unreadable');
     }
     if (typeof salt !== 'string' || !salt) throw new Error('Invalid backup file: missing salt');
-    const passwordKey = derivePasswordKey(password, salt);
+    const passwordKey = await derivePasswordKey(password, salt);
 
     if (isLegacy) {
       // Legacy backup — only chromeStorage.json matters

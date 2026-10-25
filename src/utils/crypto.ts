@@ -3,24 +3,71 @@ import CryptoJS from 'crypto-js';
 
 const V2_PREFIX = 'v2:';
 
-// --- Key derivation (unchanged — changing this would break existing passwords) ---
+// --- Key derivation ---
+//
+// The wallet salt carries its own PBKDF2 iteration count, so every place that already stores or copies the salt
+// (storage, master backups, USB restore.json) carries the count with it and needs no format change:
+//   untagged 32-hex salt          → legacy 100,000 iterations, crypto-js, exactly as before (never changes)
+//   "pbkdf2:<iterations>:<hex>"   → PBKDF2-SHA256 at that count via Web Crypto (new wallets + upgraded ones: 600,000)
+// Old wallets are upgraded after the next password unlock (ChromeStorageService.upgradeKdf).
 
-export const deriveKey = (password: string, salt: string) => {
-  const key = CryptoJS.PBKDF2(password, salt, {
-    keySize: 256 / 32,
-    iterations: 100000,
-    // crypto-js 4.2 defaults to SHA-256 but 4.1.x defaulted to SHA-1 and the
-    // dependency range spans both. Pin it so a resolver change can't silently
-    // invalidate every stored password.
-    hasher: CryptoJS.algo.SHA256,
-  });
+export const LEGACY_KDF_ITERATIONS = 100_000;
+export const KDF_ITERATIONS = 600_000;
+const MAX_KDF_ITERATIONS = 10_000_000;
+const TAGGED_SALT = /^pbkdf2:(\d{6,8}):([0-9a-f]{16,128})$/;
 
-  return key.toString(CryptoJS.enc.Hex);
+/** The iteration count a stored salt asks for, or null when the salt is not one we wrote. */
+export const saltIterations = (salt: string): number | null => {
+  if (typeof salt !== 'string') return null;
+  const m = TAGGED_SALT.exec(salt);
+  if (!m) return /^[0-9a-f]{16,128}$/.test(salt) ? LEGACY_KDF_ITERATIONS : null;
+  const n = Number(m[1]);
+  return n >= LEGACY_KDF_ITERATIONS && n <= MAX_KDF_ITERATIONS ? n : null;
+};
+
+/** True for a salt still on the old 100k derivation (upgrade it after the next password unlock). */
+export const isLegacySalt = (salt: string | undefined): boolean =>
+  !!salt && saltIterations(salt) === LEGACY_KDF_ITERATIONS && !TAGGED_SALT.test(salt);
+
+export const deriveKey = async (password: string, salt: string): Promise<string> => {
+  const m = TAGGED_SALT.exec(salt);
+  if (!m) {
+    // Legacy: unchanged, or every existing password would stop working.
+    const key = CryptoJS.PBKDF2(password, salt, {
+      keySize: 256 / 32,
+      iterations: LEGACY_KDF_ITERATIONS,
+      // crypto-js 4.2 defaults to SHA-256 but 4.1.x defaulted to SHA-1 and the
+      // dependency range spans both. Pin it so a resolver change can't silently
+      // invalidate every stored password.
+      hasher: CryptoJS.algo.SHA256,
+    });
+    return key.toString(CryptoJS.enc.Hex);
+  }
+  const iterations = saltIterations(salt);
+  if (!iterations) throw new Error('Unsupported key derivation settings');
+  return pbkdf2Hex(password, m[2], iterations);
+};
+
+/** PBKDF2-SHA256, 32 bytes, hex. Password and salt string are UTF-8, the same inputs crypto-js uses. */
+export const pbkdf2Hex = async (password: string, salt: string, iterations: number): Promise<string> => {
+  const enc = new TextEncoder();
+  const base = await crypto.subtle.importKey('raw', enc.encode(password) as BufferSource, 'PBKDF2', false, [
+    'deriveBits',
+  ]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(salt) as BufferSource, iterations },
+    base,
+    256,
+  );
+  return bytesToHex(new Uint8Array(bits));
 };
 
 export const generateRandomSalt = (length = 16) => {
   return bytesToHex(crypto.getRandomValues(new Uint8Array(length)));
 };
+
+/** A fresh wallet salt at the current iteration count. */
+export const generateWalletSalt = (iterations = KDF_ITERATIONS) => `pbkdf2:${iterations}:${generateRandomSalt()}`;
 
 // --- Hex conversion helpers ---
 

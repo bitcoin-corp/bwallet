@@ -27,7 +27,7 @@ export const DisableFlow = ({ usbSecurity }: { usbSecurity: UsbSecurity }) => {
     }
     const { salt } = chromeStorageService.getCurrentAccountObject();
     if (!salt) return 'Wallet salt is missing';
-    const passwordKey = derivePasswordKey(password, salt);
+    const passwordKey = await derivePasswordKey(password, salt);
     // Which keys can be reached now, before the handles go: their backup
     // folders are erased below. Keys not inserted keep theirs.
     const { present } = await listPresentSticks(usbSecurity);

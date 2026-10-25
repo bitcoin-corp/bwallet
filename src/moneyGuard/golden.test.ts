@@ -52,8 +52,11 @@ describe('money guard: addresses from a seed phrase', () => {
   });
 });
 
+// Legacy (untagged) salt: the 100k derivation every existing wallet uses must never change.
+const goldenPassKey = await deriveKey('correct horse battery staple', '00112233445566778899aabbccddeeff');
+
 describe('money guard: password keystore', () => {
-  const passKey = deriveKey('correct horse battery staple', '00112233445566778899aabbccddeeff');
+  const passKey = goldenPassKey;
   test('password → key derivation is unchanged', () => {
     expect(passKey).toBe('7f795f6b204d36c5d1749d64fd20167c1273cf892a6bb6969b2fd83700308801');
   });

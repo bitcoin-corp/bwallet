@@ -23,7 +23,7 @@ export interface UsbUnlockMaterial {
 }
 
 /** Password-only key. Used for backups (which never depend on a drive) and as the input to the combined key. */
-export const derivePasswordKey = (password: string, salt: string): string => deriveKey(password, salt);
+export const derivePasswordKey = (password: string, salt: string): Promise<string> => deriveKey(password, salt);
 
 export const derivePassKey = async (
   password: string,
@@ -31,7 +31,7 @@ export const derivePassKey = async (
   usbSecurity: UsbSecurity | undefined,
   material?: UsbUnlockMaterial,
 ): Promise<string> => {
-  const pbkdf = derivePasswordKey(password, salt);
+  const pbkdf = await derivePasswordKey(password, salt);
   if (!usbSecurity?.enabled) return pbkdf;
   if (!material?.master) throw new UsbKeyRequiredError();
   return combinePassKey(pbkdf, material.master);

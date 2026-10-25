@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { installStaleBuildCheck, type StaleEnv } from './staleBuild';
 
-const setup = (live: string, opts: { playing?: boolean } = {}) => {
+const setup = (live: string, opts: { playing?: boolean; unlocked?: { v: boolean } } = {}) => {
   const listeners: Record<string, (() => void)[]> = {};
   const on = (k: string, f: () => void) => (listeners[k] ||= []).push(f);
   let t = 1_000_000;
@@ -28,6 +28,7 @@ const setup = (live: string, opts: { playing?: boolean } = {}) => {
     },
     now: () => t,
     offer: () => void offers.push(t),
+    unlocked: opts.unlocked ? () => opts.unlocked!.v : undefined,
   };
   const api = installStaleBuildCheck(env)!;
   const fire = async (k: string) => {
@@ -66,6 +67,19 @@ describe('stale build check', () => {
     s.media.paused = true;
     s.env.win.history.pushState(null, '', '/feed');
     expect(s.assigned).toEqual(['/feed']);
+  });
+
+  test('never swaps the build in on navigation while the wallet is unlocked (the key is memory-only)', async () => {
+    const unlocked = { v: true };
+    const s = setup('main-NEW.js', { unlocked });
+    await s.fire('focus');
+    s.env.win.history.pushState(null, '', '/feed');
+    expect(s.assigned).toEqual([]);
+    expect(s.pushed).toEqual(['/feed']);
+    expect(s.offers.length).toBe(1);
+    unlocked.v = false;
+    s.env.win.history.pushState(null, '', '/home');
+    expect(s.assigned).toEqual(['/home']);
   });
 
   test('same build: navigation stays in place', async () => {

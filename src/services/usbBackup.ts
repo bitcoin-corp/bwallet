@@ -51,7 +51,7 @@ import {
   USB_FILE_DIR,
   verifyMasterCheck,
 } from '../utils/usbCrypto';
-import { bytesToHex } from '../utils/crypto';
+import { bytesToHex, saltIterations } from '../utils/crypto';
 import { derivePasswordKey } from './passKey';
 
 export const USB_BACKUP_DIR = 'backup';
@@ -857,7 +857,7 @@ const parseRestoreJson = (raw: Uint8Array): RestoreJson => {
     );
   }
   if (r.chain !== 'main') throw new Error('Unrecognised backup format');
-  if (!isHex(r.salt)) throw new Error(UNREADABLE);
+  if (typeof r.salt !== 'string' || saltIterations(r.salt) === null) throw new Error(UNREADABLE);
   if (!Array.isArray(r.sticks) || r.sticks.length === 0 || r.sticks.length > 64) throw new Error(UNREADABLE);
   const sticks = (r.sticks as unknown[]).map((s) => {
     const e = (typeof s === 'object' && s !== null ? s : {}) as Record<string, unknown>;
@@ -895,7 +895,7 @@ export const readUsbBackup = async (drive: FileSystemDirectoryHandle, password: 
   } catch {
     throw new Error('This USB key does not match the backup');
   }
-  const pbkdf = derivePasswordKey(password, restore.salt);
+  const pbkdf = await derivePasswordKey(password, restore.salt);
   const combined = await combinePassKey(pbkdf, master);
   const key = await deriveBackupKey(combined, stick.id);
 

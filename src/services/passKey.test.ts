@@ -14,7 +14,7 @@ const usbOn = async (master: string): Promise<UsbSecurity> => ({
 describe('derivePassKey', () => {
   test('with USB security off it is exactly the password key', async () => {
     const key = await derivePassKey('pw', 'salt', undefined);
-    expect(key).toBe(derivePasswordKey('pw', 'salt'));
+    expect(key).toBe(await derivePasswordKey('pw', 'salt'));
   });
 
   test('with USB security on it refuses without the master factor', async () => {
@@ -26,7 +26,7 @@ describe('derivePassKey', () => {
     const master = newMaster();
     const usb = await usbOn(master);
     const key = await derivePassKey('pw', 'salt', usb, { master });
-    expect(key).toBe(await combinePassKey(derivePasswordKey('pw', 'salt'), master));
-    expect(key).not.toBe(derivePasswordKey('pw', 'salt'));
+    expect(key).toBe(await combinePassKey(await derivePasswordKey('pw', 'salt'), master));
+    expect(key).not.toBe(await derivePasswordKey('pw', 'salt'));
   });
 });

@@ -46,7 +46,7 @@ export const RotateFlow = ({ usbSecurity }: { usbSecurity: UsbSecurity }) => {
     if (!(await chromeStorageService.verifyPassword(password, { master: oldMaster }))) return 'Incorrect password';
     const { salt } = chromeStorageService.getCurrentAccountObject();
     if (!salt) return 'Wallet salt is missing';
-    const passwordKey = derivePasswordKey(password, salt);
+    const passwordKey = await derivePasswordKey(password, salt);
     const wrappedMaster = await wrapMaster(master, drive.secret, drive.id);
     const masterCheck = await computeMasterCheck(master);
     const next: UsbSecurity = {

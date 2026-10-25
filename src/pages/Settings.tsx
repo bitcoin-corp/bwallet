@@ -873,7 +873,7 @@ export const Settings = () => {
     // Derive here: runtime messages fan out to every open extension page, so
     // the plaintext password never leaves this one. The worker only needs the key.
     const { salt } = chromeStorageService.getCurrentAccountObject();
-    const passwordKey = password && salt ? derivePasswordKey(password, salt) : undefined;
+    const passwordKey = password && salt ? await derivePasswordKey(password, salt) : undefined;
     // Populate overlay with all accounts
     const allAccounts = chromeStorageService.getAllAccounts();
     setBackupAccounts(

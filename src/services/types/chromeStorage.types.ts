@@ -190,6 +190,12 @@ export interface ChromeStorageObject {
   /** null is written by the re-key commit itself so the marker clears in the same set. */
   keyRekey?: KeyRekeyMarker | null;
   keyRecovery?: KeyRecovery | null;
+  /**
+   * Written before the one-time password-key upgrade (100k → 600k) and cleared after it. Phones store `accounts`
+   * and `salt` as separate secure items, so an app killed between the two writes could pair new blobs with the old
+   * salt; unlock then finds whichever of these salts opens the stored keys and repairs `salt`.
+   */
+  kdfPending?: { prevSalt: string; salt: string } | null;
   /** identityAddress → last USB backup. Written by the popup's sync loop. */
   usbBackupStatus?: Record<string, UsbBackupAccountStatus>;
 }

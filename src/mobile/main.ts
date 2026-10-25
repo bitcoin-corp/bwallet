@@ -52,7 +52,10 @@ const defineChrome = (target: any, chrome: unknown) =>
   Object.defineProperty(target, 'chrome', { value: chrome, writable: true, configurable: true });
 
 // Desktop (Tauri): storage.local lives in an owner-only file on the Rust side, not in the webview (desktop/storage.ts).
-const hub = new Hub(handleHostOp, IS_TAURI ? tauriLocalBackend(tauriInvoke) : undefined);
+// Web + Desktop keep storage.session (the unlock key) in memory only; phones mirror it to the in-process WebView.
+const hub = new Hub(handleHostOp, IS_TAURI ? tauriLocalBackend(tauriInvoke) : undefined, {
+  persistSession: Capacitor.isNativePlatform(),
+});
 
 // Frames (overlay iframes) register here; swept when their overlay closes.
 const frames = new Map<string, Window>();

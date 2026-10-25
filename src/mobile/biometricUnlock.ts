@@ -212,6 +212,16 @@ const verify = async (reason: string): Promise<boolean> => {
 
 // Platform hooks -------------------------------------------------------------
 
+const markAllForReenrol = async () => {
+  const { accounts } = await chromeApi.storage.local.get('accounts');
+  for (const id of Object.keys(accounts ?? {})) {
+    if (!(await flag.get(ENROLLED(id)))) continue;
+    await YoursNative.biometricRemove({ key: SEALED(id) }).catch(() => undefined);
+    await flag.clear(ENROLLED(id));
+    await flag.set(REENROL(id));
+  }
+};
+
 const reenrolNotice = () => `${capitalised()} needs setting up again: unlock with your password once`;
 
 const enrolmentState = async () => {
@@ -240,6 +250,17 @@ export const initBiometricUnlock = async (chrome: any): Promise<PlatformHooks> =
     // Wallet reset / sign-out: nothing sealed should outlive the accounts.
     if (area === 'local' && 'accounts' in changes && changes.accounts.newValue === undefined) {
       void YoursNative.biometricRemove({ key: '' });
+    }
+    // A new password key (password change, or the one-time 600k upgrade after a password unlock): the sealed key
+    // no longer opens the wallet. Mark it for re-enrolment now, so the wallet-ready hook sets it up again with just
+    // the system prompt instead of failing at the next Face ID unlock.
+    if (
+      area === 'local' &&
+      'salt' in changes &&
+      changes.salt.oldValue &&
+      changes.salt.newValue !== changes.salt.oldValue
+    ) {
+      void markAllForReenrol();
     }
   });
 

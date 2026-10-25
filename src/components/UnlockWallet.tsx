@@ -194,6 +194,8 @@ export const UnlockWallet = (props: UnlockWalletProps) => {
       // can flip the popup to unlocked, so the gate never sees an unlocked
       // wallet without the marker.
       if (unlockedViaRecovery) await startUsbRecoverySession();
+      // One-time move of an old wallet to the stronger password key (600k PBKDF2). Best effort, never blocks unlock.
+      if (!usbEnabled) await chromeStorageService.upgradeKdf(password).catch(() => false);
       const timestamp = Date.now();
       await chromeStorageService.update({ lastActiveTime: timestamp });
 

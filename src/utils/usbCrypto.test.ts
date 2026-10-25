@@ -62,7 +62,7 @@ describe('master check', () => {
 
 describe('combined passKey', () => {
   test('is deterministic, 32 bytes, and differs from pbkdf and per master', async () => {
-    const pbkdf = deriveKey('correct horse', 'salt');
+    const pbkdf = await deriveKey('correct horse', 'salt');
     const master = newMaster();
     const a = await combinePassKey(pbkdf, master);
     const b = await combinePassKey(pbkdf, master);
@@ -70,11 +70,11 @@ describe('combined passKey', () => {
     expect(a).toHaveLength(64);
     expect(a).not.toBe(pbkdf);
     expect(await combinePassKey(pbkdf, newMaster())).not.toBe(a);
-    expect(await combinePassKey(deriveKey('other', 'salt'), master)).not.toBe(a);
+    expect(await combinePassKey(await deriveKey('other', 'salt'), master)).not.toBe(a);
   });
 
   test('works as an AES-GCM key with the existing encrypt/decrypt', async () => {
-    const key = await combinePassKey(deriveKey('pw', 'salt'), newMaster());
+    const key = await combinePassKey(await deriveKey('pw', 'salt'), newMaster());
     const blob = await encrypt('{"hello":"world"}', key);
     expect(await decrypt(blob, key)).toBe('{"hello":"world"}');
   });
@@ -146,12 +146,12 @@ describe('backup bytes', () => {
     'round-trips under the backup key and fails under another',
     async () => {
       const { deriveBackupKey, encryptBytes, decryptBytes, bytesToBase64, base64ToBytes } = await import('./usbCrypto');
-      const key = await deriveBackupKey(deriveKey('pw', 'salt'), 'stick-a');
+      const key = await deriveBackupKey(await deriveKey('pw', 'salt'), 'stick-a');
       const plain = new TextEncoder().encode('hello chunk');
       const enc = await encryptBytes(key, plain);
       expect(enc.length).toBe(12 + plain.length + 16);
       expect(new TextDecoder().decode(await decryptBytes(key, enc))).toBe('hello chunk');
-      const other = await deriveBackupKey(deriveKey('pw2', 'salt'), 'stick-a');
+      const other = await deriveBackupKey(await deriveKey('pw2', 'salt'), 'stick-a');
       await expect(decryptBytes(other, enc)).rejects.toBeDefined();
       expect(base64ToBytes(bytesToBase64(enc))).toEqual(enc);
     },
@@ -162,8 +162,8 @@ describe('backup bytes', () => {
     'the key is per drive: the same passKey on another stick id does not open the bytes',
     async () => {
       const { deriveBackupKey, encryptBytes, decryptBytes } = await import('./usbCrypto');
-      const a = await deriveBackupKey(deriveKey('pw', 'salt'), 'stick-a');
-      const b = await deriveBackupKey(deriveKey('pw', 'salt'), 'stick-b');
+      const a = await deriveBackupKey(await deriveKey('pw', 'salt'), 'stick-a');
+      const b = await deriveBackupKey(await deriveKey('pw', 'salt'), 'stick-b');
       const enc = await encryptBytes(a, new TextEncoder().encode('x'));
       await expect(decryptBytes(b, enc)).rejects.toBeDefined();
     },
@@ -174,7 +174,7 @@ describe('backup bytes', () => {
     'additional data binds a file to its place: wrong role, folder or index fails',
     async () => {
       const { deriveBackupKey, encryptBytes, decryptBytes } = await import('./usbCrypto');
-      const key = await deriveBackupKey(deriveKey('pw', 'salt'), 'stick-a');
+      const key = await deriveBackupKey(await deriveKey('pw', 'salt'), 'stick-a');
       const plain = new TextEncoder().encode('chunk 3 of dir d1');
       const enc = await encryptBytes(key, plain, 'v3|stick-a|chunk|d1|3');
       expect(await decryptBytes(key, enc, 'v3|stick-a|chunk|d1|3')).toEqual(plain);

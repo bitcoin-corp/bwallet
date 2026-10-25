@@ -23,7 +23,7 @@ export const createBackupFile = async (cs: ChromeStorageService, password: strin
   if (!password || !(await cs.verifyPassword(password))) throw new WrongPasswordError();
   const { salt, account } = cs.getCurrentAccountObject();
   // Derived here: runtime messages fan out to every page, so the password itself never leaves this one.
-  const passwordKey = salt ? derivePasswordKey(password, salt) : undefined;
+  const passwordKey = salt ? await derivePasswordKey(password, salt) : undefined;
   const res = (await chrome.runtime.sendMessage({ action: 'MASTER_BACKUP', passwordKey })) as
     | { success?: boolean; data?: string; error?: string }
     | undefined;
