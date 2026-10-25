@@ -12,6 +12,10 @@
           "value": "frame-ancestors 'none'"
         },
         {
+          "key": "Content-Security-Policy-Report-Only",
+          "value": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-GVaPEG+k3MaXcPb+brW1oSQsYthtjdO6bY9GACN1ees=' 'sha256-NEjifCx0vYfOfWFfLbuRcAYvLmtBIqZnVhbcKdeN7SA=' 'sha256-Ouu1scoJpxOeUGTJKkC/KnSlXJYDzWGhF8/AdRto4mo=' 'sha256-m0ZMKsN5TKKoJ2/vfMj8eFNrDZ+3GKcpnWNGcqHoD/k=' 'sha256-vCClR/McaW27cpASee2r7K9bgOWl82S/Hdm1tPCWW5I='; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; connect-src 'self' https: wss:; img-src 'self' https: data: blob:; media-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; frame-src https:; worker-src 'self' blob:; manifest-src 'self'"
+        },
+        {
           "key": "Referrer-Policy",
           "value": "no-referrer"
         },
