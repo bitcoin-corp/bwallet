@@ -669,13 +669,21 @@ export function guardSiteTokens<T extends object>(wallet: T, deps: SiteTokenDeps
           subtitle: 'Comes to your wallet',
           variant: 'token',
         });
+      else if (t)
+        // Tokens going anywhere but the wallet: the wallet writes the line (amount, token, address). A site's
+        // outputDescription could otherwise call it "change back to you" (bridge audit 25 Oct 2026).
+        panels.push({
+          title: `${t.amt.toLocaleString()} ${short(t.id)} leave to ${short(t.address)}`,
+          subtitle: `Site's label: ${String(o.outputDescription ?? '').slice(0, 60) || 'none'}`,
+          subtitleCopy: t.address,
+          variant: 'token',
+          tone: 'danger',
+        });
       else {
         const p2pkh = /^76a914([0-9a-f]{40})88ac$/i.exec(hex);
         const to = p2pkh
           ? Utils.toBase58Check(Utils.toArray(p2pkh[1], 'hex'), [0])
-          : t
-            ? `tokens to ${t.address}`
-            : 'a script';
+          : 'a script';
         panels.push({
           title: o.outputDescription?.slice(0, 80) || 'Output',
           subtitle: `To ${short(to)}`,

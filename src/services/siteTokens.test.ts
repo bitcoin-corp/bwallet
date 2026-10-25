@@ -373,6 +373,22 @@ describe('site tokens: selling', () => {
     expect(unlock.unlockingScript.endsWith(coin.publicKey)).toBe(true);
   });
 
+  test('ATTACK: a site cannot label tokens it sends elsewhere as change back to you', async () => {
+    const { wallet, hold, prompts } = setup();
+    const coin = await hold(TOKEN, 500n);
+    const args = sellArgs(coin.outpoint);
+    args.outputs.push({
+      lockingScript: bsv21(TOKEN, 400n, '1BoatSLRHtKNngkdXEeobR76b53LETtpyT').toHex(),
+      satoshis: 1,
+      outputDescription: 'Change back to you',
+    });
+    await wallet.createAction(args, SITE);
+    const p = JSON.stringify(prompts[0]);
+    expect(p).toContain('400 ');
+    expect(p).toContain(' leave to ');
+    expect(p).not.toContain('"title":"Change back to you"');
+  });
+
   test('signAndProcess left on: the wallet signs and sends in one go', async () => {
     const { wallet, hold, signed } = setup();
     const coin = await hold(TOKEN, 5n);
