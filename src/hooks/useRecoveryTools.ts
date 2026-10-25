@@ -17,8 +17,8 @@ export const useRecoveryTools = () => {
   const missingTokenValid = /^[0-9a-f]{64}[._]\d+$/i.test(missingTokenId.trim());
 
   type StepResult = { ok: boolean; text: string };
-  const handleRepairSync = async (tokenIds?: string[]): Promise<StepResult> => {
-    if (repairOutcome === 'running') return { ok: false, text: 'A repair is already running' };
+  const handleRepairSync = async (tokenIds?: string[]) => {
+    if (repairOutcome === 'running') return;
     // Once a run starts, the overlay shows its result; only a refusal before
     // that (no remote, wallet unavailable) needs a snackbar.
     const before = repairRecord?.startedAt;
@@ -35,20 +35,16 @@ export const useRecoveryTools = () => {
         ].filter(Boolean);
         const text = parts.join(', ');
         addSnackbar(text.charAt(0).toUpperCase() + text.slice(1), 'success');
-        if (response?.success) return { ok: true, text: text.charAt(0).toUpperCase() + text.slice(1) };
       } else if (response?.success && response.data?.noRemote) {
         addSnackbar('Tokens checked: nothing to fix', 'success');
-        return { ok: true, text: 'Tokens checked: nothing to fix' };
       }
-      if (response?.success) return { ok: true, text: 'Storage checked' };
+      if (response?.success) return;
       const after = (await chrome.storage.local.get(RECONCILE_RECORD_KEY))[RECONCILE_RECORD_KEY] as
         | ReconcileRecord
         | undefined;
       if (after?.startedAt === before) addSnackbar(response?.error ?? 'Repair failed', 'error');
-      return { ok: false, text: response?.error ?? 'Repair failed' };
     } catch (error) {
       addSnackbar(error instanceof Error ? error.message : 'Repair failed', 'error');
-      return { ok: false, text: error instanceof Error ? error.message : 'Repair failed' };
     }
   };
 

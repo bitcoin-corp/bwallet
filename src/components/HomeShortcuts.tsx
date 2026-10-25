@@ -13,7 +13,6 @@ type Step = { key: string; title: string; state: StepState; text: string };
 
 const STEPS: { key: string; title: string }[] = [
   { key: 'sync', title: 'Sync now' },
-  { key: 'repair', title: 'Repair Sync' },
   { key: 'resync', title: 'Resync coins' },
   { key: 'missing', title: 'Find missing coins' },
 ];
@@ -22,8 +21,8 @@ const RED = '#E5484D';
 
 /**
  * Wallet home, at the very bottom (owner, 25 Oct 2026): one red DON'T PANIC! button. It runs the safe recovery
- * routines in order (Sync now → Repair Sync → Resync coins → Find missing coins, scan only)
- * with a checklist, carrying on past a failed step. It never sends or moves money, never changes which store is active (so no Find mined payments, which can), and
+ * routines in order (Sync now → Resync coins → Find missing coins, scan only)
+ * with a checklist, carrying on past a failed step. It never sends or moves money, never changes which store is active (so no Find mined payments, which can, and no Repair Sync, which can resend or drop token outputs), and
  * never runs Restore from backup and never skips a confirm:
  * coins found by the scan wait for the usual "Add it back" sheet. Recover by txid needs a transaction ID, so it is
  * offered after the run. Every tool also lives on its own in Settings › Storage and Troubleshooting (shared code:
@@ -58,7 +57,6 @@ export const HomeShortcuts = () => {
       const r = await sendMessageAsync<SyncAnswer>({ action: 'STORAGE_SYNC_BACKUPS' });
       return r?.success ? { ok: true, text: 'Synced · just now' } : { ok: false, text: r?.error ?? 'Sync failed' };
     });
-    await attempt('repair', () => t.handleRepairSync());
     await attempt('resync', () => t.handleResyncCoins());
     // Scan only (read only); any restore waits for the user's "Add it back" below.
     await attempt('missing', async () => {
