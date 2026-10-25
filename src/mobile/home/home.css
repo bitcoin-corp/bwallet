@@ -399,7 +399,7 @@ html:not(.ww-on) .pt-14.pb-16.overflow-y-auto > .bw-home .bw-home-cell-askB {
   order: 10;
   margin-bottom: 16px;
 }
-/* DON'T PANIC! button: the very bottom of the wallet home, under Ask b (owner, 25 Oct 2026). */
+/* REFRESH WALLET button: the very bottom of the wallet home, under Ask b (owner, 25 Oct 2026). */
 html:not(.ww-on) .pt-14.pb-16.overflow-y-auto > .bw-home-shortcuts {
   order: 999;
 }

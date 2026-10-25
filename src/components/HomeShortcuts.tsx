@@ -18,10 +18,11 @@ const STEPS: { key: string; title: string }[] = [
   { key: 'missing', title: 'Find missing coins' },
 ];
 
-const RED = '#E5484D';
+// Green with white text, AA at any size (owner, 25 Oct 2026: green, "REFRESH WALLET", was a red DON'T PANIC!).
+const GREEN = '#15803D';
 
 /**
- * Wallet home, at the very bottom (owner, 25 Oct 2026): one red DON'T PANIC! button. It runs the safe recovery
+ * Wallet home, at the very bottom (owner, 25 Oct 2026): one green REFRESH WALLET button. It runs the safe recovery
  * routines in order (Sync now → Resync coins → Find missing coins, scan only)
  * with a checklist, carrying on past a failed step. It never sends or moves money, never changes which store is active (so no Find mined payments, which can, and no Repair Sync, which can resend or drop token outputs), and
  * never runs Restore from backup and never skips a confirm:
@@ -83,9 +84,9 @@ export const HomeShortcuts = () => {
         onClick={() => void run()}
         disabled={running}
         className="w-full rounded-xl py-4 text-xl font-bold tracking-wide"
-        style={{ background: RED, color: '#FFFFFF', opacity: running ? 0.8 : 1 }}
+        style={{ background: GREEN, color: '#FFFFFF', opacity: running ? 0.8 : 1 }}
       >
-        {running ? 'Checking everything…' : 'DON’T PANIC!'}
+        {running ? 'Refreshing…' : 'REFRESH WALLET'}
       </button>
       {!steps && (
         <p className="text-[11px] text-center" style={{ color: '#D0D5DD' }}>
@@ -171,7 +172,7 @@ export const HomeShortcuts = () => {
           </div>
         </div>
       )}
-      {/* The last thing on the home (owner, 25 Oct 2026): nothing scrolls past DON'T PANIC but the version. */}
+      {/* The last thing on the home (owner, 25 Oct 2026): nothing scrolls past REFRESH WALLET but the version. */}
       <VersionLabel className="pt-2 text-center" />
     </div>
   );
