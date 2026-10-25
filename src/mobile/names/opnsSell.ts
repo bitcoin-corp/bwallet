@@ -2,6 +2,7 @@ import type { WalletOutput } from '@bsv/sdk';
 import { fmtSats, fmtUsd, satsToUsd, usdToSats } from '../money/money';
 import type { Fetch } from './names';
 import type { KV } from './opnsBatch';
+import { opnsNameOf } from './opnsName';
 import { nameTierUsd } from './store/tiers';
 
 /**
@@ -55,7 +56,7 @@ const tagValue = (o: WalletOutput, prefix: string) => o.tags?.find((t) => t.star
 export const ownedForSale = (outputs: WalletOutput[]): OwnedForSale[] => {
   const byName = new Map<string, OwnedForSale>();
   for (const o of outputs) {
-    const name = tagValue(o, 'name:');
+    const name = opnsNameOf(o);
     if (!name) continue;
     const listed = !!o.tags?.some((t) => ORDLOCK_TAGS.includes(t));
     const price = Number(tagValue(o, 'price:'));

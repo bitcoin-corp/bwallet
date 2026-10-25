@@ -542,6 +542,7 @@ const DetailPanel = ({
             url={m.url}
             fallback={m.name}
             held={!it.pending}
+            outpoint={it.outpoint}
             onSend={it.listed || it.legacyListing ? undefined : () => setSending(true)}
           />
         )}

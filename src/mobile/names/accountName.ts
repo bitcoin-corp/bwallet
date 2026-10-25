@@ -1,6 +1,7 @@
 import { getProfile, listOpns, resolveBapId, type OneSatContext } from '@1sat/actions';
 import { PublicKey, type WalletOutput } from '@bsv/sdk';
 import { getMyName, setMyName } from './myName';
+import { opnsNameOf } from './opnsName';
 import { bindMyNames, collectPaymailInbox, lookupPaymail, paymailEnabled } from './paymail';
 import { syncBchatHandle } from './bchatHandle';
 import { requestBalanceRefresh } from '../../hooks/balanceRefresh';
@@ -90,13 +91,12 @@ export const pickName = (owned: OwnedName[], cached: string): string => {
   return '';
 };
 
-const nameOf = (o: WalletOutput) => o.tags?.find((t) => t.startsWith('name:'))?.slice(5);
 const idOf = (o: WalletOutput) => o.tags?.find((t) => t.startsWith('id:'))?.slice(3) ?? o.outpoint;
 
 export const ownedFromOutputs = (outputs: WalletOutput[]): OwnedName[] => {
   const byName = new Map<string, OwnedName>();
   for (const o of outputs) {
-    const name = nameOf(o);
+    const name = opnsNameOf(o);
     if (!name) continue;
     const published = !!o.tags?.includes('opns:published');
     const prev = byName.get(name);

@@ -324,6 +324,7 @@ export const NftDetail = ({
             url={item.url}
             fallback={item.name}
             held={!pending && onChain !== false}
+            outpoint={item.output.outpoint}
             onSend={() => setSending(true)}
           />
         )}

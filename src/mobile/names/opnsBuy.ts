@@ -1,3 +1,4 @@
+import { opnsNameOf } from './opnsName';
 import { buyOrdinal, cancelOpnsListing, listOpns, sellOpns, sendOpns, type OneSatContext } from '@1sat/actions';
 import { assertOrdLockV2 } from '../market/ordlockVersion';
 import { MODULE_FINISHES, purchaseContext, walletOutpoint } from '../market/walletOutpoint';
@@ -47,8 +48,8 @@ export const giftOpnsName = async (ctx: OneSatContext, id: string, address: stri
 export const opnsIdFor = async (ctx: OneSatContext, name: string): Promise<string | undefined> => {
   const r = await listOpns.execute(ctx, { includeTags: true, limit: 1000 });
   for (const o of r.outputs) {
-    if (!o.tags?.includes(`name:${name}`) || o.tags.some((t) => t.startsWith('ordlock'))) continue;
-    return o.tags.find((t) => t.startsWith('id:'))?.slice(3) ?? o.outpoint;
+    if (opnsNameOf(o) !== name || o.tags?.some((t) => t.startsWith('ordlock'))) continue;
+    return o.tags?.find((t) => t.startsWith('id:'))?.slice(3) ?? o.outpoint;
   }
   return undefined;
 };

@@ -9,6 +9,8 @@
  *  - Room: the room of the token launched under this name; a room owned by the name itself is Coming.
  *  - Token: TokenBlaster's launch page, prefilled (not in the store edition).
  *  - Sell / give: Wallet › Names (OpnsSellSection / OpnsGiftSection). Send: the host's Send.
+ *  - A name received as a plain NFT (a gift): "Add to my Names" moves it into the Names basket (opnsAdopt.ts, no
+ *    transaction), after which the identity-key and sell rows work as for a minted name.
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +22,7 @@ import {
   KeyRound,
   Link2,
   MessageCircle,
+  Plus,
   Send,
   ShoppingBag,
   Sparkles,
@@ -36,6 +39,7 @@ import { setLocalAvatar } from './avatar';
 import { BWALLET_PAYMAIL_DOMAIN, OPNS_PROFILE_DOMAIN } from './config';
 import { HandleFlow } from './HandleFlow';
 import { useOpnsName } from './OpnsNameCard';
+import { adoptOpnsNft } from './opnsAdopt';
 import { setMyName } from './myName';
 import { paymailEnabled } from './paymail';
 import { getPersonalLink, onPersonalChange, personalKey } from './personalToken';
@@ -96,6 +100,7 @@ export const OpnsNameActions = ({
   name,
   from,
   held = true,
+  outpoint,
   onSend,
 }: {
   /** The name, already read from the inscription and checked (opnsNameFrom). */
@@ -104,6 +109,8 @@ export const OpnsNameActions = ({
   from?: string | null;
   /** In the wallet's list (false: a kept airdrop the wallet hasn't indexed yet). */
   held?: boolean;
+  /** This NFT's outpoint in the wallet, when it is held (lets a gifted name be moved into Names). */
+  outpoint?: string;
   /** The host's Send for this NFT, when it has one. */
   onSend?: () => void;
 }) => {
@@ -120,14 +127,17 @@ export const OpnsNameActions = ({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [avatarSet, setAvatarSet] = useState(false);
+  const [adopting, setAdopting] = useState(false);
 
   useEffect(() => onPersonalChange(() => setLink(getPersonalLink(identityAddress))), [identityAddress]);
   // The wallet's own copy in the OpNS names basket (mints and buys land there; registerOpns needs its id).
   useEffect(() => {
     let live = true;
     setOwned(undefined);
+    // Whole basket (not a name: tag filter): a gifted name moved in by opnsAdopt carries its name in its custom
+    // instructions, since the wallet only writes tags for new rows.
     listOpns
-      .execute(apiContext, { names: [name], includeTags: true, limit: 10 })
+      .execute(apiContext, { includeTags: true, includeCustomInstructions: true, limit: 1000 })
       .then((r) => live && setOwned(ownedFromOutputs(r.outputs).find((o) => o.name === name) ?? null))
       .catch(() => live && setOwned(null));
     return () => {
@@ -145,6 +155,7 @@ export const OpnsNameActions = ({
   });
   const on = (k: string) => chips.find((c) => c.key === k)?.on ?? false;
   const ownLink = link && personalKey(link.name) === name ? link : null;
+  const canAdopt = owned === null && held && !!outpoint;
 
   const bind = async () => {
     if (!owned) return;
@@ -166,6 +177,24 @@ export const OpnsNameActions = ({
       setMsg(e instanceof Error ? e.message : 'Not linked. Nothing was sent.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  // A name that came in with the NFTs: move its row into the Names basket (no transaction, no fee).
+  const adopt = async () => {
+    if (!outpoint) return;
+    setAdopting(true);
+    setMsg('');
+    try {
+      const r = await adoptOpnsNft(apiContext.wallet, outpoint, name);
+      if ('error' in r) throw new Error(r.error);
+      setOwned({ name, id: r.id, published: false });
+      setMsg(`${name} is in your Names now. You can link your identity key or sell it.`);
+      syncAccountNames(apiContext, identityAddress, { force: true }).catch(() => undefined);
+    } catch (e) {
+      setMsg(e instanceof Error ? `Not moved: ${e.message}` : 'Not moved. Nothing changed.');
+    } finally {
+      setAdopting(false);
     }
   };
 
@@ -265,11 +294,25 @@ export const OpnsNameActions = ({
           <Row
             icon={<KeyRound size={20} color={GOLD} />}
             title="Link my identity key"
-            coming={owned === null}
+            coming={owned === null && !canAdopt}
             sub={
               owned === undefined
                 ? 'Checking your names…'
-                : 'This name came in with your NFTs, not into your Names list, so the wallet can’t sign it yet. Moving a received name into Names is coming.'
+                : canAdopt
+                  ? 'This name came in with your NFTs. Add it to your Names list first, then link it and sell it. Adding is free: no transaction, nothing sent.'
+                  : 'This name came in with your NFTs, not into your Names list, so the wallet can’t sign it yet. It can be added to Names once it shows in Wallet › NFTs.'
+            }
+            action={
+              canAdopt ? (
+                <button
+                  disabled={adopting}
+                  className={`${BIG} text-[#010101]`}
+                  style={{ background: GOLD }}
+                  onClick={() => void adopt()}
+                >
+                  <Plus size={16} /> {adopting ? 'Adding…' : 'Add to my Names'}
+                </button>
+              ) : undefined
             }
           />
         )}
@@ -363,8 +406,12 @@ export const OpnsNameActions = ({
             <Row
               icon={<ShoppingBag size={20} color={GOLD} />}
               title={MARKET_ENABLED ? 'Sell it' : 'Give it away'}
-              coming
-              sub="Selling works for names in your Names list. A name received with your NFTs can be sent now; selling it is coming."
+              coming={!canAdopt}
+              sub={
+                canAdopt
+                  ? 'Selling works for names in your Names list. Use Add to my Names above, then sell it from Wallet › Names.'
+                  : 'Selling works for names in your Names list. A name received with your NFTs can be sent now, and added to Names once it shows in Wallet › NFTs.'
+              }
             />
           )
         )}
