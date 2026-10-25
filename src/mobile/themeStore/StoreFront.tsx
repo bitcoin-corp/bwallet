@@ -8,6 +8,7 @@ import {
   Brush,
   Clapperboard,
   DoorOpen,
+  ExternalLink,
   Palette,
   Repeat,
   ShoppingBag,
@@ -28,6 +29,7 @@ import { useOwnedThemes } from './useOwnedThemes';
 import { SHOPS, shopById, type Shop } from './shops';
 import { priceLabel, visible, type Listing } from './bstore';
 import { EMOJI_PACK_IDS } from '../theme/emojiThemes';
+import { openExternal } from '../exchange/useTokenRowActions';
 
 // The existing "Get your own edition" order flow ($99 a year), bWalletX only.
 const ThemeOrderSheet = THEME_ORDERS_ENABLED ? lazy(() => import('../themeOrder/ThemeOrderSheet')) : null;
@@ -126,7 +128,7 @@ const BACK =
   'flex items-center gap-1.5 self-start rounded-xl bg-[var(--bw-surface)] border border-[#2b2f36] px-3 py-2 text-xs font-bold text-white cursor-pointer';
 
 // Our edition themes, listed in Themes (owner, 17 Oct 2026). They apply today, so they show their real state.
-const EDITION_IDS: readonly string[] = ['vexvoid', 'npg', 'npgx']; // Scammers Cartel hidden until ready (19 Oct)
+const EDITION_IDS: readonly string[] = ['vexvoid', 'npg', 'npgx', 'tokenblaster', 'terrornode']; // Scammers Cartel hidden until ready (19 Oct)
 // The Emoji collection (owner, 18 Oct 2026): twelve $1 themes with Twemoji art, sold the same way.
 const EMOJI_IDS: readonly string[] = EMOJI_PACK_IDS;
 const EDITIONS: readonly ThemePack[] = [...EDITION_IDS, ...EMOJI_IDS]
@@ -232,6 +234,29 @@ function ShopPage({ shop, onBack }: { shop: Shop; onBack: () => void }) {
       </div>
       <h2 className="text-sm font-bold text-white m-0">Themes</h2>
       <Editions ids={shop.themes} />
+      {!!shop.links?.length && (
+        <div className="grid grid-cols-2 gap-1.5">
+          {shop.links.map((l) => (
+            <button
+              key={l.href}
+              type="button"
+              onClick={() => openExternal(l.href)}
+              className="bw-pill bw-pill-gold flex min-h-[40px] items-center justify-center gap-1.5 py-2 text-xs font-bold"
+            >
+              {l.label} <ExternalLink size={12} aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      )}
+      {!!shop.coming?.length && (
+        <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+          {shop.coming.map((c) => (
+            <li key={c} className={`${TILE} px-3 py-2 text-xs`} style={{ color: MUTED }}>
+              {c}
+            </li>
+          ))}
+        </ul>
+      )}
       <p className="text-xs m-0" style={{ color: MUTED }}>
         More from {shop.name} soon.
       </p>

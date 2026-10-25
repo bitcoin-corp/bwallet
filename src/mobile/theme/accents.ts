@@ -1,5 +1,6 @@
 import { contrast, ensureContrast, hexToHsl, hslToHex, mix, pickReadable, rgbTriplet } from './colour';
 import { EMOJI_PACK_IDS, EMOJI_THEMES, type EmojiPackId, type EmojiTheme } from './emojiThemes';
+import { tokenblasterEditions } from './tokenblasterX';
 
 export { contrast, rgbTriplet };
 
@@ -39,6 +40,8 @@ export type PackId =
   | 'npg'
   | 'npgx'
   | 'scammerscartel'
+  | 'tokenblaster'
+  | 'terrornode'
   | EmojiPackId;
 export type AccentId = PackId | 'silver' | 'rose' | 'emerald' | 'sapphire' | 'violet' | 'custom';
 
@@ -70,6 +73,8 @@ export type CardPatternId =
   | 'npg'
   | 'npgx'
   | 'scammerscartel'
+  | 'tokenblaster'
+  | 'terrornode'
   | EmojiPackId;
 
 export interface Accent {
@@ -401,6 +406,8 @@ const EDITIONS: readonly Accent[] = [
     radiusCard: '14px',
     pattern: 'scammerscartel',
   },
+  // TokenBlaster (owner, 25 Oct 2026): bWalletX only, empty in a store build (tokenblasterX.store.ts).
+  ...tokenblasterEditions(BASE),
 ];
 
 /** Duo cross-overs: black surfaces with a white accent, and the reverse. Square-ish and stark. */
@@ -825,4 +832,12 @@ export const packVars = (a: Accent): Record<string, string> => ({
 export const ALL_VARS = Object.keys(packVars(ACCENTS[0] as Accent));
 
 /** Editions and Emoji themes sold in the Store ($1 each, owner 17-18 Oct 2026): only buyers get them, never in the free picker. */
-export const PAID_EDITIONS: readonly string[] = ['vexvoid', 'npg', 'npgx', 'scammerscartel', ...EMOJI_PACK_IDS];
+export const PAID_EDITIONS: readonly string[] = [
+  'vexvoid',
+  'npg',
+  'npgx',
+  'scammerscartel',
+  'tokenblaster',
+  'terrornode',
+  ...EMOJI_PACK_IDS,
+];

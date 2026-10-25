@@ -5,7 +5,7 @@ import { resolve } from 'path';
 import { copyFileSync, existsSync, readFileSync, renameSync } from 'fs';
 import baseConfig from './vite.config.base';
 import { BRAND, brand as sharedBrand, bcorpText, bcorpColours, brandDefines } from './vite.brand';
-import { splashScript } from './src/mobile/theme/splash';
+import { splashScript, STORE_SPLASH_SKIP } from './src/mobile/theme/splash';
 
 // The app's name in build-time text patches: bWallet in a store build, bWalletX otherwise (src/mobile/storeBuild.ts).
 const STORE_APP_NAME =
@@ -60,6 +60,15 @@ if (STORE_CHANNEL) {
   MOBILE_SWAPS[resolve(__dirname, 'src/mobile/games/gamesCatalogX.ts')] = resolve(
     __dirname,
     'src/mobile/games/gamesCatalogX.store.ts',
+  );
+  // TokenBlaster shop and theme packs in the Store: not in the store bundle, art included.
+  MOBILE_SWAPS[resolve(__dirname, 'src/mobile/theme/tokenblasterX.ts')] = resolve(
+    __dirname,
+    'src/mobile/theme/tokenblasterX.store.ts',
+  );
+  MOBILE_SWAPS[resolve(__dirname, 'src/mobile/theme/tokenblasterShopX.ts')] = resolve(
+    __dirname,
+    'src/mobile/theme/tokenblasterShopX.store.ts',
   );
 }
 const brand = () => sharedBrand(MOBILE_SWAPS);
@@ -735,7 +744,8 @@ const mobilePages = (): Plugin => ({
       // Upstream's PWA manifest link points at extension icons; not used in-app.
       out = out.replace(/\s*<link rel="manifest"[^>]*>/, '');
       // The in-app splash follows the saved theme pack (src/mobile/theme/splash.ts); Gold paints nothing.
-      if (isShell) out = out.replace('</head>', `    ${splashScript()}\n  </head>`);
+      if (isShell)
+        out = out.replace('</head>', `    ${splashScript(STORE_CHANNEL ? STORE_SPLASH_SKIP : [])}\n  </head>`);
       if (!isShell) {
         out = out.replace('<head>', `<head>\n    ${FRAME_SHIM}`);
         out = out.replace('</head>', '    <link rel="stylesheet" href="./src/mobile/mobile.css" />\n  </head>');

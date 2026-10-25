@@ -41,12 +41,14 @@ describe('edition card art', () => {
     expect(editionArtUri('npg', 'card-1')).toBe(editionArtUri('npg', 'card-1'));
     expect(String(editionArtUri('npg', 'x'))).toMatch(/npg-card-/);
     expect(String(editionArtUri('npgx', 'x'))).toMatch(/npgx-card-/);
+    expect(String(editionArtUri('tokenblaster', 'x'))).toMatch(/tokenblaster-main-card/);
+    expect(String(editionArtUri('terrornode', 'x'))).toMatch(/tokenblaster-assault-card/);
   });
   test('edition art files stay under 120 KB', async () => {
     const { readdirSync, statSync } = await import('node:fs');
     const dir = new URL('./editionArt/', import.meta.url).pathname;
     const files = readdirSync(dir);
-    expect(files.length).toBe(5); // NPG logo card + 2 NPGX + Scammers Cartel card and shop banner
+    expect(files.length).toBe(8); // NPG logo card + 2 NPGX + Scammers Cartel card and shop banner + TokenBlaster 2 cards + logo
     for (const f of files) expect(statSync(dir + f).size).toBeLessThan(120_000);
   });
 });

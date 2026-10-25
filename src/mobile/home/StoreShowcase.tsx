@@ -14,6 +14,7 @@ import { useCollapsed } from './collapse';
 import { CollapseToggle } from './CollapseToggle';
 import { AD_PAGE_URL, adSlideText } from './adSlot';
 import { openExternal } from '../exchange/useTokenRowActions';
+import { TOKENBLASTER_SHOP_ART } from '../theme/tokenblasterShopX';
 
 /**
  * Store showcase (home module, bWalletX only: loaded behind THEME_STORE_PAID_ENABLED like the Store itself).
@@ -41,6 +42,7 @@ const SHOP_ART: Record<string, { img: string; pos: string } | undefined> = {
   scammerscartel: { img: scammersCard, pos: '50% 35%' },
   npg: { img: npgBanner, pos: '50% 30%' },
   vexvoid: { img: vexArt, pos: '50% 40%' },
+  ...TOKENBLASTER_SHOP_ART,
 };
 
 const ROTATE_MS = 5200;
@@ -58,7 +60,7 @@ const reduced = () => {
 };
 
 const showcaseItems = (spaces = BSPACES_ENABLED): Item[] => {
-  const order = ['emoji', 'npg', 'vexvoid', 'npgx']; // Scammers Cartel hidden until ready (19 Oct)
+  const order = ['emoji', 'npg', 'tokenblaster', 'vexvoid', 'npgx']; // Scammers Cartel hidden until ready (19 Oct)
   const shops = [...SHOPS].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
   const items: Item[] = shops.map((s) => ({
     ...SHOP_ART[s.id],
@@ -70,7 +72,8 @@ const showcaseItems = (spaces = BSPACES_ENABLED): Item[] => {
     art: s.bannerCss ?? (s.banner ? `center / cover no-repeat url(${s.banner}), ${s.colour}` : s.colour),
     logo: s.logo,
   }));
-  items.splice(2, 0, {
+  // The album sits after NPG and TokenBlaster (TokenBlaster right after NPG, owner 25 Oct 2026).
+  items.splice(items.findIndex((i) => i.key === 'shop:tokenblaster') + 1 || 2, 0, {
     key: 'album',
     kind: 'Album',
     title: HEADLINE_ALBUM.title,

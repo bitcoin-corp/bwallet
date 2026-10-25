@@ -32,6 +32,8 @@ const PACKS = {
   npg: 1,
   npgx: 1,
   scammerscartel: 1,
+  tokenblaster: 1,
+  terrornode: 1,
   ...Object.fromEntries(Object.keys(EMOJI_LABELS).map((id) => [id, 1])),
 };
 /** Names printed on receipts. */
@@ -40,6 +42,8 @@ const PACK_LABELS = {
   npg: 'NPG',
   npgx: 'NPGX',
   scammerscartel: 'Scammers Cartel',
+  tokenblaster: 'TokenBlaster',
+  terrornode: 'Assault on Terrornode (TokenBlaster)',
   ...Object.fromEntries(Object.entries(EMOJI_LABELS).map(([id, l]) => [id, `${l} (Emoji)`])),
 };
 const MEMO_TAG = 'bwx-theme-buy';

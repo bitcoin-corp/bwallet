@@ -6,6 +6,7 @@ import { emojiArtUri, emojiTileUri } from '../wallet/cardPatternsEmoji';
 import scammersCard from '../wallet/editionArt/scammerscartel-dj-card.webp';
 import scammersBg from '../wallet/editionArt/scammerscartel-dj-bg.webp';
 import vexArt from '../media/featured/vexvoid-cover.jpg';
+import { TOKENBLASTER_SHOPS } from '../theme/tokenblasterShopX';
 
 /**
  * Shops in the Store mall (owner, 17 Oct 2026): every item sits in one shop and one department, so people can
@@ -27,6 +28,10 @@ export interface Shop {
   receiptArt?: string;
   /** Theme pack ids this shop sells (Store › Themes lists the same items). */
   themes: readonly string[];
+  /** Outside pages the shop links to (Play, Launchpad…), opened in the browser. */
+  links?: readonly { label: string; href: string }[];
+  /** Things on the way, shown as plain status lines with no buy button (owner rule: pages show live / coming). */
+  coming?: readonly string[];
 }
 
 const ALL_SHOPS: readonly Shop[] = [
@@ -40,6 +45,8 @@ const ALL_SHOPS: readonly Shop[] = [
     colour: '#FF2E93',
     themes: ['npg'],
   },
+  // TokenBlaster (owner, 25 Oct 2026): bWalletX only, empty in a store build (theme/tokenblasterShopX.store.ts).
+  ...TOKENBLASTER_SHOPS,
   {
     id: 'npgx',
     name: 'NPGX',

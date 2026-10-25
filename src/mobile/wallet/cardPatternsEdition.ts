@@ -6,6 +6,7 @@ import npgLogo from './editionArt/npg-card-logo.webp';
 import npgx1 from './editionArt/npgx-card-1.webp';
 import npgx2 from './editionArt/npgx-card-2.webp';
 import scammersCard from './editionArt/scammerscartel-dj-card.webp';
+import { TOKENBLASTER_CARD_ART } from '../theme/tokenblasterShopX';
 
 /**
  * Artist edition card art (owner, 16 Oct 2026). VexVoid: a still of the VexVoid point field (the same formulas as the
@@ -18,6 +19,8 @@ export const EDITION_PATTERN_IDS = [
   'npg',
   'npgx',
   'scammerscartel',
+  'tokenblaster',
+  'terrornode',
   ...EMOJI_PACK_IDS,
 ] as const satisfies readonly CardPatternId[];
 export type EditionPatternId = (typeof EDITION_PATTERN_IDS)[number];
@@ -59,7 +62,10 @@ export function vexFieldSvg(variant = 0): string {
   );
 }
 
-const RASTER: Record<'npg' | 'npgx' | 'scammerscartel', readonly string[]> = {
+const RASTER: Record<'npg' | 'npgx' | 'scammerscartel' | 'tokenblaster' | 'terrornode', readonly string[]> = {
+  // TokenBlaster's own card art (tokenblaster.lol/brand), empty in a store build.
+  tokenblaster: TOKENBLASTER_CARD_ART.tokenblaster ?? [],
+  terrornode: TOKENBLASTER_CARD_ART.terrornode ?? [],
   // Scammers Cartel: a crop of the community's own DJ raccoon banner (scammerscartel.com hero-poster).
   scammerscartel: [scammersCard],
   // Owner 17 Oct 2026: the NPG card is the pink NPG logo. Characters come later as 3,334 one-per-character NFT packs.
@@ -90,5 +96,5 @@ export function editionArtUri(id: EditionPatternId, key = ''): string {
     return u;
   }
   const list = RASTER[id];
-  return list[v % list.length] as string;
+  return (list[v % list.length] ?? '') as string;
 }

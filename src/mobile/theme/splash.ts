@@ -11,10 +11,10 @@ import { B_OUTLINE_COUNTER, B_OUTLINE_OUTER, B_OUTLINE_VIEWBOX } from '../brand/
 export const SPLASH_BOOT_KEY = 'bwx.accent.boot';
 
 /** Pack id → [page, ink] for every pack but Gold; retired ids map to their replacement's colours. */
-export function splashPalette(): Record<string, [string, string]> {
+export function splashPalette(skip: readonly string[] = []): Record<string, [string, string]> {
   const out: Record<string, [string, string]> = {};
   for (const a of THEMES) {
-    if (a.id === DEFAULT_ACCENT) continue;
+    if (a.id === DEFAULT_ACCENT || skip.includes(a.id)) continue;
     out[a.id] = [a.bg, a.group === 'mono' ? a.text : a.accent];
   }
   for (const [old, now] of Object.entries(RETIRED_PACKS)) if (out[now]) out[old] = out[now];
@@ -27,9 +27,12 @@ export const B_SVG = `<svg width="72" height="94" viewBox="${B_OUTLINE_VIEWBOX}"
 /** Edition entry pages (web.bwalletx.com/white …): their path names the pack, before any saved choice. */
 export const SPLASH_EDITIONS = ['white', 'pink', 'blue', 'yellow', 'vexvoid', 'npg', 'npgx'];
 
+/** Packs left out of the store build's splash (bWalletX only, tokenblasterX.ts). */
+export const STORE_SPLASH_SKIP: readonly string[] = ['tokenblaster', 'terrornode'];
+
 /** The inline <script> for the shell's <head>. Every storage access is guarded; failure leaves Gold's page. */
-export function splashScript(): string {
-  const js = `(function(){try{var P=${JSON.stringify(splashPalette())};var E=${JSON.stringify(SPLASH_EDITIONS)};var pth=(location.pathname||'').replace(/\\/+$/,'').slice(1).toLowerCase();var id=E.indexOf(pth)>=0?pth:localStorage.getItem(${JSON.stringify(
+export function splashScript(skip: readonly string[] = []): string {
+  const js = `(function(){try{var P=${JSON.stringify(splashPalette(skip))};var E=${JSON.stringify(SPLASH_EDITIONS)};var pth=(location.pathname||'').replace(/\\/+$/,'').slice(1).toLowerCase();var id=E.indexOf(pth)>=0?pth:localStorage.getItem(${JSON.stringify(
     SPLASH_BOOT_KEY,
   )});var c=id&&P[id];if(!c)return;var d=document,r=d.documentElement;r.style.background=c[0];var m=d.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',c[0]);var s=d.createElement('div');s.id='bw-splash';s.setAttribute('aria-hidden','true');s.style.cssText='position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;transition:opacity .25s ease;background:'+c[0]+';color:'+c[1];s.innerHTML=${JSON.stringify(
     B_SVG,

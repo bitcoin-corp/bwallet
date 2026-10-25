@@ -141,17 +141,29 @@ describe('paper packs (Pink, Blue, Yellow)', () => {
 
 describe('artist editions', () => {
   test('VexVoid, NPG, NPGX and Scammers Cartel: dark, credited, no gold, AA ink on paper', () => {
-    expect(EDITION_PACKS.map((a) => a.id)).toEqual(['vexvoid', 'npg', 'npgx', 'scammerscartel', ...EMOJI_PACK_IDS]);
+    expect(EDITION_PACKS.map((a) => a.id)).toEqual([
+      'vexvoid',
+      'npg',
+      'npgx',
+      'scammerscartel',
+      'tokenblaster',
+      'terrornode',
+      ...EMOJI_PACK_IDS,
+    ]);
     const credits = {
       vexvoid: 'VexVoid edition',
       npg: 'Ninja Punk Girls edition',
       npgx: 'NPGX edition',
       scammerscartel: 'Scammers Cartel edition',
+      tokenblaster: 'TokenBlaster edition',
+      terrornode: 'TokenBlaster edition',
     };
+    // TokenBlaster's packs keep the near-black page from their own theme files (tokenblaster.lol/.well-known).
+    const ownBg: Record<string, string> = { tokenblaster: '#0A0A0C', terrornode: '#05090F' };
     for (const a of EDITION_PACKS.filter((x) => !isEmojiPack(x.id))) {
       expect(a.edition).toBe(credits[a.id as keyof typeof credits]);
       expect(a.scheme).toBe('dark');
-      expect(a.bg).toBe('#000000');
+      expect(a.bg).toBe(ownBg[a.id] ?? '#000000');
       for (const g of [a.bg, a.surface, a.surface2]) {
         expect(contrast(a.text, g)).toBeGreaterThanOrEqual(7);
         expect(contrast(a.muted, g)).toBeGreaterThanOrEqual(4.5);
@@ -168,6 +180,11 @@ describe('artist editions', () => {
     expect(accentById('npgx').accent).toBe('#FF2D3A');
     for (const v of Object.values(packVars(accentById('npgx'))))
       expect(/C6FF1A|FF2BD6|00F0FF|0 240 255|255 43 214/i.test(v)).toBe(false);
+    // TokenBlaster: accent colours straight from its theme files.
+    expect(accentById('tokenblaster').accent).toBe('#FF3B30');
+    expect(accentById('tokenblaster').hi).toBe('#FFB800');
+    expect(accentById('terrornode').accent).toBe('#FF3B3B');
+    expect(accentById('terrornode').hi).toBe('#3FD8E8');
   });
 });
 
