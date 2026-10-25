@@ -238,6 +238,9 @@ export const resolvePaymail = async (f: Fetch, paymail: string, input = paymail)
       const from = (id?.binding as { handover?: { from?: string } } | undefined)?.handover?.from;
       r.nameBinding = keyChange(alias, r.pubkey, status, from);
     }
+    // Our host only pays names it knows (pki answers with a key). Without this an unknown alias resolved as payable
+    // and failed later at send time as "the paymail host answered 404" (owner, 25 Oct 2026: bwalletx@bwalletx.com).
+    if (!r.external && !r.pubkey) throw new ResolveError(noSuchUser(paymail.toLowerCase()));
   }
 
   const ord = ordCapability(caps);
