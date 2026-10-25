@@ -3409,3 +3409,11 @@ html.ww-on .bw-cdes {
   align-items: center;
   gap: 6px;
 }
+
+/* A room's art behind its messages (ChatPage.tsx, chat/roomLook.ts roomListBackdrop). Reduced transparency: none,
+   the list keeps the room's plain background colour. */
+@media (prefers-reduced-transparency: reduce) {
+  .bw-room-art {
+    display: none;
+  }
+}

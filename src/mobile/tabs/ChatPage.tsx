@@ -91,7 +91,7 @@ import { BchatClient, ChatApiError, loadSession, needsHandle, saveSession, SESSI
 import { HandleFlow } from '../names/HandleFlow';
 import { avatarFor, B_AVATAR, pendingBQuestions, rememberAvatar, useAvatars } from '../chat/avatars';
 import { ChatAvatar as Avatar } from '../chat/ChatAvatar';
-import { roomHeaderBackground, roomOwnerOrigin, useRoomLook } from '../chat/roomLook';
+import { roomEmoji, roomHeaderBackground, roomListBackdrop, roomOwnerOrigin, useRoomLook } from '../chat/roomLook';
 import { gateIconUrl, lockedForMe, lockedLine, roomTokenGate } from '../chat/roomGate';
 import { roomSetupState, shouldOfferRoomSetup } from '../chat/roomSetupPrompt';
 import type { ReplyRef } from '../chat/api';
@@ -759,6 +759,9 @@ const Conversation = ({
   const draftable = canAskBDraft(room, !!entry) && !isOfficialRoom(room);
   // A connected game's theme dresses its room (chat/roomLook.ts). Never the Help Desk, official rooms or store builds.
   const look = useRoomLook(room.ticker, !STORE_BUILD && !isLounge(room.ticker) && !isOfficialRoom(room), room.metadata);
+  // Dark looks only: a light look keeps the dark room (above), so its art would fade into the wrong colour.
+  const backdrop = look?.mode === 'dark' ? roomListBackdrop(look) : null;
+  const emoji = look ? roomEmoji(room.metadata) : null;
   const askB = () => {
     setDraft((d) => (/^\/b(\s|$)/i.test(d) ? d : `/b ${d}`));
     requestAnimationFrame(() => composer.current?.focus());
@@ -826,6 +829,11 @@ const Conversation = ({
             style={look ? { color: look.text } : undefined}
           >
             {title}
+            {emoji && (
+              <span className="ml-1.5" aria-hidden>
+                {emoji}
+              </span>
+            )}
           </div>
           {look && (
             <div className={`text-[11px] ${ELLIPSIS}`} style={{ color: look.text, opacity: 0.85 }}>
@@ -983,8 +991,28 @@ const Conversation = ({
         ref={scroller}
         onScroll={onScroll}
         className="bw-room-list flex-1 overflow-y-auto px-3 py-2"
-        style={{ background: 'radial-gradient(120% 60% at 50% 0%, #15130b 0%, #050505 60%)' }}
+        data-room-look={look ? look.host : undefined}
+        style={{
+          background: look
+            ? look.mode === 'dark'
+              ? look.bg
+              : BG
+            : 'radial-gradient(120% 60% at 50% 0%, #15130b 0%, #050505 60%)',
+          isolation: backdrop ? 'isolate' : undefined,
+        }}
       >
+        {/* The room's art behind the messages (chat/roomLook.ts roomListBackdrop): fitted to the list's width at 3:1,
+            faded into the room's background. Sticky with no height, so it stays at the top while messages scroll
+            over it and never moves them. */}
+        {backdrop && (
+          <div
+            aria-hidden
+            className="bw-room-art pointer-events-none sticky top-0 h-0 -mx-3 -mt-2"
+            style={{ zIndex: -1 }}
+          >
+            <div className="absolute inset-x-0 top-0" style={{ aspectRatio: '3 / 1', background: backdrop }} />
+          </div>
+        )}
         {loadingOlder && (
           <div className="text-center text-[11px] py-2" style={{ color: MUTED }}>
             Loading earlier messages…

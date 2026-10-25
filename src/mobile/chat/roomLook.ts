@@ -78,6 +78,30 @@ export function roomHeaderBackground(l: RoomLook): string {
   return `linear-gradient(180deg, ${l.surface} 0%, ${l.bg} 100%)`;
 }
 
+/**
+ * The message list's backdrop (owner, 25 Oct 2026: the $TERRORNODE art showed in the header only, not behind the
+ * chat). The room art fitted to the list's width at 3:1, anchored at the top, darkened and faded into the room's
+ * background so bubbles stay readable. Null with no (valid) art: the list stays plain.
+ */
+export function roomListBackdrop(l: RoomLook | null | undefined): string | null {
+  if (!l?.artData || !DATA_IMAGE.test(l.artData)) return null;
+  const fade = `linear-gradient(180deg, ${l.bg}A6 0%, ${l.bg}C7 55%, ${l.bg} 100%)`;
+  return `${fade}, url("${l.artData}") center top / 100% 100% no-repeat`;
+}
+
+/**
+ * The room's emoji from its metadata.look (shown beside the name). One short run of pictographs only (emoji,
+ * variation selectors, ZWJ, skin tones, flags); anything with letters, digits or markup is ignored.
+ */
+export function roomEmoji(metadata: unknown): string | null {
+  const v = ((metadata as { look?: { emoji?: unknown } } | null | undefined)?.look ?? null)?.emoji;
+  if (typeof v !== 'string') return null;
+  const e = v.trim();
+  if (!e || e.length > 16) return null;
+  if (!/^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|\uFE0F|\u200D)+$/u.test(e)) return null;
+  return /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(e) ? e : null;
+}
+
 // ---- room → site (per device) ----
 
 type Store = Pick<Storage, 'getItem' | 'setItem'>;

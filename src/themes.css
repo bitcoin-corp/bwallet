@@ -1426,7 +1426,7 @@ input:-webkit-autofill {
 :root[data-bw-pack='light'] .bw-room-head .text-white {
   color: var(--bw-text) !important;
 }
-:root[data-bw-pack='light'] .bw-room-list {
+:root[data-bw-pack='light'] .bw-room-list:not([data-room-look]) {
   background: var(--bw-pack-bg) !important;
 }
 
