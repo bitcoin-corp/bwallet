@@ -5,6 +5,9 @@ import {
   matchesQuery,
   meetsStandard,
   missingStandard,
+  shortLine,
+  tileColour,
+  TILE_PALETTE,
   standardReport,
   visibleApps,
 } from './bappStandard';
@@ -40,5 +43,25 @@ describe('bApp standard', () => {
   });
   test('report covers every entry', () => {
     expect(standardReport().length).toBeGreaterThan(BX_APPS.length);
+  });
+});
+
+describe('bApps cards (owner, 25 Oct 2026)', () => {
+  test('one short line per card', () => {
+    expect(shortLine('Tokenise your music; holders make the video with you')).toBe('Tokenise your music');
+    expect(shortLine('Watch and back tokenised films')).toBe('Watch and back tokenised films');
+    expect(shortLine('Adults only. The NPGX brand, separate from NPG')).toBe('Adults only');
+    const long = shortLine('Mint anything you like here: art, media, coins and archives forever and ever');
+    expect(long.length).toBeLessThanOrEqual(25);
+    expect(shortLine(undefined)).toBe('');
+    for (const a of [...BX_APPS, ...COMMERCIAL_APPS]) expect(shortLine(a.verb).length).toBeLessThanOrEqual(25);
+  });
+  test('every tile has a bold colour: its brand colour, else one picked from its name (never grey)', () => {
+    expect(tileColour('bDojoX', '#C8141C')).toBe('#C8141C');
+    const c = tileColour('Some App');
+    expect(TILE_PALETTE as readonly string[]).toContain(c);
+    expect(tileColour('Some App')).toBe(c);
+    expect(tileColour('x', 'not-a-colour')).toMatch(/^#[0-9A-F]{6}$/i);
+    for (const a of [...BX_APPS, ...COMMERCIAL_APPS]) expect(a.color).toMatch(/^#[0-9a-f]{6}$/i);
   });
 });

@@ -258,6 +258,11 @@ export const BAPPS: BApp[] = [
     verb: 'Watch and publish video',
     group: 'media',
     status: 'live',
+    // Connect bWalletX (owner, 25 Oct 2026): bvideox.com signs in with @bwalletx/connect 0.5.0, which looks for the
+    // in-app browser's injected wallet (window.CWI / brc100 announce) and has no in-frame (XDM) route. Inside the
+    // wallet frame it found nothing and fell back to the pairing QR. Full screen gets the injected wallet. Remove once
+    // the site loads a @bwalletx/connect that also tries XDM when framed (bwalletx-connect PR).
+    noFrame: true,
     icon: bappIconUrl('bvideo'),
   },
   {

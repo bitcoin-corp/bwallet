@@ -179,6 +179,8 @@ export const BX_APPS: StoreApp[] = [
     'Watch & make',
     '#FF5FA2',
     'BVIDEOX',
+    // Opens full screen so Connect bWalletX finds the wallet (bapps.ts bVideoX noFrame).
+    { inWallet: false },
   ),
   bx('bnewsx', 'bNewsX', 'https://bnewsx.com', 'The stories on chain today', 'Watch & make', '#E6E6E6', 'BNEWS'),
   bx(
@@ -401,3 +403,38 @@ export const byCategory = <T extends { category: string }>(apps: T[]): { categor
 };
 
 export const ADULT_OK_KEY = 'bw.bapps.adultOk';
+
+/**
+ * One short line for a card (owner, 25 Oct 2026: "less explanatory text"). The first clause of the description,
+ * cut at a ";", ":", "." or dash; the full text stays in the card's title and the app itself.
+ */
+export const shortLine = (verb: string | undefined, max = 24): string => {
+  const first = (verb ?? '').split(/\s*(?:[;:.]\s|\s[—–-]\s)/)[0].trim();
+  if (first.length <= max) return first;
+  const cut = first.slice(0, max + 1);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > 12 ? cut.slice(0, space) : first.slice(0, max)).replace(/[,\s]+$/, '')}…`;
+};
+
+/** Bold, distinct tile colours for apps without a brand colour: picked from the name, so each app keeps its own. */
+export const TILE_PALETTE = [
+  '#FFD24D',
+  '#FF5FA2',
+  '#5AD8FF',
+  '#B57BFF',
+  '#3DD68C',
+  '#FF8A3D',
+  '#4D9BFF',
+  '#F25F5C',
+  '#00C2A8',
+  '#FFB020',
+  '#C8141C',
+  '#7CF7FF',
+] as const;
+
+export const tileColour = (name: string, color?: string): string => {
+  if (color && /^#[0-9a-f]{6}$/i.test(color)) return color;
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return TILE_PALETTE[h % TILE_PALETTE.length];
+};

@@ -24,6 +24,8 @@ import {
   withoutDuplicates,
   matchesQuery,
   meetsStandard,
+  shortLine,
+  tileColour,
   visibleApps,
   type BappStandard,
   type StoreApp,
@@ -50,56 +52,92 @@ const readAdultOk = () => {
   }
 };
 
-/** The bCorp flag-top b (as on every b*X site's logo.svg), in the product's colour. */
-export const BMark = ({ color, size = 56 }: { color: string; size?: number }) => {
-  const id = `bm${color.replace('#', '')}`;
-  return (
-    <svg width={size} height={size} viewBox="0 0 120 120" aria-hidden="true" style={{ display: 'block' }}>
-      <defs>
-        <linearGradient id={`${id}g`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor={color} stopOpacity="0.85" />
-          <stop offset="1" stopColor={color} />
-        </linearGradient>
-        <mask id={`${id}m`}>
-          <rect width="120" height="120" fill="#fff" />
-          <circle cx="62" cy="70" r="12" fill="#000" />
-        </mask>
-      </defs>
-      <rect
-        x="0.75"
-        y="0.75"
-        width="118.5"
-        height="118.5"
-        rx="28"
-        fill="#0B0B0C"
-        stroke="var(--bw-line, #2b2f36)"
-        strokeWidth="1.5"
-      />
-      <g fill={`url(#${id}g)`} mask={`url(#${id}m)`}>
-        <polygon points="50,18 50,72 35,72 35,34" />
-        <circle cx="62" cy="70" r="27" />
-      </g>
-    </svg>
-  );
+/** The bCorp flag-top b (as on every b*X site's logo.svg), drawn in `ink` so it reads on a bold colour tile. */
+export const BMark = ({ ink = '#0B0B0C', size = 56 }: { ink?: string; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 120 120" aria-hidden="true" style={{ display: 'block' }}>
+    <path fill={ink} d="M50 18v54H35V34z" />
+    <path
+      fill={ink}
+      fillRule="evenodd"
+      d="M62 43a27 27 0 1 1 0 54a27 27 0 1 1 0-54zm0 15a12 12 0 1 0 0 24a12 12 0 1 0 0-24z"
+    />
+  </svg>
+);
+
+/** Black or white ink, whichever reads better on the tile colour. */
+const inkOn = (hex: string) => {
+  const n = parseInt(hex.slice(1), 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  return 0.299 * r + 0.587 * g + 0.114 * b > 96 ? '#0B0B0C' : '#FFFFFF';
 };
 
-const Monogram = ({ name, color, size = 56 }: { name: string; color: string; size?: number }) => (
+/**
+ * The colour tile (owner, 25 Oct 2026: "more colourful, the dojoX one is GREAT"): like bDojoX's logo, a full-bleed
+ * brand colour with one bold black mark. Apps with their own art show it full-bleed; the rest get the b-mark,
+ * their initials or their icon on their own colour. Gold when nothing else is known, never grey.
+ */
+const ColourTile = ({ color, children, dim }: { color: string; children?: React.ReactNode; dim?: boolean }) => (
   <div
-    className="flex items-center justify-center font-black"
+    className="relative flex w-full items-center justify-center overflow-hidden rounded-xl aspect-[16/11]"
     style={{
-      width: size,
-      height: size,
-      borderRadius: size * 0.23,
-      background: 'var(--bw-card2, var(--bw-card, var(--bw-surface)))',
-      // Ink from the theme (a product colour such as gold fails on a white card); the product colour is the ring.
-      color: 'var(--bw-text)',
-      fontSize: size * 0.36,
-      boxShadow: `inset 0 0 0 1.5px ${color}99`,
+      background: `radial-gradient(120% 90% at 20% 10%, ${color} 0%, ${color} 45%, ${color}cc 100%), #0B0B0C`,
+      boxShadow: `inset 0 -18px 30px rgb(0 0 0 / 0.18)`,
+      opacity: dim ? 0.8 : 1,
     }}
   >
-    {name.replace(/[^A-Z0-9]/g, '').slice(0, 3) || name.slice(0, 2)}
+    {children}
   </div>
 );
+
+const Monogram = ({ name, ink }: { name: string; ink: string }) => (
+  <span className="font-black leading-none tracking-tight" style={{ color: ink, fontSize: 30 }}>
+    {name.replace(/[^A-Z0-9]/g, '').slice(0, 3) || name.slice(0, 2)}
+  </span>
+);
+
+/** The tile art for an app: its own art full-bleed, else the b-mark (b*X), its icon or its initials on its colour. */
+const TileArt = ({
+  name,
+  color,
+  logo,
+  icon,
+  bx,
+  dim,
+}: {
+  name: string;
+  color: string;
+  logo?: string;
+  icon?: string;
+  bx?: boolean;
+  dim?: boolean;
+}) => {
+  const ink = inkOn(color);
+  if (logo)
+    return (
+      <ColourTile color={color} dim={dim}>
+        <img src={logo} alt="" loading="lazy" className="h-full w-auto max-w-full object-contain" />
+      </ColourTile>
+    );
+  return (
+    <ColourTile color={color} dim={dim}>
+      {icon ? (
+        <img
+          src={icon}
+          alt=""
+          width={52}
+          height={52}
+          loading="lazy"
+          className="h-[52px] w-[52px] rounded-[12px] object-cover"
+          style={{ boxShadow: '0 6px 16px rgb(0 0 0 / 0.28)' }}
+        />
+      ) : bx ? (
+        <BMark ink={ink} size={58} />
+      ) : (
+        <Monogram name={name} ink={ink} />
+      )}
+    </ColourTile>
+  );
+};
 
 const Badges = ({ s }: { s?: BappStandard }) => {
   if (!s) return null;
@@ -129,6 +167,7 @@ const Badges = ({ s }: { s?: BappStandard }) => {
   );
 };
 
+/** A half-width card on a phone: colour tile on top, a big name, one short line, the standard badges. */
 const Card = ({
   name,
   verb,
@@ -136,7 +175,6 @@ const Card = ({
   standard,
   badge,
   onOpen,
-  dim,
 }: {
   name: string;
   verb?: string;
@@ -144,26 +182,23 @@ const Card = ({
   standard?: BappStandard;
   badge?: string;
   onOpen: () => void;
-  dim?: boolean;
 }) => (
   <button
     type="button"
     onClick={onOpen}
-    className="group flex items-center gap-3 rounded-2xl p-3 text-left w-full min-w-0 active:scale-[0.98] transition duration-150 hover:[border-color:rgb(var(--bw-accent-rgb)/0.55)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:[outline-color:var(--bw-accent-hi)]"
+    title={verb ? `${name}: ${verb}` : name}
+    className="group flex flex-col gap-2 rounded-2xl p-2 text-left w-full min-w-0 active:scale-[0.98] transition duration-150 hover:[border-color:rgb(var(--bw-accent-rgb)/0.55)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:[outline-color:var(--bw-accent-hi)]"
     style={{
       // Themed card, hairline border, explicit ink: a <button> otherwise inherits the UA's black text.
       background: 'var(--bw-card, var(--bw-surface))',
       color: 'var(--bw-text)',
       border: '1px solid var(--bw-line)',
-      boxShadow: 'inset 0 1px 0 rgb(var(--bw-accent-rgb) / 0.08)',
     }}
   >
-    <div className="shrink-0" style={{ opacity: dim ? 0.75 : 1 }}>
-      {art}
-    </div>
-    <div className="min-w-0 flex-1 flex flex-col gap-1">
+    {art}
+    <div className="min-w-0 flex flex-col gap-1 px-1 pb-1">
       <div className="flex items-center gap-1.5 min-w-0">
-        <span className="text-[15px] font-bold tracking-tight text-[color:var(--bw-text)] truncate">{name}</span>
+        <span className="text-[16px] font-bold tracking-tight text-[color:var(--bw-text)] truncate">{name}</span>
         {badge && (
           <span
             className="shrink-0 rounded px-1 text-[9px] font-bold uppercase"
@@ -177,23 +212,25 @@ const Card = ({
           </span>
         )}
       </div>
-      {verb && <span className="text-[12px] leading-snug text-[color:var(--bw-muted)] line-clamp-2">{verb}</span>}
+      {verb && (
+        <span className="text-[12px] leading-snug text-[color:var(--bw-muted)] truncate">{shortLine(verb)}</span>
+      )}
       <Badges s={standard} />
     </div>
   </button>
 );
 
-const Header = ({ label, sub }: { label: string; sub?: string }) => (
+const Header = ({ label }: { label: string }) => (
   <div className="pt-1">
     <h2 className="m-0 text-[12px] font-bold uppercase tracking-wider" style={{ color: 'var(--bw-accent-hi)' }}>
       {label}
     </h2>
-    {sub && <p className="m-0 text-[11px] text-[color:var(--bw-muted)]">{sub}</p>}
   </div>
 );
 
+/** Two half-width cards per row on a phone, more on wider screens. Wraps; never scrolls sideways. */
 const Grid = ({ children }: { children: React.ReactNode }) => (
-  <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-2">{children}</div>
+  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">{children}</div>
 );
 
 export const BappsStore = ({
@@ -245,24 +282,11 @@ export const BappsStore = ({
   };
   const art = (a: StoreApp) =>
     a.adult && !adultOk ? (
-      <div
-        className="flex h-14 w-14 items-center justify-center rounded-[13px]"
-        style={{ background: 'var(--bw-card, var(--bw-surface))', boxShadow: 'inset 0 0 0 1.5px #ff3b3b88' }}
-      >
-        <span className="text-[15px] font-black text-[#ff5a5a]">18+</span>
-      </div>
-    ) : a.logo ? (
-      <img
-        src={a.logo}
-        alt=""
-        width={56}
-        height={56}
-        className="h-14 w-14 rounded-[13px] object-cover bg-[var(--bw-card,var(--bw-surface))]"
-      />
-    ) : a.tier === 'bx' ? (
-      <BMark color={a.color} />
+      <ColourTile color="#3A0A0E">
+        <span className="text-[26px] font-black text-[#ff5a5a]">18+</span>
+      </ColourTile>
     ) : (
-      <Monogram name={a.name} color={a.color} />
+      <TileArt name={a.name} color={tileColour(a.name, a.color)} logo={a.logo} bx={a.tier === 'bx'} />
     );
 
   const appCards = (apps: StoreApp[]) =>
@@ -290,24 +314,10 @@ export const BappsStore = ({
       key={i.key}
       name={i.name}
       verb={i.verb}
-      art={
-        i.icon ? (
-          <img
-            src={i.icon}
-            alt=""
-            width={56}
-            height={56}
-            loading="lazy"
-            className="h-14 w-14 rounded-[13px] object-cover bg-[var(--bw-card,var(--bw-surface))]"
-          />
-        ) : (
-          <Monogram name={i.name} color={i.color ?? '#FFD24D'} />
-        )
-      }
+      art={<TileArt name={i.name} color={tileColour(i.name, i.color)} icon={i.icon} dim={dim} />}
       standard={i.standard}
       badge={i.demo ? 'Demo' : undefined}
       onOpen={i.onOpen}
-      dim={dim}
     />
   );
 
@@ -326,42 +336,27 @@ export const BappsStore = ({
           className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[14px] text-[color:var(--bw-text)] placeholder:text-[color:var(--bw-muted)]"
         />
       </label>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[color:var(--bw-muted)]">
-        <span className="inline-flex items-center gap-1">
-          <Coins size={10} /> token
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <MessagesSquare size={10} /> bChatX room
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <Palette size={10} /> wallet theme
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <Smartphone size={10} /> runs in the wallet
-        </span>
-      </div>
-
       {bx.length > 0 && (
         <section className="flex flex-col gap-3">
-          <Header label="Featured · b*X bApps" sub="Made by The Bitcoin Corporation" />
+          <Header label="Featured · b*X bApps" />
           {appCards(bx)}
         </section>
       )}
       {commercial.length > 0 && (
         <section className="flex flex-col gap-3">
-          <Header label="Commercial apps" sub="Ventures and clients with their own tokens" />
+          <Header label="Commercial apps" />
           {appCards(commercial)}
         </section>
       )}
       {built.length > 0 && (
         <section className="flex flex-col gap-3">
-          <Header label="In your wallet" sub="Built-in bApps and the bApps suite" />
+          <Header label="In your wallet" />
           <Grid>{built.map((i) => itemCard(i))}</Grid>
         </section>
       )}
       {coming.length > 0 && (
         <section className="flex flex-col gap-2" aria-label="Coming bApps">
-          <Header label="Coming" sub="Not live yet. Listed so you know it's on the way" />
+          <Header label="Coming" />
           <div className="flex flex-wrap gap-2">
             {coming.map((c) => (
               <span
@@ -389,7 +384,7 @@ export const BappsStore = ({
       )}
       {ready.length > 0 && (
         <section className="flex flex-col gap-3">
-          <Header label="Community bApps" sub="Other developers' apps that meet the bApp standard" />
+          <Header label="Community bApps" />
           <Grid>{ready.map((i) => itemCard(i))}</Grid>
         </section>
       )}
@@ -409,9 +404,6 @@ export const BappsStore = ({
             <span className="flex flex-col">
               <span className="text-[12px] font-bold text-[color:var(--bw-text)]">
                 Not yet bApp-ready ({notReady.length})
-              </span>
-              <span className="text-[11px] text-[color:var(--bw-muted)]">
-                Other developers' apps without a token, room, theme or in-wallet sign-in
               </span>
             </span>
             <ChevronDown
