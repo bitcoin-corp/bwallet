@@ -3913,14 +3913,9 @@ if (!(
   /** What the sheet needs for the allowance line: the price, and whether the site already has an allowance. */
   const getBundleAllowance = async (originator: string) => {
     const usdPerBsv = await cachedUsdPerBsv();
-    let existingSats: number | undefined;
-    const store = accountContext?.permissionStore;
-    // Envelopes by default: an old stored allowance is not shown and grants nothing (services/allowanceFlag.ts).
-    if (ALLOWANCES_ENABLED && store && originator) {
-      const grant = await store.findGrant({ type: 'spending', originator: normalizeOriginator(originator) });
-      const live = grant && (grant.expiry === 0 || grant.expiry * 1000 > Date.now());
-      if (live && grant.authorizedAmount != null) existingSats = grant.authorizedAmount;
-    }
+    // No site allowance, cap or threshold is ever reported to a sheet (owner, 25 Oct 2026: "I have no spending
+    // caps"): the sheet shows the payment and nothing about it being "over" anything.
+    const existingSats: number | undefined = undefined;
     let envelope: { offer: boolean; balanceSats?: number; presetsUsd: readonly number[] } | undefined;
     if (ENVELOPES_ENABLED && !ALLOWANCES_ENABLED && originator) {
       const site = normalizeOriginator(originator);

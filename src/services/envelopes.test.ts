@@ -237,6 +237,44 @@ describe('guardEnvelopes', () => {
   });
 });
 
+describe('no spending caps (owner, 25 Oct 2026)', () => {
+  // TokenBlaster credit: ONE createAction for the exact total. 1 USD ≈ 2,000,000 sats at a $50 BSV price.
+  for (const [label, satoshis] of [
+    ['100 × $1 load', 100 * 2_000_000],
+    ['$500 load', 500 * 2_000_000],
+  ] as const) {
+    test(`${label}: one sheet for the full amount, Approve pays, no stored allowance consulted`, async () => {
+      const store = new EnvelopeStore(memBackend());
+      const sheets: { originator: string; spending: { satoshis: number } }[] = [];
+      const originalCalls: unknown[] = [];
+      const m = {
+        ensureSpendingAuthorization: async (a: unknown) => {
+          originalCalls.push(a);
+          return false; // an old allowance that would refuse: must never be asked
+        },
+        requestPermissionFlow: async (r: { originator: string; spending: { satoshis: number } }) => {
+          sheets.push(r);
+          return true; // the user taps Approve
+        },
+      };
+      const g = guardEnvelopes(m, { envelopes: store, adminOriginator: 'admin', normalize: normalizeOriginator });
+      const ok = await g.ensureSpendingAuthorization({ originator: 'https://www.tokenblaster.lol', satoshis } as never);
+      expect(ok).toBe(true);
+      expect(sheets).toHaveLength(1);
+      expect(sheets[0].spending.satoshis).toBe(satoshis);
+      expect(originalCalls).toHaveLength(0);
+    });
+  }
+
+  test('the approval sheet never says a payment is over an allowance or a site limit', async () => {
+    const { readFileSync } = await import('node:fs');
+    const sheet = readFileSync(new URL('../pages/requests/BundleSheet.tsx', import.meta.url), 'utf8');
+    expect(sheet).not.toMatch(/over your allowance/i);
+    expect(sheet).not.toMatch(/may spend/i);
+    expect(sheet).not.toMatch(/Your allowance here/i);
+  });
+});
+
 describe('migration: old monthly allowances grant nothing', () => {
   test('a stored $5/month allowance on the real manager no longer approves silently', async () => {
     const store = new InMemoryPermissionStore();

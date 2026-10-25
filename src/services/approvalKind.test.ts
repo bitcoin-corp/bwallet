@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { approvalKindForSheet, isOverAllowance, privateTitleLabel, siteName } from './approvalKind';
+import { approvalKindForSheet, privateTitleLabel, siteName } from './approvalKind';
 import { buildSheetModel, type BundleRequest } from './permissionBundle';
 
 const o = 'bchatx.com';
@@ -10,8 +10,7 @@ const proto = (id: string, extra: Partial<BundleRequest> = {}): BundleRequest =>
   protocolID: [1, 'bchatx auth'],
   ...extra,
 });
-const kind = (items: BundleRequest[], existingAllowanceSats?: number) =>
-  approvalKindForSheet(buildSheetModel({ originator: o, items }), { existingAllowanceSats });
+const kind = (items: BundleRequest[]) => approvalKindForSheet(buildSheetModel({ originator: o, items }));
 
 describe('approvalKindForSheet', () => {
   test('signature anyone can check → SIGN IN', () => {
@@ -67,10 +66,20 @@ describe('approvalKindForSheet', () => {
     expect(kind([pay])).toBe('pay');
     expect(kind([proto('a'), pay])).toBe('pay');
   });
-  test('payment while an allowance already exists (did not fit) → CAREFUL', () => {
-    const pay: BundleRequest = { requestID: 'p', type: 'spending', originator: o, spending: { satoshis: 1000 } };
-    expect(kind([pay], 500)).toBe('careful');
-    expect(isOverAllowance(buildSheetModel({ originator: o, items: [pay] }), {})).toBe(false);
+  test('no spending caps: a credit load of any size is one PAY sheet for the full amount', () => {
+    // TokenBlaster "Shooting Gallery" credit: ONE createAction for the exact total the player loaded.
+    for (const satoshis of [100 * 2_000_000, 500 * 2_000_000]) {
+      const pay: BundleRequest = {
+        requestID: 'p',
+        type: 'spending',
+        originator: 'www.tokenblaster.lol',
+        spending: { satoshis, lineItems: [{ type: 'output', satoshis, description: 'Shooting Gallery: credit' }] },
+      };
+      const model = buildSheetModel({ originator: 'www.tokenblaster.lol', items: [pay] });
+      expect(approvalKindForSheet(model)).toBe('pay');
+      expect(model.payment?.satoshis).toBe(satoshis);
+      expect(model.lines.some((l) => l.risky)).toBe(false);
+    }
   });
   test('privileged keys or private certificate fields → CAREFUL, even with a payment', () => {
     expect(kind([proto('a', { privileged: true })])).toBe('careful');

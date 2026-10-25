@@ -188,15 +188,11 @@ export const BundleSheet = (props: {
     }
   };
 
-  const kind = approvalKindForSheet(model, { existingAllowanceSats: allowance?.existingSats });
+  const kind = approvalKindForSheet(model);
   const name = siteName(request.originator);
   const many = model.lines.length + (model.payment ? 1 : 0) > 1;
   const payLabel = model.payment ? dollarsInline(model.payment.satoshis, price) : '';
   const allowanceSetsUsd = showAllowance && allowanceOn && allowanceUsd > 0 ? allowanceUsd : 0;
-  const existingUsd =
-    allowance?.existingSats !== undefined && allowance.usdPerBsv
-      ? (allowance.existingSats / 1e8) * allowance.usdPerBsv
-      : undefined;
   const reconnect = request.items.some((r) => r.reconnect);
   const primary = reconnect
     ? 'Reconnect'
@@ -452,8 +448,6 @@ export const BundleSheet = (props: {
       <>Wants {red('full control')} of your keys</>
     ) : privateCert ? (
       <>Wants your {red('private details')}</>
-    ) : model.payment && riskyLines.length === 0 ? (
-      <>{red(payLabel)} is over your allowance</>
     ) : (
       <>Wants {red('more than usual')}</>
     );
@@ -466,17 +460,6 @@ export const BundleSheet = (props: {
           >
             <Cross />
             Could move your money
-          </div>
-        )}
-        {riskyLines.length === 0 && model.payment && (
-          <div
-            className="flex items-center gap-2.5"
-            style={{ padding: '12px 14px', borderRadius: 14, background: CARD.redChip, fontSize: 14 }}
-          >
-            <Cross />
-            {existingUsd !== undefined
-              ? `Your allowance here is ${fmtUsd(existingUsd)} a month`
-              : 'More than this site may spend'}
           </div>
         )}
         {riskyLines.map((l) => lineRow(l, true))}
