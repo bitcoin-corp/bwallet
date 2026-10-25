@@ -238,7 +238,11 @@ export const ordinalNote = (keyID: string) => JSON.stringify({ protocolID: ONESA
 
 type Issued = { keyID: string; at: number };
 
-/** "Let this site see my $SYM balance" answers, per site per token. Remembered across restarts when persisted. */
+/**
+ * "Let this site see my $SYM balance" answers, per site per token. Remembered across restarts when persisted, for
+ * LIST_CONSENT_DAYS, and dropped by Forget site / Revoke all (b-Aware 25 Oct 2026: they never expired and could not
+ * be withdrawn).
+ */
 export type ListConsentStore = {
   has(site: string, tokenId: string): Promise<boolean>;
   add(site: string, tokenId: string): Promise<void>;
@@ -258,66 +262,78 @@ const groupConsents = (keys: Iterable<string>): Record<string, string[]> => {
   return out;
 };
 
-export const memoryConsentStore = (): ListConsentStore => {
-  const s = new Set<string>();
+export const LIST_CONSENT_DAYS = 30;
+const CONSENT_MS = LIST_CONSENT_DAYS * 86_400_000;
+const live = (at: number, now: number) => Number.isFinite(at) && at <= now && now - at < CONSENT_MS;
+
+export const memoryConsentStore = (now: () => number = Date.now): ListConsentStore => {
+  const s = new Map<string, number>();
   return {
-    has: async (site, id) => s.has(`${site}|${id}`),
-    add: async (site, id) => void s.add(`${site}|${id}`),
-    list: async () => groupConsents(s),
+    has: async (site, id) => live(s.get(`${site}|${id}`) ?? NaN, now()),
+    add: async (site, id) => void s.set(`${site}|${id}`, now()),
+    list: async () => groupConsents([...s].filter(([, at]) => live(at, now())).map(([k]) => k)),
     forget: async (site) => {
-      for (const k of [...s]) if (k.startsWith(`${site}|`)) s.delete(k);
+      for (const k of [...s.keys()]) if (k.startsWith(`${site}|`)) s.delete(k);
     },
   };
 };
 
+export const LIST_CONSENT_KEY = 'bwalletx.siteTokenListConsent';
+
 let sharedChromeStore: ListConsentStore | undefined;
 
-/** chrome.storage.local where it exists (extension, mobile shim), else memory. Failures fall back to asking again. */
-export const chromeConsentStore = (): ListConsentStore => (sharedChromeStore ??= makeChromeConsentStore());
+/**
+ * chrome.storage.local where it exists (extension, mobile shim), else memory. Entries are "site|tokenId|savedAtMs";
+ * older entries with no time count as expired (asked again). Failures fall back to asking again.
+ * One shared store unless a time source is passed (tests).
+ */
+export const chromeConsentStore = (now?: () => number): ListConsentStore =>
+  now ? makeChromeConsentStore(now) : (sharedChromeStore ??= makeChromeConsentStore(Date.now));
 
-const makeChromeConsentStore = (): ListConsentStore => {
-  const KEY = 'bwalletx.siteTokenListConsent';
-  const mem = memoryConsentStore();
+const makeChromeConsentStore = (now: () => number): ListConsentStore => {
   type Area = {
     get(k: string): Promise<Record<string, unknown>>;
     set(v: Record<string, unknown>): Promise<void>;
   };
   const local = (globalThis as { chrome?: { storage?: { local?: Area } } }).chrome?.storage?.local;
-  if (!local) return mem;
+  if (!local) return memoryConsentStore(now);
   const read = async (): Promise<string[]> => {
     try {
-      const r = await local.get(KEY);
-      return Array.isArray(r?.[KEY]) ? (r[KEY] as string[]) : [];
+      const r = await local.get(LIST_CONSENT_KEY);
+      return Array.isArray(r?.[LIST_CONSENT_KEY]) ? (r[LIST_CONSENT_KEY] as string[]) : [];
     } catch {
       return [];
     }
   };
+  const write = async (all: string[]) => {
+    try {
+      await local.set({ [LIST_CONSENT_KEY]: all.slice(-2000) });
+    } catch {
+      /* asked again next time */
+    }
+  };
+  const parts = (e: string) => {
+    const i = e.lastIndexOf('|');
+    const head = e.slice(0, i);
+    return head.includes('|') ? { k: head, at: Number(e.slice(i + 1)) } : { k: e, at: NaN };
+  };
   return {
-    has: async (site, id) => (await mem.has(site, id)) || (await read()).includes(`${site}|${id}`),
+    has: async (site, id) => (await read()).some((e) => parts(e).k === `${site}|${id}` && live(parts(e).at, now())),
     add: async (site, id) => {
-      await mem.add(site, id);
-      try {
-        const all = await read();
-        await local.set({ [KEY]: [...all.filter((x) => x !== `${site}|${id}`), `${site}|${id}`].slice(-2000) });
-      } catch {
-        /* memory only */
-      }
+      const k = `${site}|${id}`;
+      const t = now();
+      await write([...(await read()).filter((e) => parts(e).k !== k && live(parts(e).at, t)), `${k}|${t}`]);
     },
-    list: async () =>
-      groupConsents(
-        new Set([
-          ...(await read()),
-          ...Object.entries(await mem.list()).flatMap(([site, ids]) => ids.map((id) => `${site}|${id}`)),
-        ]),
-      ),
+    list: async () => {
+      const t = now();
+      const stored = (await read())
+        .map(parts)
+        .filter((e) => live(e.at, t))
+        .map((e) => e.k);
+      return groupConsents(new Set(stored));
+    },
     forget: async (site) => {
-      await mem.forget(site);
-      try {
-        const all = await read();
-        await local.set({ [KEY]: all.filter((x) => !x.startsWith(`${site}|`)) });
-      } catch {
-        /* nothing stored */
-      }
+      await write((await read()).filter((e) => !parts(e).k.startsWith(`${site}|`)));
     },
   };
 };
