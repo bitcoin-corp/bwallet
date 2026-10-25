@@ -154,8 +154,8 @@ export const KeyScreen = ({ onBack }: { onBack: () => void }) => {
       </div>
       <div className="flex-1 overflow-y-auto p-4 pb-24">
         <p className="text-xs" style={{ color: MUTED }}>
-          The key is stored only on this device (Keychain / Keystore) and sent only to the provider you pick. bWallet
-          never sees it. You pay the provider directly.
+          The key is stored only on this device (Keychain / Keystore) and sent only to the provider you pick. Our
+          servers never receive it. You pay the provider directly.
         </p>
         <Heading>Provider</Heading>
         <Pills

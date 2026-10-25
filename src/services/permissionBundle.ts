@@ -408,7 +408,7 @@ export const isSignInRequest = (r: BundleRequest): boolean =>
     (SIGN_IN_PROTOCOL.test(protoName(r)) &&
       (r.counterparty === undefined || r.counterparty === 'self' || r.counterparty === 'anyone')));
 
-/** Self-only keys we can name in plain words (protocol name → what they keep private). */
+/** Self-only keys we can name in plain words (protocol name → what the keys are used for). */
 const PRIVATE_LABELS: [RegExp, string][] = [
   [/agent history/i, 'Ask b chats'],
   [/\b(chat|message)s?\b/i, 'chats'],
@@ -416,7 +416,7 @@ const PRIVATE_LABELS: [RegExp, string][] = [
   [/\b(history|private|backup|vault|encrypt)/i, 'data'],
 ];
 
-/** "Keep your … private" label for a key used only on your own data, or undefined. */
+/** "Use your wallet keys for your …" label for a key used only on your own data, or undefined. */
 export const privateLabelFor = (r: BundleRequest): string | undefined => {
   if (r.type !== 'protocol' || r.privileged || r.counterparty !== 'self' || isSignInRequest(r)) return undefined;
   const name = protoName(r);
@@ -457,7 +457,7 @@ const lineText = (r: BundleRequest): string => {
       if (r.counterparty === 'anyone') return "Prove it's you (a signature anyone can check)";
       if (isPostSignature(r)) return 'Sign your posts and likes as you';
       const kept = privateLabelFor(r);
-      if (kept) return `Keep your ${kept} private (encrypted with your keys, only for you)`;
+      if (kept) return `Use keys from your wallet for your ${kept}`;
       if (protoLevel(r) === 2 && r.counterparty && r.counterparty !== 'self')
         return `Sign and encrypt with your "${protoName(r)}" keys, shared with one named person or service`;
       // Not "sign in": this lets the app sign anything with keys derived from your wallet (audit C1).

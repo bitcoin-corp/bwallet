@@ -71,7 +71,7 @@ const MyReportsPage = () => {
         <h1 className="text-lg font-bold text-white shrink-0">Your reports</h1>
       </div>
       <p className="px-4 pt-3 text-sm" style={{ color: '#9aa3ad' }}>
-        What you told b, and where each one stands. Only you see this list.
+        What you told b, and where each one stands. Other users can't see this list; our team reads every report.
       </p>
       {waiting.length > 0 && (
         <div className="px-4 pt-3 flex items-center justify-between gap-2">

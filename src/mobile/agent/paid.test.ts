@@ -105,7 +105,7 @@ describe('free Ask b', () => {
     );
     expect(GUIDE).not.toMatch(/free for now/i);
     expect(GUIDE).toMatch(/no charge to talk to b/);
-    expect(consentInfo('paid').summary).toMatch(/team reads these chats/);
+    expect(consentInfo('paid').summary).toMatch(/reads and keeps conversations with b for up to 180 days/);
   });
   test('a free turn calls /agent/free only: no quote, no txid, no payment, never a key', async () => {
     const calls: { path: string; body: unknown }[] = [];

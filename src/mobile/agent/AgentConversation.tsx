@@ -800,8 +800,8 @@ export const AgentConversation = ({
             className="flex-1 min-w-0 pl-4 py-1.5 text-[11px] font-semibold text-left border-0 bg-transparent"
             style={{ color: GOLD }}
           >
-            More private: use your own AI key (Claude, OpenAI or OpenRouter). Messages go straight to them, not through
-            us. Add it here ›
+            Use your own AI key (Claude, OpenAI or OpenRouter): messages go from this device to that provider, under its
+            terms, not through our server. Add it here ›
           </button>
           <button
             type="button"

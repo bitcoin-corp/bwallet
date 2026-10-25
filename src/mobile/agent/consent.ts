@@ -28,7 +28,7 @@ export type ConsentInfo = {
 };
 
 /** Owner, 25 Oct 2026: bCorp's mode keeps the chats for feedback; said here too (agent.ts ASK_B_DISCLOSURE). */
-const TEAM_READS = 'The bWalletX team reads these chats to fix bugs and improve b.';
+const TEAM_READS = 'Our team reads and keeps conversations with b for up to 180 days.';
 const KEEP = 'Your keys, balances, contacts and files never leave your wallet.';
 
 export const consentInfo = (t: ConsentTarget): ConsentInfo =>

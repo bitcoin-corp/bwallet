@@ -10,7 +10,7 @@ import type { ReplyRef } from './api';
  *    the net per person is the replay of those events in order (the web does the same);
  *  - a reply is event_payload.reply_to = { id, author, snippet } on the new message;
  *  - a mention is `$handle` in the text (lib/mentions.ts); members are pushed;
- *  - a private $b row carries event_payload.agent_private + visible_to (only the asker gets it).
+ *  - a $b row hidden from others carries event_payload.agent_private + visible_to (hidden from others in the room; only the asker's client shows it).
  */
 
 export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '🙏', '🎉'] as const;

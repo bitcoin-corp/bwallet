@@ -38,11 +38,11 @@ export const approvalKindForSheet = (
 
 /**
  * Sign-in style: a real sign-in (a signature anyone can check, the public identity key, or a sign-in protocol).
- * A key for the site with counterparty self is NOT a sign-in ("bchatx agent history" encrypts your Ask b chats).
+ * A key for the site with counterparty self is NOT a sign-in ("bchatx agent history" is a key for your Ask b chats; our team still reads Ask b chats on the server).
  */
 const isSignInLine = (l: SheetModel['lines'][number]): boolean => l.signIn === true;
 
-/** "Keep your Ask b chats private": the label for a PRIVATE card (first private line's label). */
+/** "Use your wallet keys for your Ask b chats": the label for a PRIVATE card (first private line's label). */
 export const privateTitleLabel = (model: Pick<SheetModel, 'lines'>): string =>
   model.lines.find((l) => l.privateLabel)?.privateLabel ?? 'data';
 

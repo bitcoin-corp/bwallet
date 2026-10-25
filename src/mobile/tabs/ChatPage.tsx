@@ -1023,7 +1023,7 @@ const Conversation = ({
                   <span className="text-[9px] font-bold px-1 rounded" style={{ background: '#1f6d9c', color: '#fff' }}>
                     BOT
                   </span>
-                  {isEphemeral(it.message) && <span>· only you can see this</span>}
+                  {isEphemeral(it.message) && <span>· hidden from others in the room</span>}
                 </div>
                 <div className="whitespace-pre-line break-words">{it.message.body}</div>
               </div>

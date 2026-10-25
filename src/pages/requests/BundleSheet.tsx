@@ -601,13 +601,13 @@ export const BundleSheet = (props: {
     );
   } else if (kind === 'private') {
     hero = <SignInHero />;
-    siteSub = 'Private data';
-    title = <>Keep your {gold(privateTitleLabel(model))} private</>;
+    siteSub = 'Your data';
+    title = <>Use your wallet keys for your {gold(privateTitleLabel(model))}</>;
     body = (
       <div className="flex flex-wrap" style={{ gap: 8, marginTop: 4 }}>
         <Chip>
           <Check />
-          Only you can read them
+          Uses keys from your wallet
         </Chip>
         <Chip>
           <Check />

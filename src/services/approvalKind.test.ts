@@ -25,7 +25,7 @@ describe('approvalKindForSheet', () => {
     expect(kind([proto('a'), proto('b', { protocolID: [2, 'x'], counterparty: 'self' })])).toBe('connect');
     expect(kind([proto('a', { protocolID: [2, 'bchatx agent history'], counterparty: 'self' })])).toBe('private');
   });
-  test('encrypting Ask b history → "Keep your Ask b chats private"', () => {
+  test('encrypting Ask b history → "Use your wallet keys for your Ask b chats"', () => {
     const model = buildSheetModel({
       originator: o,
       items: [proto('a', { protocolID: [2, 'bchatx agent history'], counterparty: 'self' })],
