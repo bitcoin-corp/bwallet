@@ -10,9 +10,12 @@
 import { afterAll, describe, expect, mock, test } from 'bun:test';
 import { PrivateKey } from '@bsv/sdk';
 import { PAIR_VERSION, Sealer, deriveSession, pairUrl, type PairMessage } from '../../pair/protocol';
+import { keepGlobals, stubGlobals } from '../../testing/stubGlobals';
 
 let siteCall: () => Promise<unknown> = async () => ({ success: true, data: { publicKey: '02ab' } });
-mock.module('../dappBrowser', () => ({ handleSiteCall: () => siteCall() }));
+// Keep the real exports: bun module mocks are process-wide, and a partial mock breaks later files (lapseRevoke.test.ts).
+const realDappBrowser = { ...(await import('../dappBrowser')) };
+mock.module('../dappBrowser', () => ({ ...realDappBrowser, handleSiteCall: () => siteCall() }));
 
 class FakeWS {
   static CONNECTING = 0;
@@ -46,30 +49,36 @@ const mem = new Map<string, string>();
 const chromeLocal = new Map<string, unknown>();
 let visibility = 'visible';
 const g = globalThis as Record<string, unknown>;
-g.WebSocket = FakeWS;
-g.localStorage = {
-  getItem: (k: string) => mem.get(k) ?? null,
-  setItem: (k: string, v: string) => void mem.set(k, v),
-  removeItem: (k: string) => void mem.delete(k),
-};
-g.document = {
-  get visibilityState() {
-    return visibility;
+// Restored when this file finishes: a leaked document/localStorage broke the theme and pageHidden tests.
+stubGlobals({
+  WebSocket: FakeWS,
+  localStorage: {
+    getItem: (k: string) => mem.get(k) ?? null,
+    setItem: (k: string, v: string) => void mem.set(k, v),
+    removeItem: (k: string) => void mem.delete(k),
   },
-  addEventListener: () => undefined,
-};
-const hadChrome = g.chrome;
-g.chrome = {
-  storage: {
-    local: {
-      set: async (v: Record<string, unknown>) => {
-        for (const [k, x] of Object.entries(v)) chromeLocal.set(k, x);
+  document: {
+    get visibilityState() {
+      return visibility;
+    },
+    addEventListener: () => undefined,
+  },
+  chrome: {
+    storage: {
+      local: {
+        set: async (v: Record<string, unknown>) => {
+          for (const [k, x] of Object.entries(v)) chromeLocal.set(k, x);
+        },
       },
     },
   },
-};
+});
+// The first test deletes and puts back localStorage; make sure the stub is what comes back even if it throws.
+keepGlobals('localStorage');
 
-const sessions = await import('./sessions');
+// A private copy of sessions.ts (see lapseRevoke.test.ts): its started flag, live sockets, hiddenAt and mirror cache
+// would otherwise carry over from whichever pair test ran first.
+const sessions = (await import('./sessions?wakeResume' as string)) as typeof import('./sessions');
 const guard = await import('../../services/pairedPromptGuard');
 const { pairedOrigin } = await import('../../services/originKey');
 
@@ -135,6 +144,7 @@ describe('phone pairing after the phone sleeps', () => {
       // #80: a forged second pairing claiming the same host never inherits this pairing's grants.
       expect(guard.pairedGrantAllowed(pairedOrigin(HOST, 'FORGEDAAAAAAAAAAAAAAAA'))).toBe(false);
     } finally {
+      guard.setPairMirror([]);
       g.localStorage = ls;
     }
   });
@@ -153,8 +163,9 @@ describe('phone pairing after the phone sleeps', () => {
     } finally {
       Date.now = realNow;
     }
-    // The old socket still said OPEN (iOS after sleep); it was replaced anyway.
-    const after = FakeWS.all.at(-1)!;
+    // The old socket still said OPEN (iOS after sleep); it was replaced anyway. Waking reopens every pairing still
+    // held (earlier tests' too, in any order), so look up this channel's newest socket rather than the last one opened.
+    const after = FakeWS.all.findLast((w) => w.url.includes('/v1/c/WAKEBBBBBBBBBBBBBBBBBB'))!;
     expect(after).not.toBe(before);
     expect(after.url).toContain('/v1/c/WAKEBBBBBBBBBBBBBBBBBB');
     await settle();
@@ -189,7 +200,6 @@ describe('phone pairing after the phone sleeps', () => {
 
   afterAll(() => {
     for (const s of sessions.pairedSites()) sessions.forget(s.c, false);
-    g.chrome = hadChrome;
   });
 
   test('a real No from the user is still ERR_PERMISSION_DENIED', async () => {
