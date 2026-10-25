@@ -42,6 +42,24 @@ for (const [key, [spec]] of Object.entries(lock.packages)) {
   overrides[parts.join('>')] = version;
 }
 
+// This fork's own pins over upstream's lock: newer @1sat packages (OrdLock v2, 507d2851) and security
+// fixes upstream hasn't taken yet (vite 7.3.7: launch-editor and server.fs advisories, audit 25 Oct 2026).
+const FORK_PINS: Record<string, string> = {
+  '@1sat/actions@~0.0': '0.0.234',
+  '@1sat/client@~0.0': '0.0.63',
+  '@1sat/connect@~0.0': '0.0.105',
+  '@1sat/permission-module-ui@~0.0': '0.0.72',
+  '@1sat/permission-module@~0.0': '0.0.77',
+  '@1sat/sweep-ui@~0.0': '0.0.112',
+  '@1sat/templates@~0.0': '0.0.43',
+  '@1sat/types@~0.0': '0.0.52',
+  '@1sat/utils@~0.0': '0.0.42',
+  '@1sat/wallet-browser@~0.0': '0.0.106',
+  '@1sat/wallet@~0.0': '0.0.120',
+  'vite@^7': '7.3.7',
+};
+Object.assign(overrides, FORK_PINS);
+
 const START = '# >>> pinned from upstream bun.lock (scripts/pin-from-bun-lock.ts)';
 const END = '# <<< pinned from upstream bun.lock';
 const block = [
