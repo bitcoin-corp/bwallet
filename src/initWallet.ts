@@ -28,6 +28,7 @@ import { guardSiteTokens } from './services/siteTokens';
 import { guardReservedProtocols, revokeReservedProtocolGrants } from './services/reservedProtocols';
 import { guardAllowance } from './services/allowanceGuard';
 import { ALLOWANCES_ENABLED } from './services/allowanceFlag';
+import { guardEverySpendAsks, revokeStoredSpendingGrants } from './services/everySpendAsks';
 import { chromeEnvelopeBackend, EnvelopeStore, guardEnvelopes } from './services/envelopes';
 import { ENVELOPES_ENABLED } from './mobile/storeBuild';
 import { guardCrossSiteSigning } from './services/crossSiteSignGuard';
@@ -446,12 +447,16 @@ export const initWallet = async (
                         ),
                         { envelopes, adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
                       )
-                    : // Store builds have no envelopes (storeBuild.ts ENVELOPES_ENABLED): every payment shows its sheet.
-                      new LocalWalletPermissionsManager(
-                        baseWallet,
-                        ADMIN_ORIGINATOR,
-                        { permissionModules: assetModules },
-                        { store: permissionStore },
+                    : // Store builds have no envelopes (storeBuild.ts ENVELOPES_ENABLED): every payment shows its sheet,
+                      // whatever old monthly grant is stored (services/everySpendAsks.ts, owner 25 Oct 2026).
+                      guardEverySpendAsks(
+                        new LocalWalletPermissionsManager(
+                          baseWallet,
+                          ADMIN_ORIGINATOR,
+                          { permissionModules: assetModules },
+                          { store: permissionStore },
+                        ),
+                        { adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
                       ),
                 spendLedger,
               ),
@@ -470,6 +475,15 @@ export const initWallet = async (
   await revokeReservedProtocolGrants(permissionStore, ADMIN_ORIGINATOR)
     .then((n) => n && console.warn(`[initWallet] revoked ${n} app grant(s) for wallet-internal protocols`))
     .catch((e: unknown) => console.warn('[initWallet] reserved-protocol grant cleanup failed:', e));
+  // Upgrade migration (owner 25 Oct 2026): old stored monthly spending grants are removed, so no build can pay a site
+  // without a sheet even if a guard were bypassed. Allowances (ALLOWANCES_ENABLED, off in every build) keep theirs.
+  if (!ALLOWANCES_ENABLED)
+    await revokeStoredSpendingGrants(permissionStore, ADMIN_ORIGINATOR)
+      .then(
+        (n) =>
+          n && console.warn(`[initWallet] revoked ${n} stored site spending grant(s): every payment shows its sheet`),
+      )
+      .catch((e: unknown) => console.warn('[initWallet] stored spending grant cleanup failed:', e));
   await revokeReservedBasketGrants(permissionStore, ADMIN_ORIGINATOR)
     .then((n) => n && console.warn(`[initWallet] revoked ${n} app grant(s) for wallet-internal baskets`))
     .catch((e: unknown) => console.warn('[initWallet] reserved-basket grant cleanup failed:', e));
