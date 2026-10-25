@@ -5,7 +5,15 @@
 import { Transaction } from '@bsv/sdk';
 import { timedStep } from './recoverByTxid';
 import { managedStores, withRepairStore, type TxidWiring } from './recoverByTxidWiring';
-import type { ChainState, MissingCoin, RestoreDeps, ScanDeps, ScanStore, StoreOutput } from './findMissingCoins';
+import type {
+  ChainState,
+  MissingCoin,
+  RestoreDeps,
+  ScanDeps,
+  ScanStore,
+  StoreOutput,
+  StoreRead,
+} from './findMissingCoins';
 
 type OutRow = {
   outputId: number;
@@ -21,6 +29,76 @@ type OutRow = {
 };
 
 const PAGE = 1000;
+const MAX_OUTPUTS = 200_000;
+/** Statuses whose outputs the toolbox keeps but no list shows: an aborted or never-sent action's change. */
+export const UNSETTLED_STATUSES = ['failed', 'nosend', 'unsigned', 'unprocessed'] as const;
+/** Order the toolbox's getSyncChunk expects its offsets in (backup/WalletBackupService.ts SYNC_ENTITY_NAMES). */
+const SYNC_ENTITIES = [
+  'provenTx',
+  'outputBasket',
+  'outputTag',
+  'txLabel',
+  'transaction',
+  'output',
+  'txLabelMap',
+  'outputTagMap',
+  'certificate',
+  'certificateField',
+  'commission',
+  'provenTxReq',
+];
+const SKIP = 1_000_000_000;
+
+type TxRow = { transactionId: number; txid?: string; status: string; created_at?: Date | string; description?: string };
+
+/** The store-level calls the scan uses. A local StorageProvider has findTransactions; a remote StorageClient doesn't. */
+type ScanStoreApi = {
+  findOutputsAuth: (
+    auth: { userId?: number; identityKey: string },
+    args: Record<string, unknown>,
+  ) => Promise<unknown[]>;
+  findTransactions?: (args: Record<string, unknown>) => Promise<unknown[]>;
+  getSyncChunk?: (args: Record<string, unknown>) => Promise<{ transactions?: unknown[] }>;
+  getSettings?: () => { storageIdentityKey?: string };
+};
+
+/**
+ * This store's failed / nosend / unsigned / unprocessed transactions. A local store answers by status directly. A
+ * remote store has no findTransactions over RPC, so its transactions are paged with getSyncChunk (every other entity
+ * skipped) and filtered here; getSyncChunk has no status filter, so failed rows are included.
+ */
+export async function findUnsettledTxs(
+  api: ScanStoreApi,
+  userId: number,
+  identityKey: string,
+  storageIdentityKey: string | undefined,
+): Promise<{ txs: TxRow[]; incomplete?: string }> {
+  const want = new Set<string>(UNSETTLED_STATUSES);
+  if (api.findTransactions) {
+    const txs: TxRow[] = [];
+    for (const status of UNSETTLED_STATUSES)
+      txs.push(...((await api.findTransactions({ partial: { userId, status }, noRawTx: true })) as unknown as TxRow[]));
+    return { txs };
+  }
+  if (!api.getSyncChunk || !storageIdentityKey) return { txs: [], incomplete: 'it can’t list transactions by status' };
+  const txs: TxRow[] = [];
+  let offset = 0;
+  for (let i = 0; i < 1000; i++) {
+    const chunk = await api.getSyncChunk({
+      identityKey,
+      fromStorageIdentityKey: storageIdentityKey,
+      toStorageIdentityKey: 'bwx-find-missing-coins',
+      maxRoughSize: 10_000_000,
+      maxItems: PAGE,
+      offsets: SYNC_ENTITIES.map((name) => ({ name, offset: name === 'transaction' ? offset : SKIP })),
+    });
+    const page = (chunk.transactions ?? []) as TxRow[];
+    for (const t of page) if (want.has(t.status)) txs.push(t);
+    if (!page.length) return { txs };
+    offset += page.length;
+  }
+  return { txs, incomplete: `stopped after ${offset} transactions` };
+}
 
 export type MissingCoinsWiring = {
   storage: TxidWiring['storage'];
@@ -75,6 +153,9 @@ export function makeMissingCoinsDeps(w: MissingCoinsWiring): { scan: ScanDeps; r
       return managedStores(storage)
         .filter(({ m }) => !!m.user)
         .map(({ name, m }): ScanStore => {
+          const api = m.storage as unknown as ScanStoreApi;
+          const auth = () => ({ userId: m.user!.userId, identityKey: w.identityKey });
+          const ms = w.stepTimeoutMs ?? 30_000;
           const remote = !(m as { isStorageProvider?: boolean }).isStorageProvider;
           const url = (m.storage as unknown as { endpointUrl?: string }).endpointUrl;
           const host = url ? url.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : '';
@@ -85,13 +166,12 @@ export function makeMissingCoinsDeps(w: MissingCoinsWiring): { scan: ScanDeps; r
             outputs: () =>
               timedStep(
                 `read ${label}`,
-                w.stepTimeoutMs ?? 30_000,
+                ms,
                 `Couldn’t reach ${label}`,
-                async () => {
-                  const auth = { userId: m.user!.userId, identityKey: w.identityKey };
+                async (): Promise<StoreRead> => {
                   const all: StoreOutput[] = [];
-                  for (let offset = 0; offset < 200_000; offset += PAGE) {
-                    const page = (await m.storage.findOutputsAuth(auth, {
+                  for (let offset = 0; offset < MAX_OUTPUTS; offset += PAGE) {
+                    const page = (await m.storage.findOutputsAuth(auth(), {
                       partial: {},
                       noScript: true,
                       paged: { limit: PAGE, offset },
@@ -100,9 +180,44 @@ export function makeMissingCoinsDeps(w: MissingCoinsWiring): { scan: ScanDeps; r
                       const x = toStoreOutput(o);
                       if (x) all.push(x);
                     }
-                    if (page.length < PAGE) break;
+                    if (page.length < PAGE) return { outputs: all };
                   }
-                  return all;
+                  return { outputs: all, incomplete: `stopped at ${MAX_OUTPUTS} outputs` };
+                },
+                log,
+              ),
+            unsettledOutputs: () =>
+              timedStep(
+                `read failed/unsent transactions in ${label}`,
+                ms,
+                `Couldn’t finish reading ${label}`,
+                async (): Promise<StoreRead> => {
+                  const settings =
+                    (m as { settings?: { storageIdentityKey?: string } }).settings ?? api.getSettings?.();
+                  const { txs, incomplete } = await findUnsettledTxs(
+                    api,
+                    m.user!.userId,
+                    w.identityKey,
+                    settings?.storageIdentityKey,
+                  );
+                  log(`[bwx-recover] ${label}: ${txs.length} failed/unsent transaction(s)`);
+                  const all: StoreOutput[] = [];
+                  for (const t of txs) {
+                    const outs = (await m.storage.findOutputsAuth(auth(), {
+                      partial: { transactionId: t.transactionId },
+                      noScript: true,
+                    })) as unknown as OutRow[];
+                    for (const o of outs) {
+                      // An output row of a signed-then-aborted action may not carry the txid: take the transaction's.
+                      const x = toStoreOutput({
+                        ...o,
+                        txid: o.txid || t.txid,
+                        created_at: o.created_at ?? t.created_at,
+                      });
+                      if (x) all.push({ ...x, description: x.description || t.description });
+                    }
+                  }
+                  return { outputs: all, incomplete };
                 },
                 log,
               ),

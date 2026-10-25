@@ -36,11 +36,20 @@ export type StoreOutput = {
   description?: string;
 };
 
+/** What one read of a store returned. `incomplete` says why the read is known to be partial. */
+export type StoreRead = { outputs: StoreOutput[]; incomplete?: string };
+
 export type ScanStore = {
   /** "this device", "the 1Sat backup (wallet.1sat.app)". */
   name: string;
   active: boolean;
-  outputs: () => Promise<StoreOutput[]>;
+  outputs: () => Promise<StoreOutput[] | StoreRead>;
+  /**
+   * The outputs of this store's failed / nosend / unsigned / unprocessed transactions, asked for explicitly (by
+   * transaction status, then each transaction's outputs). A failed action keeps its output rows (the toolbox's
+   * markFailedTransactionOutputsNotSpendable only flips spendable), so a coin from an aborted send lives here.
+   */
+  unsettledOutputs?: () => Promise<StoreOutput[] | StoreRead>;
 };
 
 export type ChainState = 'mined' | 'mempool' | 'missing' | 'unclear';
@@ -78,6 +87,8 @@ export type ScanReport = {
   unclear: string[];
   /** Stores that didn't answer. */
   unreachable: string[];
+  /** Stores that answered only in part (timeout, page cap, a query refused): "nothing found" is not proven. */
+  incomplete: string[];
   checked: number;
 };
 
@@ -85,18 +96,54 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export async function scanMissingCoins(deps: ScanDeps): Promise<ScanReport> {
   const log = deps.log ?? ((m: string) => console.log(m));
-  const report: ScanReport = { found: [], unconfirmed: [], spent: [], unclear: [], unreachable: [], checked: 0 };
+  const report: ScanReport = {
+    found: [],
+    unconfirmed: [],
+    spent: [],
+    unclear: [],
+    unreachable: [],
+    incomplete: [],
+    checked: 0,
+  };
   const stores = await deps.stores();
   const rows: { store: ScanStore; outs: StoreOutput[] }[] = [];
-  for (const store of stores) {
-    try {
-      rows.push({ store, outs: await store.outputs() });
-    } catch (e) {
-      report.unreachable.push(store.name);
-      log(`[bwx-recover] couldn't read ${store.name}: ${errText(e)}`);
-    }
-  }
   const key = (o: { txid: string; vout: number }) => `${o.txid.toLowerCase()}.${o.vout}`;
+  const asRead = (r: StoreOutput[] | StoreRead): StoreRead => (Array.isArray(r) ? { outputs: r } : r);
+  const partly = (store: ScanStore, why: string) => {
+    if (!report.incomplete.includes(store.name)) report.incomplete.push(store.name);
+    log(`[bwx-recover] ${store.name} read only in part: ${why}`);
+  };
+  for (const store of stores) {
+    let main: StoreRead;
+    try {
+      main = asRead(await store.outputs());
+    } catch (e) {
+      main = { outputs: [] };
+      if (!store.unsettledOutputs) {
+        report.unreachable.push(store.name);
+        log(`[bwx-recover] couldn't read ${store.name}: ${errText(e)}`);
+        continue;
+      }
+      partly(store, `all outputs: ${errText(e)}`);
+    }
+    if (main.incomplete) partly(store, main.incomplete);
+    const outs = main.outputs.filter((o) => !!o.txid);
+    const seen = new Set(outs.map(key));
+    if (store.unsettledOutputs) {
+      try {
+        const extra = asRead(await store.unsettledOutputs());
+        if (extra.incomplete) partly(store, extra.incomplete);
+        for (const o of extra.outputs)
+          if (o.txid && !seen.has(key(o))) {
+            seen.add(key(o));
+            outs.push(o);
+          }
+      } catch (e) {
+        partly(store, `failed/unsent transactions: ${errText(e)}`);
+      }
+    }
+    rows.push({ store, outs });
+  }
   const active = new Map<string, StoreOutput>();
   for (const r of rows) if (r.store.active) for (const o of r.outs) active.set(key(o), o);
   const spentSomewhere = new Set<string>();
@@ -229,7 +276,12 @@ const bsvExact = (sats: number) => (sats / 1e8).toFixed(8).replace(/\.?0+$/, '')
 /** The confirm sheet's headline. */
 export const foundHeadline = (r: ScanReport): string => {
   const sats = r.found.reduce((n, c) => n + c.sats, 0);
-  if (!sats) return 'No missing coins found.';
+  if (!sats) {
+    // Never "nothing found" when a store wasn't read in full: that is not an answer.
+    const notRead = [...(r.unreachable ?? []), ...(r.incomplete ?? [])];
+    if (notRead.length) return `Couldn’t finish reading ${notRead.join(', ')}; nothing changed.`;
+    return 'No missing coins found.';
+  }
   return `We found ${bsv(sats) === '0' ? bsvExact(sats) : bsv(sats)} BSV the wallet lost track of. Add it back?`;
 };
 
@@ -239,6 +291,7 @@ export const scanNote = (r: ScanReport): string => {
   if (r.unconfirmed.length) parts.push(`${r.unconfirmed.length} not confirmed yet; try again later`);
   if (r.unclear.length) parts.push(`${r.unclear.length} couldn’t be checked`);
   if (r.unreachable.length) parts.push(`couldn’t reach ${r.unreachable.join(', ')}`);
+  if (r.incomplete?.length) parts.push(`couldn’t finish reading ${r.incomplete.join(', ')}; try again`);
   return parts.join('. ');
 };
 
