@@ -43,5 +43,8 @@ describe('CLI pairing grants', () => {
     expect(code(() => checkGrant(g, 'mint', '1A', NOW))).toBe('SCOPE');
     expect(code(() => checkGrant(g, 'nope', '1A', NOW))).toBe('UNKNOWN');
     expect(code(() => checkGrant(makeGrant('1Z', 'x', [], 1, NOW), 'info', '1Z', NOW))).toBe('NOT_AGENT');
+    // b-Aware 25 Oct: a pot keeps no daily cap, so a paired CLI may never trade or send from it.
+    markAgentAccount('1P', [], NOW, { kind: 'pot' });
+    expect(code(() => checkGrant(makeGrant('1P', 'Pot', ['send'], 1, NOW), 'send', '1P', NOW))).toBe('NOT_AGENT');
   });
 });

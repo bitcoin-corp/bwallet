@@ -82,3 +82,12 @@ describe('agent caps cannot be reset by the log (b-Aware, 24 Oct 2026)', () => {
     expect(markAgentAccount('1Pot', [], Date.now(), { kind: 'pot' }).dailyCapUsd).toBeNull();
   });
 });
+
+describe('b-Aware 25 Oct: pots are never paired for spending; agents are rate-limited', () => {
+  test('31st spend inside an hour is refused for an agent; a pot paying orders is not rate-limited', () => {
+    const log = Array.from({ length: 30 }, (_, i) => spend(0.01, DAY - i * 60_000));
+    expect(spendAllowed(acct(), false, log, 0.01, DAY).ok).toBe(false);
+    expect(spendAllowed(acct(), false, log, 0.01, DAY + 3_600_000).ok).toBe(true);
+    expect(spendAllowed(acct({ kind: 'pot' }), false, log, 0.01, DAY).ok).toBe(true);
+  });
+});

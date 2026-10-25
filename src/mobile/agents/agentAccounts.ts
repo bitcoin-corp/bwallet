@@ -86,6 +86,11 @@ export const getAgentAccount = (id?: string | null): AgentAccount | null =>
 export const isAgentAccount = (id?: string | null) => !!getAgentAccount(id);
 /** A pot (pots/pots.ts) is an agent account with kind 'pot'. */
 export const isPotAccount = (a?: AgentAccount | null) => a?.kind === 'pot';
+/** An agent account a paired CLI may trade or send from: never a pot (pots keep no daily cap; b-Aware 25 Oct 2026). */
+export const isPairableAgent = (id?: string | null) => {
+  const a = getAgentAccount(id);
+  return !!a && !isPotAccount(a);
+};
 /** Agent accounts that are agents, not pots: what the agents list and bApps see. */
 export const listAgentsOnly = (): AgentAccount[] => listAgentAccounts().filter((a) => !isPotAccount(a));
 
@@ -249,6 +254,8 @@ export const appendAgentLog = (id: string, e: AgentLogEntry) => {
 export const spentToday = (log: AgentLogEntry[], now = Date.now()) =>
   log.filter((e) => e.at >= dayStart(now)).reduce((sum, e) => sum + (e.usd > 0 ? e.usd : 0), 0);
 
+export const MAX_SPENDS_PER_HOUR = 30;
+
 export type SpendCheck = { ok: true } | { ok: false; reason: string };
 
 /**
@@ -266,6 +273,13 @@ export const spendAllowed = (
   if (!account) return { ok: false, reason: 'Not an agent account' };
   if (stopAll) return { ok: false, reason: 'All agents are stopped' };
   if (account.stopped) return { ok: false, reason: 'This agent account is stopped' };
+  // At most MAX_SPENDS_PER_HOUR spends an hour for agents, as bwalletx.com/agents says (b-Aware 25 Oct 2026).
+  // Pots pay standing orders on their own schedule and are never paired for spending (isPairableAgent).
+  if (!isPotAccount(account) && usd > 0) {
+    const recent = log.filter((e) => e.usd > 0 && e.at > now - 3_600_000 && e.at <= now).length;
+    if (recent >= MAX_SPENDS_PER_HOUR)
+      return { ok: false, reason: `At most ${MAX_SPENDS_PER_HOUR} spends an hour. Try again later.` };
+  }
   if (account.dailyCapUsd !== null) {
     const left = account.dailyCapUsd - Math.max(spentToday(log, now), ledgerUsd);
     if (usd > left + 1e-9)

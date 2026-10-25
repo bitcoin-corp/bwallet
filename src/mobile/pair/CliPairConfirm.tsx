@@ -2,7 +2,7 @@ import { APP_NAME, MARKET_ENABLED } from '../storeBuild';
 import { useState } from 'react';
 import { Terminal } from 'lucide-react';
 import { useServiceContext } from '../../hooks/useServiceContext';
-import { isAgentAccount } from '../agents/agentAccounts';
+import { isPairableAgent } from '../agents/agentAccounts';
 import { makeGrant, type AgentGrant, type AgentScope } from './agentPairing';
 import { describeMintLimits, makeMintLimits, MAX_MINT_ITEMS, MAX_MINT_USD } from './mintScope';
 
@@ -37,7 +37,7 @@ export const CliPairConfirm = ({
   const { chromeStorageService } = useServiceContext();
   const account = chromeStorageService.getCurrentAccountObject().account;
   const id = account?.addresses.identityAddress;
-  const agent = isAgentAccount(id);
+  const agent = isPairableAgent(id); // never a pot: pots keep no daily cap
   const [trade, setTrade] = useState(MARKET_ENABLED);
   const [send, setSend] = useState(false);
   const [days, setDays] = useState(7);

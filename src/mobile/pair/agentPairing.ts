@@ -20,7 +20,7 @@ import {
   UploadStore,
   type MintLimits,
 } from './mintScope';
-import { getAgentAccount, getAgentLog, isAgentAccount } from '../agents/agentAccounts';
+import { getAgentAccount, getAgentLog, isPairableAgent } from '../agents/agentAccounts';
 import { runAgentAction } from '../agents/agentTrade';
 import { serialSpend } from '../agents/spendQueue';
 import { getLoadedStrategy, getPaperBook, loadStrategy, parseStrategy } from '../agents/strategy';
@@ -83,7 +83,7 @@ export const checkGrant = (grant: AgentGrant, action: string, currentId: string 
   if (!need) throw new AgentCallError('UNKNOWN', `Unknown action "${action}"`);
   if (!grant.scopes.includes(need))
     throw new AgentCallError('SCOPE', `This pairing isn't allowed to ${need} (granted: ${grant.scopes.join(', ')}).`);
-  if (!(mintOnly(grant) && grant.mint) && !isAgentAccount(grant.agentId))
+  if (!(mintOnly(grant) && grant.mint) && !isPairableAgent(grant.agentId))
     throw new AgentCallError('NOT_AGENT', `${grant.name} is no longer an agent account.`);
   if (currentId !== grant.agentId)
     throw new AgentCallError('NOT_OPEN', `bWalletX is open on another account. Switch to ${grant.name} in the app.`);
