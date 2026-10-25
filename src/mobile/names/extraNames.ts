@@ -94,7 +94,15 @@ export async function addExtraName(
 export async function makeMainName(ctx: OneSatContext, f: Fetch, paymail: string): Promise<string> {
   const alias = paymail.split('@')[0].toLowerCase();
   const c = await client(ctx);
-  saveSession(await c.setPrimaryHandle(alias));
+  try {
+    saveSession(await c.setPrimaryHandle(alias));
+  } catch (e) {
+    // bit-sign already has this name as the handle (code 'same', owner 25 Oct 2026: b0asex stayed the bChatX
+    // handle while the paymail main moved to b0ase). Only the paymail server needs the change, so carry on.
+    const code = e instanceof ChatApiError ? (e.data as { code?: string } | null)?.code : undefined;
+    if (!(e instanceof ChatApiError && e.status === 400 && (code === 'same' || /^You are already \$/.test(e.message))))
+      throw e;
+  }
   return makeMainPaymail(f, ctx.wallet, paymail);
 }
 
