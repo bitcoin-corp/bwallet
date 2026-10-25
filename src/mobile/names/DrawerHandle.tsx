@@ -8,6 +8,8 @@ import { drawerRoomState, getPersonalLink, onPersonalChange } from './personalTo
 import { discoverPersonalLink } from './claimPersonal';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { setPrimaryName } from './accountName';
+import { useNavigate } from 'react-router-dom';
+import { drawerNames } from './drawerNames';
 
 /**
  * Account drawer: a link to the current account's personal $NAME room, or a "Get your $name" button. The handle is
@@ -56,17 +58,21 @@ export const DrawerHandle = ({
     };
   }, [apiContext, identityAddress, name]);
   const state = drawerRoomState({ name, link, finding });
+  const navigate = useNavigate();
+  // Never an unbounded list here: an account can hold thousands of OpNS names, which pushed Sign out off-screen
+  // (owner, 25 Oct 2026). A few chips, then "Your names (N)" opens Wallet › Names, which has search.
+  const { chips, total, more } = drawerNames(names, shown);
   const picker =
-    identityAddress && names.length > 1 ? (
+    identityAddress && total > 1 ? (
       <div className="mx-2 mb-2 flex flex-wrap items-center gap-1.5 px-1" aria-label="Show as">
         <span className="text-[11px] text-[#98A2B3]">Show as</span>
-        {names.map((n) => (
+        {chips.map((n) => (
           <button
             key={n}
             type="button"
             aria-pressed={n === shown}
             onClick={() => setPrimaryName(identityAddress, n)}
-            className="rounded-full px-2.5 py-1 text-xs font-semibold cursor-pointer border"
+            className="max-w-[9rem] overflow-hidden text-ellipsis whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold cursor-pointer border"
             style={
               n === shown
                 ? { background: 'var(--bw-accent-hi)', color: '#010101', borderColor: 'transparent' }
@@ -76,6 +82,19 @@ export const DrawerHandle = ({
             ${n}
           </button>
         ))}
+        {more && (
+          <button
+            type="button"
+            onClick={() => {
+              onNavigate();
+              navigate('/m/you');
+            }}
+            className="bg-transparent border-0 p-0 text-xs font-semibold cursor-pointer"
+            style={{ color: 'var(--bw-accent-hi)' }}
+          >
+            Your names ({total.toLocaleString()}) ›
+          </button>
+        )}
       </div>
     ) : null;
 
