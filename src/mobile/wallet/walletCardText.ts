@@ -17,7 +17,7 @@ export const shortAddr = (a: string): string => (a && a.length > 14 ? `${a.slice
  * The unit label on the main wallet card only (owner, 25 Oct 2026): "$b" is our short name for BSV there.
  * Everywhere else (token cards, Buy, Swap, Receive, Send, fees, history, Exchange, b) still says "BSV".
  */
-export const MAIN_CARD_UNIT = '$b';
+export const MAIN_CARD_UNIT = '$bsv';
 
 /** "BSV 0.01234567" from sats (8 dp, trailing zeros kept to 2). The main wallet card passes MAIN_CARD_UNIT. */
 export const cardBsv = (sats: number, label = 'BSV'): string => {
