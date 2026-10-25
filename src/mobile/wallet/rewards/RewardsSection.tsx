@@ -11,7 +11,12 @@ import { parseLookup, tokenKey } from '../../chat/tokenRooms';
 import { fetchCoins } from '../../market/launchpad/api';
 import { openDappBrowser } from '../../dappBrowser';
 import { isNative } from '../../native';
-import { TOKENBLASTER_ENABLED, tokenRoomsEnabled } from '../../storeBuild';
+import { TOKENBLASTER_ENABLED, marketTradingEnabled, tokenRoomsEnabled } from '../../storeBuild';
+import { useNavigate } from 'react-router-dom';
+import { tradeRoute } from '../../exchange/exchangeData';
+import { SellSheet, type SellTarget } from '../../sell/SellSheet';
+import { MyTokenListings } from '../../sell/MyTokenListings';
+import { SELL_ENABLED } from '../../sell/sell';
 import { RewardCards } from './RewardCards';
 import { coinsById, pickRewards, type HeldToken, type Reward, type RewardCoinFlags } from './rewards';
 
@@ -22,6 +27,9 @@ export const RewardsSection = () => {
   const identityAddress = chromeStorageService.getCurrentAccountObject().account?.addresses?.identityAddress ?? '';
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [sending, setSending] = useState<Bsv21Balance | null>(null);
+  const [selling, setSelling] = useState<SellTarget | null>(null);
+  const navigate = useNavigate();
+  const trading = marketTradingEnabled();
 
   useEffect(() => {
     let live = true;
@@ -69,13 +77,37 @@ export const RewardsSection = () => {
     );
   }
 
+  const norm = (id: string) => id.toLowerCase().replace('.', '_');
   return (
-    <RewardCards
-      rewards={rewards}
-      showUnlock={tokenRoomsEnabled()}
-      showEarn={TOKENBLASTER_ENABLED}
-      onSend={(r) => void send(r)}
-      onEarn={(url) => void openDappBrowser(url)}
-    />
+    <>
+      <RewardCards
+        rewards={rewards}
+        showUnlock={tokenRoomsEnabled()}
+        showEarn={TOKENBLASTER_ENABLED}
+        onSend={(r) => void send(r)}
+        onEarn={(url) => void openDappBrowser(url)}
+        onBuy={trading ? (r) => navigate(tradeRoute(norm(r.id))) : undefined}
+        onSell={
+          SELL_ENABLED && trading
+            ? (r) =>
+                setSelling({
+                  tokenId: norm(r.id),
+                  symbol: r.symbol,
+                  dec: r.dec,
+                  heldRaw: BigInt(r.amountRaw || '0'),
+                  room: r.room ? (r.room.startsWith('$') ? r.room : `$${r.room}`) : undefined,
+                })
+            : undefined
+        }
+      />
+      {SELL_ENABLED && trading && rewards.length > 0 && (
+        <div className="w-[92%] mx-auto mb-2 flex flex-col gap-2">
+          {rewards.map((r) => (
+            <MyTokenListings key={r.id} tokenId={norm(r.id)} />
+          ))}
+        </div>
+      )}
+      {selling && <SellSheet target={selling} onClose={() => setSelling(null)} />}
+    </>
   );
 };

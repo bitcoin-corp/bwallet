@@ -24,6 +24,10 @@ import { SELL_ENABLED } from '../sell/sell';
 import { marketTradingEnabled } from '../storeBuild';
 import { useBackClose } from '../backStack';
 import { purchaseError } from './purchase';
+import { checkedPurchaseContext } from '../p2p/checkedPurchase';
+import { FUND_FEE_RATE, fetchFund, fundFeeOptions, fundFeeSats, hasFundFee, type Fund } from '../p2p/fundFee';
+import { overlayFeePerOutput } from '../sell/sellActions';
+import { NO_CURVE_LINE, isNoCurve } from '../market/launchpad/noCurve';
 import { BUY_ANCHOR, SELL_ANCHOR } from './rowActions';
 import { useLocation } from 'react-router-dom';
 import { TokenIcon } from './TokenIcon';
@@ -115,6 +119,20 @@ export const TradeView = ({
   const [histRev, setHistRev] = useState(0);
   // Listings found already bought before a buy (stale 1Sat rows): dropped from the book (plan §2.4).
   const [spent, setSpent] = useState<ReadonlySet<string>>(new Set());
+  // The token's indexing fee per output: shown on the buy sheet, and the purchase may not pay more.
+  const [overlayFee, setOverlayFee] = useState<number | null | undefined>(undefined);
+  useEffect(() => {
+    setOverlayFee(undefined);
+    void overlayFeePerOutput(apiContext, id).then(setOverlayFee);
+  }, [apiContext, id]);
+  // Reward tokens: the buyer pays a 5% indexing fee to the token's GorillaPool index fund (fundFee.ts).
+  const fundFee = hasFundFee(id);
+  const [fund, setFund] = useState<Fund | null | undefined>(undefined);
+  useEffect(() => {
+    if (!fundFee) return;
+    setFund(undefined);
+    void fetchFund(id).then(setFund);
+  }, [id, fundFee]);
   useBackClose(!!pending && !busy, () => setPending(null));
 
   const load = useCallback(() => {
@@ -165,6 +183,10 @@ export const TradeView = ({
 
   const buy = async ({ listing }: Pending) => {
     if (!TRADING) return;
+    if (fundFee && !fund) {
+      addSnackbar("Couldn't reach the token's index fund. Try again in a moment.", 'error');
+      return;
+    }
     setBusy(true);
     try {
       const outpoint = walletOutpoint(listing.outpoint);
@@ -179,11 +201,22 @@ export const TradeView = ({
         return;
       }
       await assertOrdLockV2(outpoint);
-      const res = await buyBsv21.execute(purchaseContext(apiContext, outpoint), {
+      // Checked before signing: exact price to the seller, tokens to our key, fees no more than shown.
+      const checked = await checkedPurchaseContext(apiContext, {
+        tokenId: id,
+        outpoint,
+        amount: BigInt(listing.amount ?? '0'),
+        priceSats: listing.priceSats,
+        maxOverlayFee: overlayFee ?? 0,
+        ...(fundFee && fund
+          ? { fee: { address: fund.address, sats: fundFeeSats(listing.priceSats), required: true } }
+          : {}),
+      });
+      const res = await buyBsv21.execute(purchaseContext(checked, outpoint), {
         tokenId: id,
         outpoint,
         amount: listing.amount ?? '0',
-        ...marketFeeOptions(),
+        ...(fundFee && fund ? fundFeeOptions(fund) : marketFeeOptions()),
         ...MODULE_FINISHES,
       });
       if (!res.txid || res.error) {
@@ -196,7 +229,7 @@ export const TradeView = ({
         tokenId: id,
         symbol: sym,
         amountLabel: listing.label,
-        totalSats: listing.priceSats + marketFeeSats(listing.priceSats),
+        totalSats: listing.priceSats + (fundFee ? fundFeeSats(listing.priceSats) : marketFeeSats(listing.priceSats)),
         at: Date.now(),
       });
       setHistRev((n) => n + 1);
@@ -212,7 +245,11 @@ export const TradeView = ({
   };
 
   const changeColor = stats.change === null ? MUTED : stats.change >= 0 ? GREEN : RED;
-  const fee = pending ? marketFeeSats(pending.listing.priceSats) : 0;
+  const fee = pending
+    ? fundFee
+      ? fundFeeSats(pending.listing.priceSats)
+      : marketFeeSats(pending.listing.priceSats)
+    : 0;
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -243,6 +280,11 @@ export const TradeView = ({
         </button>
       </div>
       <TokenIdentity tokenId={id} ticker={meta?.sym ?? null} onPick={onPick} />
+      {isNoCurve(id) && (
+        <p className="text-sm m-0" style={{ color: GOLD }} data-testid="earned-by-playing">
+          {NO_CURVE_LINE}. Buy from players below, or list yours for sale.
+        </p>
+      )}
       {launched && (
         <p className="text-[11px] m-0" style={{ color: MUTED }}>
           Launched on the bWalletX Launchpad. {LAUNCH_DISCLAIMER}
@@ -286,7 +328,9 @@ export const TradeView = ({
 
           {/* Order book: sell orders (live listings), cheapest first */}
           <div className={`${CARD} p-3`}>
-            <div className="text-sm font-bold text-white mb-2">Order book</div>
+            <div className="text-sm font-bold text-white mb-2">
+              {isNoCurve(id) ? 'Listings from players' : 'Order book'}
+            </div>
             {market === null ? (
               <p className="text-xs py-3" style={{ color: MUTED }}>
                 Loading listings…
@@ -472,8 +516,25 @@ export const TradeView = ({
                 </span>
               </div>
               <div className="flex justify-between" style={{ color: MUTED }}>
-                <span>Marketplace fee ({MARKET_FEE_RATE * 100}%)</span>
+                <span>
+                  {fundFee
+                    ? `Indexing fee (${FUND_FEE_RATE * 100}%, to the $${sym} index fund)`
+                    : `Marketplace fee (${MARKET_FEE_RATE * 100}%)`}
+                </span>
                 <span className="text-white">{fee ? <Money sats={fee} rate={rate} /> : 'None'}</span>
+              </div>
+              {fundFee && (
+                <p className="m-0 text-[11px]" style={{ color: MUTED }}>
+                  This is what keeps the token tradeable. The seller gets their full price.
+                  {fund === null && " Couldn't reach the index fund, so buying is off for now."}
+                  {fund?.low && ' The index fund is running low.'}
+                </p>
+              )}
+              <div className="flex justify-between" style={{ color: MUTED }}>
+                <span>Overlay fee</span>
+                <span className="text-white">
+                  {overlayFee === undefined ? '…' : overlayFee ? <Money sats={overlayFee} rate={rate} /> : 'None'}
+                </span>
               </div>
               <div className="flex justify-between" style={{ color: MUTED }}>
                 <span>Network fee</span>
@@ -482,18 +543,18 @@ export const TradeView = ({
               <div className="flex justify-between border-t border-[#2b2f36] pt-1.5 font-semibold">
                 <span className="text-white">Total</span>
                 <span style={{ color: GREEN }}>
-                  <Money sats={pending.listing.priceSats + fee} rate={rate} /> + network fee
+                  <Money sats={pending.listing.priceSats + fee + (overlayFee ?? 0)} rate={rate} /> + network fee
                 </span>
               </div>
             </div>
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || overlayFee === undefined || (fundFee && !fund)}
               onClick={() => void buy(pending)}
               className="rounded-xl py-3 text-sm font-extrabold border-0 cursor-pointer disabled:opacity-50"
               style={{ background: GREEN, color: '#010101' }}
             >
-              {busy ? 'Buying…' : `Buy for ${bsvLabel(pending.listing.priceSats + fee)}`}
+              {busy ? 'Buying…' : `Buy for ${bsvLabel(pending.listing.priceSats + fee + (overlayFee ?? 0))}`}
             </button>
             <button
               type="button"

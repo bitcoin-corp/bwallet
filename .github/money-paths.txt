@@ -23,3 +23,6 @@
 # Trading: code that builds, checks or signs trades of launchpad tokens (Memepool, TokenBlaster).
 ^src/mobile/exchange/memepool/
 ^src/mobile/market/launchpad/(client|validate|curve)\.ts$
+# Player-to-player token listings: list, buy, cancel (checked before signing) + the 5% index-fund fee.
+^src/mobile/p2p/
+^src/mobile/sell/(sell|sellActions)\.ts$

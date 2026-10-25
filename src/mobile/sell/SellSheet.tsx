@@ -23,6 +23,7 @@ import { fmtSats, hasRate, money, satsNote } from '../money/money';
 import { checkListable, type CustodyVerdict } from './custodyGuard';
 import { curvePriceUsd, tokenCurve, type TokenCurve } from '../market/tokenPage';
 import { usd as usdLabel } from '../../lib/curves';
+import { FUND_FEE_RATE, fetchFund, fundFeeSats, hasFundFee, type Fund } from '../p2p/fundFee';
 
 const GOLD = 'var(--bw-accent-hi)';
 const BG = '#17191E';
@@ -38,6 +39,8 @@ export type SellTarget = {
   isTicket?: boolean;
   /** The launch curve when the caller already has it (Mint); otherwise read from the deploy tx. */
   curve?: TokenCurve;
+  /** The room this token unlocks, if any: warn when the listing would leave you holding none. */
+  room?: string;
 };
 
 const ERR: Record<string, string> = {
@@ -67,6 +70,13 @@ export const SellSheet = ({
   const [busy, setBusy] = useState(false);
   const [curve, setCurve] = useState<TokenCurve | undefined>(target.curve);
   const [custody, setCustody] = useState<CustodyVerdict | null>(null);
+  const [lots, setLots] = useState('1');
+  // Reward tokens: buyers pay a 5% indexing fee to the token's index fund (fundFee.ts). Unreachable = no listing.
+  const fundFee = hasFundFee(target.tokenId);
+  const [fund, setFund] = useState<Fund | null | undefined>(undefined);
+  useEffect(() => {
+    if (fundFee) void fetchFund(target.tokenId).then(setFund);
+  }, [fundFee, target.tokenId]);
   useBackClose(!busy, onClose);
 
   useEffect(() => {
@@ -85,26 +95,41 @@ export const SellSheet = ({
   const perToken = perTokenSats(price, rate);
   // The field's unit flips if the rate arrives after typing: clear it rather than reinterpret it.
   useEffect(() => setPrice(''), [usdMode]);
-  const total = qtyRaw ? totalPriceSats(qtyRaw, target.dec, perToken) : 0;
+  // "Sell in lots": BSV-21 listings are all-or-nothing, so split into N equal listings.
+  const n = Math.max(1, Math.min(20, Math.floor(Number(lots) || 1)));
+  const lotRaw = qtyRaw && qtyRaw % BigInt(n) === 0n ? qtyRaw / BigInt(n) : null;
+  const lotsError = !!qtyRaw && n > 1 && !lotRaw;
+  const lotPrice = lotRaw ? totalPriceSats(lotRaw, target.dec, perToken) : 0;
+  const total = lotPrice * n;
   const error = qty || price ? validateSell(qtyRaw, target.heldRaw, total) : null;
-  const indexing = qtyRaw ? indexingFeeSats(qtyRaw, target.heldRaw, fpo ?? DEFAULT_FEE_PER_OUTPUT) : 0;
+  const perOut = fpo ?? DEFAULT_FEE_PER_OUTPUT;
+  const indexing = qtyRaw ? indexingFeeSats(qtyRaw, target.heldRaw, perOut) + (n - 1) * perOut : 0;
+  const losesRoom = !!target.room && !!qtyRaw && qtyRaw >= target.heldRaw;
   const network = useMemo(() => {
     if (!qtyRaw || total < 1) return 0;
     const len = buildListingScript(target.tokenId, qtyRaw, SIZE_ADDR, SIZE_ADDR, total).toBinary().length;
     return networkFeeSats(listingTxBytes(2, len, qtyRaw < target.heldRaw), chromeStorageService.getCustomFeeRate());
   }, [qtyRaw, total, target.tokenId, target.heldRaw, chromeStorageService]);
-  const ready = !!qtyRaw && total >= 1 && !validateSell(qtyRaw, target.heldRaw, total) && custody?.ok === true;
+  const ready =
+    !!qtyRaw &&
+    !!lotRaw &&
+    lotPrice >= 1 &&
+    !validateSell(qtyRaw, target.heldRaw, total) &&
+    custody?.ok === true &&
+    (!fundFee || !!fund);
 
   const confirm = async () => {
-    if (!ready || !qtyRaw) return;
+    if (!ready || !qtyRaw || !lotRaw) return;
     setBusy(true);
     try {
       await createListing(apiContext, {
         tokenId: target.tokenId,
         symbol: target.symbol,
         dec: target.dec,
-        amount: qtyRaw,
-        priceSats: total,
+        amount: lotRaw,
+        priceSats: lotPrice,
+        maxOverlayFee: indexing,
+        lots: n,
       });
       addSnackbar(`Listed ${qty} ${unit} for ${money(total, rate)}${usdMode ? ` (${fmtSats(total)})` : ''}`, 'success');
       onListed?.(qtyRaw);
@@ -212,6 +237,14 @@ export const SellSheet = ({
 
         <div className="flex flex-col gap-1.5 rounded-xl p-3" style={{ background: '#0F1013' }}>
           {row('You receive when sold', money(total, rate), satsNote(total, rate))}
+          {n > 1 && !!lotRaw && row('Lots', `${n} × ${fromRaw(lotRaw, target.dec)}`, `${money(lotPrice, rate)} each`)}
+          {fundFee &&
+            total > 0 &&
+            row(
+              `Buyers also pay (${FUND_FEE_RATE * 100}% indexing fee)`,
+              money(fundFeeSats(lotPrice) * n, rate),
+              'to the index fund, on top of your price',
+            )}
           {row('Network fee', `~${money(network, rate)}`)}
           {row(
             'Indexing fee',
@@ -227,6 +260,35 @@ export const SellSheet = ({
           from My listings to get them back.
         </p>
 
+        <label className="flex items-center justify-between gap-3 text-xs text-[#98A2B3]">
+          <span>Sell in lots (each lot is one listing, bought whole)</span>
+          <input
+            inputMode="numeric"
+            value={lots}
+            onChange={(e) => /^\d{0,2}$/.test(e.target.value) && setLots(e.target.value)}
+            aria-label="Number of lots"
+            className="w-16 h-9 rounded-lg px-2 text-base text-white outline-none border bg-[#0F1013] text-center"
+            style={{ borderColor: LINE }}
+          />
+        </label>
+        {fundFee && (
+          <p className="text-[11px] leading-relaxed m-0" style={{ color: GOLD }}>
+            Buyers pay a 5% indexing fee on top; you receive your full price. 5% keeps ${target.symbol} trading.
+          </p>
+        )}
+        {fundFee && fund === null && (
+          <p className="text-xs text-[#F97066] m-0">
+            Couldn't reach the token's index fund, so listing is off for now.
+          </p>
+        )}
+        {fund?.low && <p className="text-xs text-[#FDB022] m-0">The ${target.symbol} index fund is running low.</p>}
+        {!!qtyRaw && qtyRaw < target.heldRaw && (
+          <p className="text-[11px] text-[#667085] m-0">
+            Listing part of your balance adds a change output (one more indexing fee). Selling all avoids it.
+          </p>
+        )}
+        {losesRoom && <p className="text-xs text-[#FDB022] m-0">You&apos;ll lose access to the {target.room} room.</p>}
+        {lotsError && <p className="text-xs text-[#F97066] m-0">The quantity must split evenly into {n} lots.</p>}
         {error && <p className="text-xs text-[#F97066] m-0">{ERR[error]}</p>}
         {custody && !custody.ok && <p className="text-xs text-[#F97066] m-0">{custody.reason}</p>}
 

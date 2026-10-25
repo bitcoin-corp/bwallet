@@ -47,6 +47,10 @@ import {
 import { cancelTrade, executeTrade, prepareTrade, type PreparedTrade } from './client';
 import { describeRow } from './validate';
 import { NO_CURVE_LINE, earnUrl, isNoCurve } from './noCurve';
+import { marketTradingEnabled } from '../../storeBuild';
+
+/** Player-to-player listings (1Sat OrdLock) for no-curve tokens; off in a store build. */
+const TRADING_P2P = marketTradingEnabled();
 import { ErrorActions } from '../../errors/ErrorActions';
 import { LAUNCH_ROUTE, tradeRoute } from '../../exchange/exchangeData';
 import { localLaunches, mergeLaunches, type Launch } from '../../exchange/launch/launch';
@@ -434,6 +438,7 @@ const CoinSheet = ({
 
         {isNoCurve(id, coin) ? (
           <div className="flex flex-col gap-2 rounded-xl p-3" style={{ background: '#0F1013' }} data-testid="no-curve">
+            <p className="text-sm font-bold text-white m-0">Earned by playing</p>
             <p className="text-xs text-[#98A2B3] m-0">{NO_CURVE_LINE}.</p>
             {earnUrl(id, coin) && (
               <button
@@ -442,6 +447,15 @@ const CoinSheet = ({
                 onClick={() => void openDappBrowser(earnUrl(id, coin) as string)}
               >
                 Earn
+              </button>
+            )}
+            {TRADING_P2P && (
+              <button
+                className="h-11 rounded-xl text-sm font-bold border"
+                style={{ background: 'transparent', borderColor: GOLD, color: GOLD }}
+                onClick={() => navigate(tradeRoute(id))}
+              >
+                Listings: buy from players or sell yours
               </button>
             )}
           </div>

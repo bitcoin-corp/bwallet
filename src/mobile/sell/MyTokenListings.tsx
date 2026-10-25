@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { useSnackbar } from '../../hooks/useSnackbar';
-import { cancelListing, myListings, type MyListing } from './sellActions';
-import { fromRaw, onListingsChanged, removeRecord } from './sell';
+import { cancelListing, myListings, overlayFeePerOutput, type MyListing } from './sellActions';
+import { CANCEL_TX_BYTES, fromRaw, networkFeeSats, onListingsChanged, removeRecord } from './sell';
 import { moneyNow } from '../money/money';
+import { ConfirmSheet } from '../p2p/ConfirmSheet';
 
 const GOLD = 'var(--bw-accent-hi)';
 const STATUS: Record<MyListing['status'], { label: string; color: string }> = {
@@ -14,10 +15,20 @@ const STATUS: Record<MyListing['status'], { label: string; color: string }> = {
 
 /** My BSV-21 listings (tickets, $NAME tokens) made in bWallet, with Cancel (tokens come back). */
 export const MyTokenListings = ({ emptyText, tokenId }: { emptyText?: string; tokenId?: string }) => {
-  const { apiContext } = useServiceContext();
+  const { apiContext, chromeStorageService } = useServiceContext();
   const { addSnackbar } = useSnackbar();
   const [rows, setRows] = useState<MyListing[] | null>(null);
   const [busy, setBusy] = useState('');
+  // One sheet before a cancel: what comes back and what it costs (the tx is checked against this).
+  const [asking, setAsking] = useState<{ l: MyListing; overlay: number | null } | null>(null);
+  const network = networkFeeSats(CANCEL_TX_BYTES, chromeStorageService.getCustomFeeRate());
+
+  const ask = (l: MyListing) => {
+    setAsking({ l, overlay: null });
+    void overlayFeePerOutput(apiContext, l.tokenId).then((f) =>
+      setAsking((a) => (a && a.l.outpoint === l.outpoint ? { l, overlay: f ?? 0 } : a)),
+    );
+  };
 
   const load = useCallback(() => {
     void myListings().then((r) => setRows(tokenId ? r.filter((l) => l.tokenId === tokenId) : r));
@@ -27,10 +38,11 @@ export const MyTokenListings = ({ emptyText, tokenId }: { emptyText?: string; to
     return onListingsChanged(load);
   }, [load]);
 
-  const cancel = async (l: MyListing) => {
+  const cancel = async (l: MyListing, overlay: number) => {
     setBusy(l.outpoint);
+    setAsking(null);
     try {
-      await cancelListing(apiContext, l);
+      await cancelListing(apiContext, l, overlay);
       addSnackbar(`Listing cancelled: ${fromRaw(BigInt(l.amount), l.dec)} $${l.symbol} back in your wallet`, 'success');
     } catch (e) {
       addSnackbar(e instanceof Error ? e.message : 'Cancel failed', 'error');
@@ -69,7 +81,7 @@ export const MyTokenListings = ({ emptyText, tokenId }: { emptyText?: string; to
             ) : (
               <button
                 disabled={!!busy}
-                onClick={() => void cancel(l)}
+                onClick={() => ask(l)}
                 className="rounded-lg px-3 py-1.5 text-xs font-bold border disabled:opacity-40"
                 style={{ background: 'var(--bw-surface)', borderColor: '#3a2f0c', color: GOLD }}
               >
@@ -79,6 +91,20 @@ export const MyTokenListings = ({ emptyText, tokenId }: { emptyText?: string; to
           </div>
         );
       })}
+      {asking && (
+        <ConfirmSheet
+          title={`Cancel listing: ${fromRaw(BigInt(asking.l.amount), asking.l.dec)} $${asking.l.symbol}`}
+          rows={[
+            ['Tokens back to you', `${fromRaw(BigInt(asking.l.amount), asking.l.dec)} $${asking.l.symbol}`],
+            ['Indexing fee', asking.overlay === null ? '…' : moneyNow(asking.overlay)],
+            ['Network fee', `~${moneyNow(network)}`],
+          ]}
+          action="Cancel listing"
+          disabled={asking.overlay === null}
+          onConfirm={() => asking.overlay !== null && void cancel(asking.l, asking.overlay)}
+          onClose={() => setAsking(null)}
+        />
+      )}
     </div>
   );
 };

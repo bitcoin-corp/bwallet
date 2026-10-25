@@ -34,6 +34,8 @@ import {
   type ListingRecord,
 } from './sell';
 import { guardedSendBsv21 } from '../../services/tokenSpendGuard';
+import { checkedContext } from '../p2p/checkedWallet';
+import { verifyCancelArgs, verifyListingArgs } from '../p2p/verify';
 
 const normId = (id: string) => id.replace('.', '_');
 const dotted = (outpoint: string) => outpoint.replace('_', '.');
@@ -85,6 +87,16 @@ export type CreateListingInput = {
   dec: number;
   amount: bigint;
   priceSats: number;
+  /** The indexing (overlay) fee the sheet showed, in sats; the tx may not pay more. */
+  maxOverlayFee: number;
+  /** "Sell in lots": N equal listings of `amount` each (default 1). */
+  lots?: number;
+};
+
+/** Our own unspent token outputs ("txid.vout"): the only inputs a listing may spend. */
+const ownTokenOutpoints = async (ctx: OneSatContext): Promise<Set<string>> => {
+  const r = await ctx.wallet.listOutputs({ basket: BSV21_BASKET, limit: 10000 });
+  return new Set(r.outputs.map((o) => o.outpoint));
 };
 
 export async function createListing(ctx: OneSatContext, input: CreateListingInput): Promise<ListingRecord> {
@@ -92,13 +104,32 @@ export async function createListing(ctx: OneSatContext, input: CreateListingInpu
   const keyID = cancelKeyID(tokenId);
   const [cancel, pay] = await Promise.all([cancelAddress(ctx, keyID), defaultPayAddress(ctx)]);
   const script = buildListingScript(tokenId, input.amount, cancel, pay, input.priceSats);
-  const res = await guardedSendBsv21.execute(ctx, {
+  const lots = Math.max(1, Math.min(20, Math.floor(input.lots ?? 1)));
+  const [own, details] = await Promise.all([ownTokenOutpoints(ctx), tokenDetails(ctx, tokenId)]);
+  const checked = checkedContext(ctx, (args) =>
+    verifyListingArgs(args, {
+      tokenId,
+      amount: input.amount,
+      listingScript: script.toHex(),
+      count: lots,
+      basket: BSV21_BASKET,
+      ownOutpoints: own,
+      feeAddress: details?.status?.fee_address ?? null,
+      maxOverlayFee: input.maxOverlayFee,
+    }),
+  );
+  const res = await guardedSendBsv21.execute(checked, {
     tokenId,
-    recipients: [{ amount: input.amount.toString(), destination: { lockingScript: script.toHex() } }],
+    recipients: Array.from({ length: lots }, () => ({
+      amount: input.amount.toString(),
+      destination: { lockingScript: script.toHex() },
+    })),
   } as Parameters<typeof sendBsv21.execute>[1]);
   if (!res.txid || res.error) throw new Error(friendly(res.error) ?? 'Listing was not broadcast');
-  const record: ListingRecord = {
-    outpoint: `${res.txid}.${listingVout(res.tx, tokenId)}`,
+  const found = lots > 1 ? listingVouts(res.tx, tokenId) : [listingVout(res.tx, tokenId)];
+  const vouts = found.length ? found : Array.from({ length: lots }, (_, i) => i);
+  const records: ListingRecord[] = vouts.map((v) => ({
+    outpoint: `${res.txid}.${v}`,
     tokenId,
     symbol: input.symbol,
     dec: input.dec,
@@ -106,12 +137,17 @@ export async function createListing(ctx: OneSatContext, input: CreateListingInpu
     priceSats: input.priceSats,
     keyID,
     createdAt: Date.now(),
-  };
-  addRecord(record);
-  return record;
+  }));
+  for (const r of records) addRecord(r);
+  return records[0];
 }
 
-export async function cancelListing(ctx: OneSatContext, record: ListingRecord): Promise<string> {
+export async function cancelListing(
+  ctx: OneSatContext,
+  record: ListingRecord,
+  /** The indexing fee the cancel sheet showed (sats); the tx may not pay more. */
+  maxOverlayFee: number,
+): Promise<string> {
   if (!ctx.services) throw new Error('No network services');
   const outpoint = dotted(record.outpoint);
   const [txid, voutStr] = outpoint.split('.');
@@ -159,8 +195,20 @@ export async function cancelListing(ctx: OneSatContext, record: ListingRecord): 
     outputs,
     options: { randomizeOutputs: false },
   });
+  const backScript = outputs[0].lockingScript;
+  const checked = checkedContext(ctx, (a) =>
+    verifyCancelArgs(a, {
+      tokenId,
+      outpoint,
+      amount,
+      backScript,
+      basket: BSV21_BASKET,
+      feeAddress: fee?.fee_address ?? null,
+      maxOverlayFee,
+    }),
+  );
   const res = await executeTrackedAction(
-    ctx.wallet,
+    checked.wallet,
     args,
     undefined,
     inputBEEF,
@@ -302,7 +350,7 @@ export async function cancelOutpoints(ctx: OneSatContext, outpoints: readonly st
   const done: string[] = [];
   for (const r of loadRecords().filter((x) => want.has(x.outpoint.replace('.', '_')))) {
     try {
-      await cancelListing(ctx, r);
+      await cancelListing(ctx, r, (await overlayFeePerOutput(ctx, r.tokenId)) ?? 0);
       done.push(r.outpoint.replace('.', '_'));
     } catch {
       /* already bought or not ours: leave it */

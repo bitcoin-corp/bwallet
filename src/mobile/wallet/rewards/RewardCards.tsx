@@ -1,5 +1,5 @@
 import { ONESAT_MAINNET_CONTENT_URL } from '@1sat/actions';
-import { Gamepad2, Send, Trophy } from 'lucide-react';
+import { Gamepad2, Send, ShoppingCart, Tag, Trophy } from 'lucide-react';
 import { isUri } from '../../../utils/uri';
 import { earnLabel, formatAmount, unlockLine, type Reward } from './rewards';
 
@@ -14,10 +14,20 @@ export type RewardCardsProps = {
   showEarn: boolean;
   onSend: (r: Reward) => void;
   onEarn: (url: string) => void;
+  /** "Buy from players": open the token's listings (absent = hidden, e.g. a store build). */
+  onBuy?: (r: Reward) => void;
+  /** "Sell": list some for sale at your own price (absent = hidden). */
+  onSell?: (r: Reward) => void;
 };
 
-/** Wallet › Rewards: tokens earned by playing. Amount, what it unlocks, where to earn more, Send. No buy/sell. */
-export const RewardCards = ({ rewards, showUnlock, showEarn, onSend, onEarn }: RewardCardsProps) => {
+const SECONDARY =
+  'inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl text-base font-bold border cursor-pointer outline-none';
+
+/**
+ * Wallet › Rewards: tokens earned by playing. Amount, what it unlocks, where to earn more (primary), Send, and
+ * player-to-player trading: Buy from players (listings) and Sell (list at your own price). No curve buy/sell.
+ */
+export const RewardCards = ({ rewards, showUnlock, showEarn, onSend, onEarn, onBuy, onSell }: RewardCardsProps) => {
   if (!rewards.length) return null;
   return (
     <section aria-label="Rewards" className="w-[92%] mx-auto mt-4 mb-2">
@@ -51,7 +61,10 @@ export const RewardCards = ({ rewards, showUnlock, showEarn, onSend, onEarn }: R
                 </div>
               </div>
               {unlock && <p className="text-base text-white m-0">{unlock}</p>}
-              <p className="text-sm text-[#98A2B3] m-0">Earned by playing. You can send it to a friend.</p>
+              <p className="text-sm text-[#98A2B3] m-0">
+                Earned by playing.{' '}
+                {onBuy || onSell ? 'Send it, sell it, or buy more from players.' : 'You can send it to a friend.'}
+              </p>
               <div className="flex flex-wrap gap-2">
                 {showEarn && r.earnUrl && (
                   <button
@@ -67,11 +80,33 @@ export const RewardCards = ({ rewards, showUnlock, showEarn, onSend, onEarn }: R
                   type="button"
                   aria-label={`Send ${r.symbol}`}
                   onClick={() => onSend(r)}
-                  className="inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl text-base font-bold border cursor-pointer outline-none"
+                  className={SECONDARY}
                   style={{ background: 'var(--bw-surface)', borderColor: '#3a2f0c', color: GOLD }}
                 >
                   <Send size={16} /> Send
                 </button>
+                {onBuy && (
+                  <button
+                    type="button"
+                    aria-label={`Buy ${r.symbol} from players`}
+                    onClick={() => onBuy(r)}
+                    className={SECONDARY}
+                    style={{ background: 'var(--bw-surface)', borderColor: '#3a2f0c', color: GOLD }}
+                  >
+                    <ShoppingCart size={16} /> Buy from players
+                  </button>
+                )}
+                {onSell && BigInt(r.amountRaw || '0') > 0n && (
+                  <button
+                    type="button"
+                    aria-label={`Sell ${r.symbol}`}
+                    onClick={() => onSell(r)}
+                    className={SECONDARY}
+                    style={{ background: 'var(--bw-surface)', borderColor: '#3a2f0c', color: GOLD }}
+                  >
+                    <Tag size={16} /> Sell
+                  </button>
+                )}
               </div>
             </article>
           );
