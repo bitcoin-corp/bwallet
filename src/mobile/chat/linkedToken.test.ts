@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { linkedTokenUrl, parseLinkedToken } from './linkedToken';
 
-const ID = 'd5ffbbfd8310dcb6763c7180b8dbc725b708d0ce990f93cd27d00ff24aa0de02_1';
+const ID = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb_1';
 
 describe('room linked token', () => {
   test('reads a valid linkedToken', () => {
@@ -22,5 +22,14 @@ describe('room linked token', () => {
   });
   test('only BlastPad tokens get an outside link', () => {
     expect(linkedTokenUrl({ id: ID, symbol: 'X', source: 'other' })).toBeNull();
+  });
+});
+
+describe('no-curve linked token', () => {
+  test('$TERRORNODE goes to its game, not a trade page', () => {
+    const id = 'd5ffbbfd8310dcb6763c7180b8dbc725b708d0ce990f93cd27d00ff24aa0de02_1';
+    expect(linkedTokenUrl({ id, symbol: 'ASSAULT', source: 'blastpad' })).toBe(
+      'https://www.tokenblaster.lol/arcade/terrornode',
+    );
   });
 });

@@ -16,13 +16,12 @@ describe('TokenBlaster shop', () => {
     ]);
     expect(shop?.coming).toEqual(['Merch: coming']);
     const ammo = shop?.items?.[0];
-    expect(ammo?.line).toBe('Ammo for Assault on Terrornode. Rounds burn when you shoot.');
-    expect(ammo?.tokenId).toBe('d5ffbbfd8310dcb6763c7180b8dbc725b708d0ce990f93cd27d00ff24aa0de02_1');
-    expect(ammo?.links.map((l) => l.label)).toEqual(['Buy on BlastPad', 'Play']);
-    expect(ammo?.links[0].href).toBe(
-      'https://www.tokenblaster.lol/launch/d5ffbbfd8310dcb6763c7180b8dbc725b708d0ce990f93cd27d00ff24aa0de02_1',
+    expect(ammo?.line).toBe(
+      'Every shot earns you a $TERRORNODE receipt, paid to your paymail when you finish playing.',
     );
-    expect(ammo?.links[1].href).toBe('https://www.tokenblaster.lol/arcade/terrornode');
+    expect(ammo?.tokenId).toBe('d5ffbbfd8310dcb6763c7180b8dbc725b708d0ce990f93cd27d00ff24aa0de02_1');
+    expect(ammo?.links.map((l) => l.label)).toEqual(['Play Assault on Terrornode to earn $TERRORNODE']);
+    expect(ammo?.links[0].href).toBe('https://www.tokenblaster.lol/arcade/terrornode');
     // Right after NPG in the Store.
     const ids = SHOPS.map((s) => s.id);
     expect(ids.indexOf('tokenblaster')).toBe(ids.indexOf('npg') + 1);

@@ -1,3 +1,5 @@
+import { earnUrl } from '../market/launchpad/noCurve';
+
 /**
  * A room's display-only linked token (metadata.linkedToken = { id, symbol, source }). bit-sign ignores it for
  * gating; the room header shows it as a "$SYMBOL" chip (LinkedTokenChip.tsx). Anything malformed is dropped.
@@ -24,4 +26,4 @@ export const parseLinkedToken = (metadata: unknown): LinkedToken | null => {
 
 /** Where the chip goes outside the wallet: BlastPad's launch page for a BlastPad token, else nowhere. */
 export const linkedTokenUrl = (t: LinkedToken): string | null =>
-  t.source === 'blastpad' ? `https://www.tokenblaster.lol/launch/${t.id}` : null;
+  earnUrl(t.id) ?? (t.source === 'blastpad' ? `https://www.tokenblaster.lol/launch/${t.id}` : null);

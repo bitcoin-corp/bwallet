@@ -29,6 +29,10 @@ export type BoardCoin = {
   theme?: unknown;
   room?: unknown;
   merch_url?: unknown;
+  /** TokenBlaster: false = no curve buy/sell (earned tokens, P2P only). See noCurve.ts. */
+  trading?: boolean;
+  /** Where to earn a trading:false token (validated before use). */
+  earn_url?: unknown;
 };
 
 export const coinImage = (tokenId: string) => `https://ordfs.network/${tokenId.split('_')[0]}_0`;

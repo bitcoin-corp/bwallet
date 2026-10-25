@@ -46,6 +46,7 @@ import {
 } from './curve';
 import { cancelTrade, executeTrade, prepareTrade, type PreparedTrade } from './client';
 import { describeRow } from './validate';
+import { NO_CURVE_LINE, earnUrl, isNoCurve } from './noCurve';
 import { ErrorActions } from '../../errors/ErrorActions';
 import { LAUNCH_ROUTE, tradeRoute } from '../../exchange/exchangeData';
 import { localLaunches, mergeLaunches, type Launch } from '../../exchange/launch/launch';
@@ -431,174 +432,191 @@ const CoinSheet = ({
           <Bar p={progress(sold)} />
         </div>
 
-        <div className="flex gap-1 rounded-xl p-1 bg-[#0F1013]">
-          {(['buy', 'sell'] as const).map((s) => (
-            <button
-              key={s}
-              disabled={busy}
-              onClick={() => {
-                setSide(s);
-                setAmount('');
-                setError('');
-              }}
-              className="flex-1 rounded-lg py-1.5 text-xs font-semibold"
-              style={{ background: side === s ? '#2b2f36' : 'transparent', color: side === s ? '#fff' : '#98A2B3' }}
-            >
-              {s === 'buy' ? 'Buy' : 'Sell'}
-            </button>
-          ))}
-        </div>
-
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-[#98A2B3]">
-            {side === 'buy' ? 'Amount (BSV, fees included)' : `Amount ($${coin.sym})`}
-          </span>
-          <input
-            inputMode={side === 'buy' ? 'decimal' : 'numeric'}
-            value={amount}
-            disabled={busy}
-            onChange={(e) =>
-              (side === 'buy' ? /^\d*\.?\d{0,8}$/ : /^\d*$/).test(e.target.value) && setAmount(e.target.value)
-            }
-            placeholder={side === 'buy' ? '0.01' : '1000000'}
-            className={input}
-            style={{ borderColor: LINE }}
-          />
-        </label>
-        {picks.length > 0 && (
-          <div className="flex gap-1.5">
-            {picks.map((p, i) => (
+        {isNoCurve(id, coin) ? (
+          <div className="flex flex-col gap-2 rounded-xl p-3" style={{ background: '#0F1013' }} data-testid="no-curve">
+            <p className="text-xs text-[#98A2B3] m-0">{NO_CURVE_LINE}.</p>
+            {earnUrl(id, coin) && (
               <button
-                key={i}
-                disabled={busy}
-                onClick={() => setAmount(p)}
-                className="flex-1 rounded-lg py-1 text-[11px] font-semibold bg-[#0F1013] text-[#98A2B3]"
-              >
-                {side === 'buy' ? p : ['25%', '50%', 'Max'][i]}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {sellBlocked && (
-          <p className="text-[11px] text-[#98A2B3] m-0">
-            Sells open once the token index picks it up (usually within a block or two).
-          </p>
-        )}
-
-        {q && (
-          <div className="flex flex-col gap-1.5 rounded-xl p-3" style={{ background: '#0F1013' }}>
-            {row(
-              'You get',
-              side === 'buy'
-                ? `${fmtTokens(q.tokens)} $${coin.sym}`
-                : `${fmtSats(q.userSats)} BSV (${money(Number(q.userSats), rate)})`,
-            )}
-            {row(`Fees (${FEE_PCT})`, `${fmtSats(q.houseFee + q.routeFee)} BSV`)}
-            {row('Price after', `${price(q.soldAfter).toPrecision(3)} sats`)}
-          </div>
-        )}
-        <div className="flex items-center gap-1.5 text-xs text-[#98A2B3]">
-          <span className="flex-1">Max slippage</span>
-          {SLIPS.map((s) => (
-            <button
-              key={s}
-              disabled={busy}
-              onClick={() => setSlip(s)}
-              className="rounded-lg px-2.5 py-1 font-semibold"
-              style={{ background: slip === s ? '#2b2f36' : '#0F1013', color: slip === s ? '#fff' : '#98A2B3' }}
-            >
-              {s / 100}%
-            </button>
-          ))}
-        </div>
-
-        {tooSmall && <p className="text-xs text-[#F97066] m-0">Minimum buy is {fmtSats(MIN_BUY)} BSV.</p>}
-        {tooBig && <p className="text-xs text-[#F97066] m-0">Maximum buy is {fmtSats(MAX_BUY)} BSV.</p>}
-        {overHeld && held !== null && <p className="text-xs text-[#F97066] m-0">That's more than you hold.</p>}
-        {error && (
-          <div className="flex flex-col gap-1.5">
-            <p className="text-xs text-[#F97066] m-0 break-words">{error}</p>
-            <ErrorActions message={String(error)} />
-          </div>
-        )}
-        {done && (
-          <div className="text-xs text-[#A1FF8B] break-all">
-            Done{done.graduated ? ' — this trade graduated the coin!' : ''}. Txid {done.txid}
-            <button
-              className="block mt-1 font-semibold"
-              style={{ color: GOLD }}
-              onClick={() => void openDappBrowser(wocTx(done.txid))}
-            >
-              View on WhatsOnChain ›
-            </button>
-          </div>
-        )}
-
-        {prepared ? (
-          <div
-            className="flex flex-col gap-2 rounded-xl p-3 border"
-            style={{ background: '#0F1013', borderColor: GOLD }}
-          >
-            <p className="text-sm text-white m-0 leading-snug">
-              {prepared.side === 'buy'
-                ? `Buy ${exactTokens(prepared.checked.quote.tokens)} $${coin.sym} for ${exactBsv(prepared.checked.quote.userSats)} (${money(Number(prepared.checked.quote.userSats), rate)}), curve fees included?`
-                : `Sell ${exactTokens(prepared.checked.quote.tokens)} $${coin.sym} for ${exactBsv(prepared.checked.quote.userSats)} (${money(Number(prepared.checked.quote.userSats), rate)}) after curve fees?`}
-            </p>
-            <div className="flex flex-col gap-1">
-              <span className="text-[11px] text-[#98A2B3]">
-                This transaction pays exactly (checked against the curve):
-              </span>
-              {prepared.checked.rows.map((r, i) => (
-                <div key={i} className="flex justify-between gap-2 text-[11px]">
-                  <span className="text-[#98A2B3]">{r.what}</span>
-                  <span className="text-white text-right break-all">{describeRow(r, coin.sym)}</span>
-                </div>
-              ))}
-              {prepared.side === 'sell' && (
-                <div className="flex justify-between gap-2 text-[11px]">
-                  <span className="text-[#98A2B3]">Your BSV from the sale</span>
-                  <span className="text-white text-right break-all">
-                    {describeRow(
-                      { what: '', to: prepared.w.address, sats: Number(prepared.checked.quote.userSats) },
-                      coin.sym,
-                    )}
-                  </span>
-                </div>
-              )}
-            </div>
-            <p className="text-[11px] text-[#98A2B3] m-0">
-              From this account: the pool inputs above are the pool&apos;s; your wallet adds its own coins, the index
-              fee and a few hundred sats network fee. Trades are final. The quote holds for about a minute.
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={dropPlan}
-                className="flex-1 h-11 rounded-xl text-sm font-semibold bg-[#2b2f36] text-white"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void go()}
-                className="flex-1 h-11 rounded-xl text-sm font-bold"
+                className="h-11 rounded-xl text-sm font-bold"
                 style={{ background: GOLD, color: '#010101' }}
+                onClick={() => void openDappBrowser(earnUrl(id, coin) as string)}
               >
-                Confirm {side === 'buy' ? 'buy' : 'sell'}
+                Earn
               </button>
-            </div>
+            )}
           </div>
         ) : (
-          <button
-            type="button"
-            disabled={!ready}
-            onClick={() => void quote()}
-            className="h-12 rounded-xl text-sm font-bold disabled:opacity-40"
-            style={{ background: GOLD, color: '#010101' }}
-          >
-            {busy ? status || 'Working…' : side === 'buy' ? 'BUY' : 'SELL'}
-          </button>
+          <>
+            <div className="flex gap-1 rounded-xl p-1 bg-[#0F1013]">
+              {(['buy', 'sell'] as const).map((s) => (
+                <button
+                  key={s}
+                  disabled={busy}
+                  onClick={() => {
+                    setSide(s);
+                    setAmount('');
+                    setError('');
+                  }}
+                  className="flex-1 rounded-lg py-1.5 text-xs font-semibold"
+                  style={{ background: side === s ? '#2b2f36' : 'transparent', color: side === s ? '#fff' : '#98A2B3' }}
+                >
+                  {s === 'buy' ? 'Buy' : 'Sell'}
+                </button>
+              ))}
+            </div>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-[#98A2B3]">
+                {side === 'buy' ? 'Amount (BSV, fees included)' : `Amount ($${coin.sym})`}
+              </span>
+              <input
+                inputMode={side === 'buy' ? 'decimal' : 'numeric'}
+                value={amount}
+                disabled={busy}
+                onChange={(e) =>
+                  (side === 'buy' ? /^\d*\.?\d{0,8}$/ : /^\d*$/).test(e.target.value) && setAmount(e.target.value)
+                }
+                placeholder={side === 'buy' ? '0.01' : '1000000'}
+                className={input}
+                style={{ borderColor: LINE }}
+              />
+            </label>
+            {picks.length > 0 && (
+              <div className="flex gap-1.5">
+                {picks.map((p, i) => (
+                  <button
+                    key={i}
+                    disabled={busy}
+                    onClick={() => setAmount(p)}
+                    className="flex-1 rounded-lg py-1 text-[11px] font-semibold bg-[#0F1013] text-[#98A2B3]"
+                  >
+                    {side === 'buy' ? p : ['25%', '50%', 'Max'][i]}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {sellBlocked && (
+              <p className="text-[11px] text-[#98A2B3] m-0">
+                Sells open once the token index picks it up (usually within a block or two).
+              </p>
+            )}
+
+            {q && (
+              <div className="flex flex-col gap-1.5 rounded-xl p-3" style={{ background: '#0F1013' }}>
+                {row(
+                  'You get',
+                  side === 'buy'
+                    ? `${fmtTokens(q.tokens)} $${coin.sym}`
+                    : `${fmtSats(q.userSats)} BSV (${money(Number(q.userSats), rate)})`,
+                )}
+                {row(`Fees (${FEE_PCT})`, `${fmtSats(q.houseFee + q.routeFee)} BSV`)}
+                {row('Price after', `${price(q.soldAfter).toPrecision(3)} sats`)}
+              </div>
+            )}
+            <div className="flex items-center gap-1.5 text-xs text-[#98A2B3]">
+              <span className="flex-1">Max slippage</span>
+              {SLIPS.map((s) => (
+                <button
+                  key={s}
+                  disabled={busy}
+                  onClick={() => setSlip(s)}
+                  className="rounded-lg px-2.5 py-1 font-semibold"
+                  style={{ background: slip === s ? '#2b2f36' : '#0F1013', color: slip === s ? '#fff' : '#98A2B3' }}
+                >
+                  {s / 100}%
+                </button>
+              ))}
+            </div>
+
+            {tooSmall && <p className="text-xs text-[#F97066] m-0">Minimum buy is {fmtSats(MIN_BUY)} BSV.</p>}
+            {tooBig && <p className="text-xs text-[#F97066] m-0">Maximum buy is {fmtSats(MAX_BUY)} BSV.</p>}
+            {overHeld && held !== null && <p className="text-xs text-[#F97066] m-0">That's more than you hold.</p>}
+            {error && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-xs text-[#F97066] m-0 break-words">{error}</p>
+                <ErrorActions message={String(error)} />
+              </div>
+            )}
+            {done && (
+              <div className="text-xs text-[#A1FF8B] break-all">
+                Done{done.graduated ? ' — this trade graduated the coin!' : ''}. Txid {done.txid}
+                <button
+                  className="block mt-1 font-semibold"
+                  style={{ color: GOLD }}
+                  onClick={() => void openDappBrowser(wocTx(done.txid))}
+                >
+                  View on WhatsOnChain ›
+                </button>
+              </div>
+            )}
+
+            {prepared ? (
+              <div
+                className="flex flex-col gap-2 rounded-xl p-3 border"
+                style={{ background: '#0F1013', borderColor: GOLD }}
+              >
+                <p className="text-sm text-white m-0 leading-snug">
+                  {prepared.side === 'buy'
+                    ? `Buy ${exactTokens(prepared.checked.quote.tokens)} $${coin.sym} for ${exactBsv(prepared.checked.quote.userSats)} (${money(Number(prepared.checked.quote.userSats), rate)}), curve fees included?`
+                    : `Sell ${exactTokens(prepared.checked.quote.tokens)} $${coin.sym} for ${exactBsv(prepared.checked.quote.userSats)} (${money(Number(prepared.checked.quote.userSats), rate)}) after curve fees?`}
+                </p>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] text-[#98A2B3]">
+                    This transaction pays exactly (checked against the curve):
+                  </span>
+                  {prepared.checked.rows.map((r, i) => (
+                    <div key={i} className="flex justify-between gap-2 text-[11px]">
+                      <span className="text-[#98A2B3]">{r.what}</span>
+                      <span className="text-white text-right break-all">{describeRow(r, coin.sym)}</span>
+                    </div>
+                  ))}
+                  {prepared.side === 'sell' && (
+                    <div className="flex justify-between gap-2 text-[11px]">
+                      <span className="text-[#98A2B3]">Your BSV from the sale</span>
+                      <span className="text-white text-right break-all">
+                        {describeRow(
+                          { what: '', to: prepared.w.address, sats: Number(prepared.checked.quote.userSats) },
+                          coin.sym,
+                        )}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-[11px] text-[#98A2B3] m-0">
+                  From this account: the pool inputs above are the pool&apos;s; your wallet adds its own coins, the
+                  index fee and a few hundred sats network fee. Trades are final. The quote holds for about a minute.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={dropPlan}
+                    className="flex-1 h-11 rounded-xl text-sm font-semibold bg-[#2b2f36] text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void go()}
+                    className="flex-1 h-11 rounded-xl text-sm font-bold"
+                    style={{ background: GOLD, color: '#010101' }}
+                  >
+                    Confirm {side === 'buy' ? 'buy' : 'sell'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={!ready}
+                onClick={() => void quote()}
+                className="h-12 rounded-xl text-sm font-bold disabled:opacity-40"
+                style={{ background: GOLD, color: '#010101' }}
+              >
+                {busy ? status || 'Working…' : side === 'buy' ? 'BUY' : 'SELL'}
+              </button>
+            )}
+          </>
         )}
         <button
           className="text-xs font-semibold self-center"

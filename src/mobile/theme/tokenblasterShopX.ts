@@ -12,7 +12,7 @@ import terrornodeBanner from '../wallet/editionArt/terrornode-banner.webp';
 import terrornodeLogo from '../wallet/editionArt/terrornode-logo.webp';
 import terrornodeIcon from '../wallet/editionArt/terrornode-token-icon.webp';
 
-/** $TERRORNODE, minted on TokenBlaster's BlastPad (owner, 25 Oct 2026): 1B supply, icon at outpoint _0. */
+/** $TERRORNODE: one receipt per shot in Assault on Terrornode, no curve trading (owner, 25 Oct 2026). Icon at _0. */
 export const TERRORNODE_TOKEN_ID = 'd5ffbbfd8310dcb6763c7180b8dbc725b708d0ce990f93cd27d00ff24aa0de02_1';
 
 /** Card art per pack pattern (cardPatternsEdition.ts). */
@@ -39,17 +39,19 @@ export const TOKENBLASTER_SHOPS: Shop[] = [
     ],
     // Pages show live / coming status (owner rule). No merch source yet: tokenblaster.lol is adding merch_url.
     coming: ['Merch: coming'],
-    // Bought on BlastPad, not in the wallet: outside links only, no investment wording.
+    // Earned by playing, not bought: outside link to the game only, no investment wording.
     items: [
       {
         id: 'terrornode-ammo',
         name: '$TERRORNODE',
         icon: terrornodeIcon,
         bannerCss: `center / auto 84% no-repeat url(${terrornodeLogo}), center / cover no-repeat url(${terrornodeBanner}), #000`,
-        line: 'Ammo for Assault on Terrornode. Rounds burn when you shoot.',
+        line: 'Every shot earns you a $TERRORNODE receipt, paid to your paymail when you finish playing.',
         links: [
-          { label: 'Buy on BlastPad', href: `https://www.tokenblaster.lol/launch/${TERRORNODE_TOKEN_ID}` },
-          { label: 'Play', href: 'https://www.tokenblaster.lol/arcade/terrornode' },
+          {
+            label: 'Play Assault on Terrornode to earn $TERRORNODE',
+            href: 'https://www.tokenblaster.lol/arcade/terrornode',
+          },
         ],
         tokenId: TERRORNODE_TOKEN_ID,
       },
