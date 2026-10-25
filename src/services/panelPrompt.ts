@@ -74,3 +74,6 @@ export const keepPanelPort = (
     port?.disconnect();
   };
 };
+
+/** A browser window in fullscreen (a game) hides the wallet's prompt surfaces until the user interacts. */
+export const isFullscreenWindow = (w: { state?: string } | undefined): boolean => w?.state === 'fullscreen';

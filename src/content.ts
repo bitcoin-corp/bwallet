@@ -219,6 +219,13 @@ try {
       sendResponse({ ok: true });
       return false;
     }
+    if (msg?.action === 'BWX_EXIT_FULLSCREEN') {
+      // A fullscreen page hides the wallet's approval surfaces; only the wallet's own background can ask.
+      const wasFullscreen = !!document.fullscreenElement;
+      if (wasFullscreen) document.exitFullscreen().catch(() => undefined);
+      sendResponse({ ok: true, wasFullscreen });
+      return false;
+    }
     if (msg?.action === 'BWX_INPAGE_SHEET_HIDE') {
       if (window.top !== window) return false;
       hideSheet();

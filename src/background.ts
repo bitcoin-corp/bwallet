@@ -25,7 +25,7 @@ import type { AccentId } from './mobile/theme/accents';
 import { revokeOriginatorInAccounts } from './services/accountPermissionStore';
 import { routeBchatUrl } from './services/bchatOrigin';
 import { createMasterBackupGate } from './services/masterBackupGate';
-import { promptForNewPanel, promptsShowInPanel } from './services/panelPrompt';
+import { isFullscreenWindow, promptForNewPanel, promptsShowInPanel } from './services/panelPrompt';
 import { isSessionExpired } from './utils/lockTimeout';
 import { originatorForOrigin } from './services/originKey';
 import { PAIR_MIRROR_KEY, isPairedOriginator, pairedGrantAllowed, setPairMirror, takePendingFor } from './services/pairedPromptGuard';
@@ -1857,6 +1857,7 @@ if (isInServiceWorker) {
 
   showPromptUi = (kind, requestID) => {
     console.log('[background] showPromptUi called', kind, requestID);
+    void surfaceOverFullscreen(kind === 'usbCheck' ? undefined : tabForPrompt(kind, requestID));
 
     // Side panel open: show the prompt inside it (the panel's own unlock screen covers 'unlock').
     // Extension only: the phone and web wallet also connect an 'extension-popup' port, but their UI has no
@@ -1884,6 +1885,32 @@ if (isInServiceWorker) {
       return;
     }
     showPromptWindow(kind, requestID);
+  };
+
+  /**
+   * A site in fullscreen (a game) hides the panel, the in-page sheet and any popup window until the user scrolls,
+   * clicks or presses Esc (TokenBlaster, 25 Oct 2026). Ask the page to leave fullscreen, then raise the approval
+   * window if one is up, and leave a notification as the last resort.
+   */
+  const surfaceOverFullscreen = async (tab?: { tabId: number; windowId: number }) => {
+    if (!tab || !chrome.windows?.get) return;
+    try {
+      // Always ask (a no-op unless the page has an element in fullscreen; window state may not say so).
+      const r = (await chrome.tabs
+        .sendMessage(tab.tabId, { action: 'BWX_EXIT_FULLSCREEN' })
+        .catch(() => undefined)) as { wasFullscreen?: boolean } | undefined;
+      const w = await chrome.windows.get(tab.windowId);
+      if (!isFullscreenWindow(w) && !r?.wasFullscreen) return;
+      if (popupWindowId) await chrome.windows.update(popupWindowId, { focused: true, drawAttention: true }).catch(() => undefined);
+      chrome.notifications?.create('bwalletx-approval', {
+        type: 'basic',
+        iconUrl: 'icons/icon128.png',
+        title: 'bWalletX needs your approval',
+        message: 'A site is waiting for you to approve a request.',
+      });
+    } catch {
+      /* window gone */
+    }
   };
 
   /** The site's tab for a prompt, from the request's originator (or the last site that called). */
@@ -1941,7 +1968,7 @@ if (isInServiceWorker) {
 
       if (existingPopup) {
         // Focus existing popup and push the new prompt into it
-        chrome.windows.update(existingPopup.id!, { focused: true });
+        chrome.windows.update(existingPopup.id!, { focused: true, drawAttention: true });
         popupWindowId = existingPopup.id;
         notifyPromptWindow(kind, requestID);
         return;

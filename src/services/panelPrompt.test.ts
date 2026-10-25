@@ -103,3 +103,19 @@ describe('keepPanelPort (service worker restart)', () => {
     expect(bg).toMatch(/promptForNewPanel\(panelPromptOnConnect, getNextPendingPrompt\(\)\)/);
   });
 });
+
+import { isFullscreenWindow } from './panelPrompt';
+describe('fullscreen sites', () => {
+  it('detects a fullscreen window', () => {
+    expect(isFullscreenWindow({ state: 'fullscreen' })).toBe(true);
+    expect(isFullscreenWindow({ state: 'normal' })).toBe(false);
+    expect(isFullscreenWindow(undefined)).toBe(false);
+  });
+  it('background asks the page to exit fullscreen and the content script does it', () => {
+    const bg = readFileSync(new URL('../background.ts', import.meta.url), 'utf8');
+    const cs = readFileSync(new URL('../content.ts', import.meta.url), 'utf8');
+    expect(bg).toContain('void surfaceOverFullscreen(');
+    expect(bg).toContain("action: 'BWX_EXIT_FULLSCREEN'");
+    expect(cs).toMatch(/BWX_EXIT_FULLSCREEN[\s\S]*?document\.exitFullscreen\(\)/);
+  });
+});
