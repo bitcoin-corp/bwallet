@@ -20,3 +20,6 @@
 ^src/mobile/sweep/hd\.ts$
 ^\.github/money-paths\.txt$
 ^\.github/workflows/money-guard\.yml$
+# Trading: code that builds, checks or signs trades of launchpad tokens (Memepool, TokenBlaster).
+^src/mobile/exchange/memepool/
+^src/mobile/market/launchpad/(client|validate|curve)\.ts$
