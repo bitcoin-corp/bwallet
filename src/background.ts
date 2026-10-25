@@ -46,6 +46,7 @@ import {
 } from './services/streamGrants';
 import type { StreamGrantPrompt } from './promptProtocol';
 import { ALLOWANCES_ENABLED } from './services/allowanceFlag';
+import { ENVELOPES_ENABLED } from './mobile/storeBuild';
 import {
   DEFAULT_ENVELOPE_USD,
   ENVELOPE_PRESETS_USD,
@@ -2061,6 +2062,11 @@ if (!(
         sendResponse({ type: message.action, success: false, error: 'Unauthorized' });
         return true;
       }
+      // Store builds have no envelopes (storeBuild.ts ENVELOPES_ENABLED).
+      if (!ENVELOPES_ENABLED) {
+        sendResponse({ type: message.action, success: false, error: 'Not supported' });
+        return true;
+      }
       void handleEnvelopesInternal(message as { action: string } & Record<string, unknown>, sendResponse);
       return true;
     }
@@ -3578,6 +3584,9 @@ if (!(
     const reply = (r: { success: boolean; data?: unknown; error?: string }) => sendResponse({ type: action, ...r });
     const now = Date.now();
     const key = normalizeOriginator(originator);
+    // Store builds leave out envelopes and streaming payments (storeBuild.ts ENVELOPES_ENABLED): a site asking is
+    // refused as unsupported, never approved, and each of its payments shows its own sheet.
+    if (!ENVELOPES_ENABLED) return reply({ success: false, error: 'Not supported' });
     if (!ALLOWANCES_ENABLED) return handleEnvelopeAuth(action, key, params, reply);
     try {
       if (action === SPENDING_AUTH_STATUS) {
@@ -3845,7 +3854,7 @@ if (!(
       if (live && grant.authorizedAmount != null) existingSats = grant.authorizedAmount;
     }
     let envelope: { offer: boolean; balanceSats?: number; presetsUsd: readonly number[] } | undefined;
-    if (!ALLOWANCES_ENABLED && originator) {
+    if (ENVELOPES_ENABLED && !ALLOWANCES_ENABLED && originator) {
       const site = normalizeOriginator(originator);
       const env = await accountContext?.envelopes.get(site).catch(() => undefined);
       envelope = {
@@ -3973,7 +3982,14 @@ if (!(
       // an earmark the site may spend from without a sheet, released by Coin return (services/envelopes.ts).
       const envUsd = Number(response.envelopeUsd ?? 0);
       const paid = result.granted.some((r) => (r as BundleRequest).type === 'spending');
-      if (!ALLOWANCES_ENABLED && envUsd > 0 && Number.isFinite(envUsd) && paid && accountContext?.envelopes) {
+      if (
+        ENVELOPES_ENABLED &&
+        !ALLOWANCES_ENABLED &&
+        envUsd > 0 &&
+        Number.isFinite(envUsd) &&
+        paid &&
+        accountContext?.envelopes
+      ) {
         const sats = allowanceSats(envUsd, await cachedUsdPerBsv());
         // Keyed exactly as guardEnvelopes spends it: the site's own originator, port kept (the bundle's is the
         // host-only permission key, so "shop.com:8443" would otherwise fill "shop.com"'s envelope; b-Aware row 58).
@@ -5056,7 +5072,7 @@ if (!(
       // label and inside the rolling hour's budget, has its spend answered without a sheet. Anything else prompts.
       const streamKey = !isAdmin && message.originator ? normalizeOriginator(message.originator) : undefined;
       // A call naming a streaming protocol is a micropayment: its pay sheet offers the site an envelope.
-      if (streamKey && !ALLOWANCES_ENABLED && streamProtocolOption(message.params).length)
+      if (ENVELOPES_ENABLED && streamKey && !ALLOWANCES_ENABLED && streamProtocolOption(message.params).length)
         releaseMicropay = markMicropayments(streamKey);
       // Streaming grants are allowances: with envelopes (the default) they approve nothing (allowanceFlag.ts).
       if (streamKey && ALLOWANCES_ENABLED) {

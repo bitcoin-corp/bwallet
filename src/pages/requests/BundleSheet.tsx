@@ -29,6 +29,7 @@ import { CarefulHero, ConnectHero, PayHero, SignInHero } from '../../components/
 import { useSheetPrice } from '../../components/DollarAmount';
 import { EnvelopePresets } from '../../components/approval/EnvelopePresets';
 import { envelopeUsdText } from '../../services/envelopes';
+import { ENVELOPES_ENABLED } from '../../mobile/storeBuild';
 import { dollarsFirst, dollarsInline } from '../../utils/dollarsFirst';
 
 /**
@@ -142,7 +143,8 @@ export const BundleSheet = (props: {
   // Pay in the moment (owner, 24 Oct 2026): these sheets never offer a monthly allowance.
   const showAllowance = false as boolean;
   // "Put $X in <site>'s envelope" / "Top up the envelope": a payment from a micropayments site, or one with an envelope.
-  const envelope = !mint && model.payment && allowance?.usdPerBsv ? allowance.envelope : undefined;
+  // Store builds never offer an envelope (storeBuild.ts ENVELOPES_ENABLED).
+  const envelope = ENVELOPES_ENABLED && !mint && model.payment && allowance?.usdPerBsv ? allowance.envelope : undefined;
   const showEnvelope = !!envelope?.offer;
   // Dollars first (owner, 24 Oct 2026): the site's allowance rate when the background sent one, else the live price.
   const price = useSheetPrice(allowance?.usdPerBsv);
@@ -367,7 +369,11 @@ export const BundleSheet = (props: {
           />
           <span>
             Don&apos;t ask again on {request.originator} for sign-in and signing.{' '}
-            {allowance?.allowances ? 'Payments stay within the allowance;' : 'Payments still ask, or use its envelope;'}{' '}
+            {allowance?.allowances
+              ? 'Payments stay within the allowance;'
+              : ENVELOPES_ENABLED
+                ? 'Payments still ask, or use its envelope;'
+                : 'Payments still ask;'}{' '}
             your personal details always ask.
           </span>
         </label>
@@ -511,11 +517,11 @@ export const BundleSheet = (props: {
           <Check size={18} />
           {allowanceSetsUsd > 0
             ? `Then up to ${fmtUsd(allowanceSetsUsd)} a month without asking`
-            : envelopeUsd > 0
+            : ENVELOPES_ENABLED && envelopeUsd > 0
               ? `Then small payments come out of the envelope`
               : 'Every payment asks you first'}
         </div>
-        {showEnvelope && envelope && (
+        {ENVELOPES_ENABLED && showEnvelope && envelope && (
           <div className="flex flex-col" style={{ gap: 8 }} data-testid="envelope-offer">
             <span style={{ fontSize: 15, fontWeight: 600 }}>
               {envelope.balanceSats !== undefined ? (

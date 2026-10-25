@@ -6,6 +6,7 @@ import { dollarsFirst, priceFrom, type PriceState } from '../utils/dollarsFirst'
  * The BSV price for a sheet's amount labels. A rate the sheet was handed wins; otherwise the last known rate,
  * then a fetch. "loading" until the fetch settles, "unavailable" if it brought nothing. Display only.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export const useSheetPrice = (known?: number): PriceState => {
   const [fetched, setFetched] = useState<number>(() => cachedExchangeRate());
   const [settled, setSettled] = useState(false);

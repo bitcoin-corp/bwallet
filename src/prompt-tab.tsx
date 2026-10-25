@@ -27,6 +27,7 @@ import { sendMessageAsync } from './utils/chromeHelpers';
 import type { PromptKind, StreamGrantPrompt, UsbCheckRequest } from './promptProtocol';
 import { StreamGrantRequestPage } from './pages/requests/StreamGrantRequest';
 import { EnvelopeRequestPage } from './pages/requests/EnvelopeRequest';
+import { ENVELOPES_ENABLED } from './mobile/storeBuild';
 import { SiteThemeFrame } from './mobile/theme/SiteThemeFrame';
 import './index.css';
 
@@ -365,7 +366,8 @@ const PromptApp = () => {
           )}
           {screen.kind === 'streamGrant' &&
             // Envelopes (services/envelopes.ts): same request and answer, "Put $X in <site>'s envelope" words.
-            (screen.payload.envelope ? (
+            // Store builds never ask for an envelope (storeBuild.ts ENVELOPES_ENABLED).
+            (ENVELOPES_ENABLED && screen.payload.envelope ? (
               <EnvelopeRequestPage key={screen.requestID} request={screen.payload} onResponse={() => void advance()} />
             ) : (
               <StreamGrantRequestPage

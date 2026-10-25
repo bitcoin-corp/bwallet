@@ -27,6 +27,7 @@ import { guardReservedProtocols, revokeReservedProtocolGrants } from './services
 import { guardAllowance } from './services/allowanceGuard';
 import { ALLOWANCES_ENABLED } from './services/allowanceFlag';
 import { chromeEnvelopeBackend, EnvelopeStore, guardEnvelopes } from './services/envelopes';
+import { ENVELOPES_ENABLED } from './mobile/storeBuild';
 import { guardCrossSiteSigning } from './services/crossSiteSignGuard';
 import { normalizeOriginator } from '@1sat/wallet';
 import { guardSpending } from './mobile/config/killSwitch';
@@ -427,15 +428,23 @@ export const initWallet = async (
                   ),
                   { store: permissionStore, adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
                 )
-              : guardEnvelopes(
+              : ENVELOPES_ENABLED
+                ? guardEnvelopes(
+                    new LocalWalletPermissionsManager(
+                      baseWallet,
+                      ADMIN_ORIGINATOR,
+                      { permissionModules: assetModules },
+                      { store: permissionStore },
+                    ),
+                    { envelopes, adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
+                  )
+                : // Store builds have no envelopes (storeBuild.ts ENVELOPES_ENABLED): every payment shows its sheet.
                   new LocalWalletPermissionsManager(
                     baseWallet,
                     ADMIN_ORIGINATOR,
                     { permissionModules: assetModules },
                     { store: permissionStore },
                   ),
-                  { envelopes, adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
-                ),
             spendLedger,
           ),
         ),

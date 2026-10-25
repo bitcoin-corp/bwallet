@@ -1,6 +1,6 @@
 import { manifestVersion, settingsBuildInfo } from '../utils/versionLabel';
 import { requestThemeSheet } from '../mobile/theme/themeNav';
-import { THEME_ORDERS_ENABLED } from '../mobile/storeBuild';
+import { ENVELOPES_ENABLED, THEME_ORDERS_ENABLED } from '../mobile/storeBuild';
 import { AvatarTooBigError } from '../mobile/names/animatedAvatar';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -1015,15 +1015,19 @@ export const Settings = () => {
           label="Permissions"
           description="Review and revoke connected apps and permissions"
           onClick={() => setPage('permissions')}
+          isLast={!ENVELOPES_ENABLED && !ALLOWANCES_ENABLED}
         />
-        <Divider />
-        <SettingRow
-          icon={<Wallet size={16} />}
-          label="Envelopes"
-          description="Money set aside for one site's small payments: what is left, Coin return"
-          onClick={() => setPage('envelopes')}
-          isLast={!ALLOWANCES_ENABLED}
-        />
+        {/* Envelopes are bWalletX only: store builds leave them out (storeBuild.ts ENVELOPES_ENABLED). */}
+        {ENVELOPES_ENABLED && <Divider />}
+        {ENVELOPES_ENABLED && (
+          <SettingRow
+            icon={<Wallet size={16} />}
+            label="Envelopes"
+            description="Money set aside for one site's small payments: what is left, Coin return"
+            onClick={() => setPage('envelopes')}
+            isLast={!ALLOWANCES_ENABLED}
+          />
+        )}
         {/* Streaming grants are allowances: shown only while allowances are on (services/allowanceFlag.ts). */}
         {ALLOWANCES_ENABLED && <Divider />}
         {ALLOWANCES_ENABLED && (
@@ -2410,7 +2414,7 @@ export const Settings = () => {
               </motion.div>
             )}
 
-            {page === 'envelopes' && (
+            {ENVELOPES_ENABLED && page === 'envelopes' && (
               <motion.div
                 key="envelopes"
                 variants={pageVariants}

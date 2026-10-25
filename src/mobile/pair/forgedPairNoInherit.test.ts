@@ -100,10 +100,6 @@ const manager = (s: InMemoryPermissionStore) => {
 };
 
 const KEY = 'bwallet.pair.sessions';
-const DAY = 24 * 60 * 60 * 1000;
-const stored = () => JSON.parse(mem.get(KEY) ?? '[]') as Array<Record<string, unknown>>;
-const edit = (c: string, patch: Record<string, unknown>) =>
-  mem.set(KEY, JSON.stringify(stored().map((s) => (s.c === c ? { ...s, ...patch } : s))));
 
 const seedGrants = async (s: InMemoryPermissionStore) => {
   await grantSignIn(s);

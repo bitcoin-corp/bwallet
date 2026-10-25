@@ -124,6 +124,7 @@ import {
   XINVITES_ENABLED,
   roomSpacesAllowed,
   MARKET_ENABLED,
+  STORE_BUILD,
   STORE_ROOM_NOTE,
   marketLabel,
   tokenRoomsEnabled,
@@ -749,8 +750,9 @@ const Conversation = ({
         background: BG,
       }}
     >
-      {/* The connected game's room: a short balance card on top (chat/SiteRoomViews.tsx; only for that room). */}
-      <SiteRoomBalance ticker={room.ticker} />
+      {/* The connected game's room: a short balance card on top (chat/SiteRoomViews.tsx; only for that room).
+          Store builds never (like SiteRoomEngine in App.tsx). */}
+      {!STORE_BUILD && <SiteRoomBalance ticker={room.ticker} />}
       <div
         // Two rows (owner, 17 Oct 2026): back, picture, name and details on the first; the room's buttons on the
         // second. On one row the buttons squeezed the name and details into a one-word column.

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'fs';
 import {
   BUY_CRYPTO_ENABLED,
+  ENVELOPES_ENABLED,
   PAID_FEATURES_ENABLED,
   buyCryptoEnabled,
   STORE_BUILD,
@@ -106,6 +107,20 @@ describe('store build: no buying, no personal token, no bWalletX text', () => {
     expect(wallet).toContain('BUY_CRYPTO_ENABLED && getBsvOpen &&');
     expect(wallet).toMatch(/BUY_CRYPTO_ENABLED && <Show when=\{!isProcessing && pageState === 'getMNEE'\}>/);
     expect(wallet).toContain('onGetMneeClick={BUY_CRYPTO_ENABLED ?');
+  });
+
+  test('envelopes (#87) and the game room balance card (#101) are bWalletX only', () => {
+    expect(ENVELOPES_ENABLED).toBe(!STORE_BUILD);
+    const bg = src('../background.ts');
+    // A site asking for a spending authorization in a store build is refused, never approved.
+    expect(bg).toMatch(/if \(!ENVELOPES_ENABLED\) return reply\(\{ success: false, error: 'Not supported' \}\);/);
+    expect(bg).toContain(
+      "if (!ENVELOPES_ENABLED) {\n        sendResponse({ type: message.action, success: false, error: 'Not supported' });",
+    );
+    expect(src('../initWallet.ts')).toMatch(/: ENVELOPES_ENABLED\s*\? guardEnvelopes\(/);
+    expect(src('../pages/Settings.tsx')).toContain("ENVELOPES_ENABLED && page === 'envelopes'");
+    expect(src('../prompt-tab.tsx')).toContain('ENVELOPES_ENABLED && screen.payload.envelope');
+    expect(src('./tabs/ChatPage.tsx')).toContain('{!STORE_BUILD && <SiteRoomBalance');
   });
 
   test('Choose your handle: the token + room panel needs paid features', () => {

@@ -13,6 +13,7 @@ import { ErrorActions } from '../errors/ErrorActions';
 import { forgetSiteConnected, setSiteThemeAllowed, siteThemeAllowed } from '../theme/connectSiteTheme';
 import { ALLOWANCES_ENABLED } from '../../services/allowanceFlag';
 import type { Envelope } from '../../services/envelopes';
+import { ENVELOPES_ENABLED } from '../storeBuild';
 
 const CARD = '#17191E';
 const LINE = '#2b2f36';
@@ -52,7 +53,10 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
     const [l, g, e] = await Promise.all([
       loadConnectionLog(),
       send<{ groups: Group[] }>({ action: 'PERMISSIONS_LIST_ALL' }).catch(() => null),
-      send<{ envelopes: Envelope[]; usdPerBsv?: number }>({ action: 'ENVELOPES_LIST' }).catch(() => null),
+      // Envelopes are bWalletX only (storeBuild.ts ENVELOPES_ENABLED).
+      ENVELOPES_ENABLED
+        ? send<{ envelopes: Envelope[]; usdPerBsv?: number }>({ action: 'ENVELOPES_LIST' }).catch(() => null)
+        : null,
     ]);
     setLog(l);
     setGroups(g?.success ? (g.data?.groups ?? []) : []);
@@ -78,7 +82,7 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
     else {
       forgetSiteConnected(r.host);
       // Revoking everything also closes its envelope: what is left stays yours.
-      await send({ action: 'ENVELOPE_COIN_RETURN', originator: r.originator }).catch(() => null);
+      if (ENVELOPES_ENABLED) await send({ action: 'ENVELOPE_COIN_RETURN', originator: r.originator }).catch(() => null);
     }
     setBusy('');
     await load();
@@ -91,6 +95,7 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
       ? `$${((sats / 1e8) * envelopes.usdPerBsv).toFixed(2)}`
       : `${bsvString(sats).replace(/\.?0+$/, '')} BSV`;
   const coinReturn = async (e: Envelope) => {
+    if (!ENVELOPES_ENABLED) return;
     setBusy(e.originator);
     setError('');
     const res = await send<{ returnedSats: number }>({
@@ -172,26 +177,27 @@ export const ConnectionsView = ({ rows }: { rows: HistoryRow[] }) => {
               />
               Use this site&apos;s theme
             </label>
-            {(() => {
-              const env = envelopeFor(r);
-              if (!env) return null;
-              return (
-                <div className="flex items-center gap-2 mt-2" data-testid="connection-envelope">
-                  <span className="text-xs flex-1" style={{ color: '#fff' }}>
-                    Envelope: {money(env.balanceSats)} left
-                  </span>
-                  <button
-                    type="button"
-                    disabled={busy === env.originator}
-                    onClick={() => void coinReturn(env)}
-                    className="text-xs px-3 py-1 rounded-full cursor-pointer bg-transparent"
-                    style={{ color: GOLD, border: `1px solid ${LINE}`, minHeight: 32 }}
-                  >
-                    {busy === env.originator ? 'Returning…' : 'Coin return'}
-                  </button>
-                </div>
-              );
-            })()}
+            {ENVELOPES_ENABLED &&
+              (() => {
+                const env = envelopeFor(r);
+                if (!env) return null;
+                return (
+                  <div className="flex items-center gap-2 mt-2" data-testid="connection-envelope">
+                    <span className="text-xs flex-1" style={{ color: '#fff' }}>
+                      Envelope: {money(env.balanceSats)} left
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busy === env.originator}
+                      onClick={() => void coinReturn(env)}
+                      className="text-xs px-3 py-1 rounded-full cursor-pointer bg-transparent"
+                      style={{ color: GOLD, border: `1px solid ${LINE}`, minHeight: 32 }}
+                    >
+                      {busy === env.originator ? 'Returning…' : 'Coin return'}
+                    </button>
+                  </div>
+                );
+              })()}
             {r.originator && (
               <button
                 type="button"

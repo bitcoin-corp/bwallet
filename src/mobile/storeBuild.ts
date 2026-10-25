@@ -636,3 +636,16 @@ export const NRT_ENABLED: boolean =
     import.meta.env.VITE_CHANNEL === 'ios-store' ||
     import.meta.env.VITE_CHANNEL === 'android-play'
   );
+
+/**
+ * Envelopes (services/envelopes.ts, #87): a site's earmark it may spend from without a sheet, the Settings ›
+ * Envelopes page, Coin return and the envelope offer on pay sheets. bWalletX only: store builds leave out
+ * envelopes and streaming payments (Apple 3.1.1, Play Payments). In a store build a site's
+ * requestSpendingAuthorization is refused as unsupported and every payment shows its sheet. Literal env check so
+ * Vite inlines it and Rollup drops the envelope pages, presets and handlers.
+ */
+export const ENVELOPES_ENABLED: boolean = !(
+  import.meta.env.VITE_STORE_BUILD === '1' ||
+  import.meta.env.VITE_CHANNEL === 'ios-store' ||
+  import.meta.env.VITE_CHANNEL === 'android-play'
+);
