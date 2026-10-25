@@ -6,13 +6,13 @@ import { Coins } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd';
-import { ONESAT_MAINNET_CONTENT_URL, type Bsv21Balance } from '@1sat/actions';
+import { type Bsv21Balance } from '@1sat/actions';
 import { useServiceContext } from '../hooks/useServiceContext';
 import { ChromeStorageObject } from '../services/types/chromeStorage.types';
 import { Theme } from '../theme.types';
-import { BSV_DECIMAL_CONVERSION, GENERIC_TOKEN_ICON } from '../utils/constants';
+import { BSV_DECIMAL_CONVERSION } from '../utils/constants';
+import { tokenIconUrl } from '../mobile/tokens/officialTokens';
 import { showAmount } from '../utils/format';
-import { isUri } from '../utils/uri';
 import { fetchExchangeRate } from '../utils/wallet';
 import { AssetRow } from './AssetRow';
 import { Show } from './Show';
@@ -31,7 +31,6 @@ import { useListCoin } from '../mobile/wallet/useListCoin';
 import { rowMatchesCoin } from '../mobile/wallet/cardFilter';
 import { hasFocusHost, setFocusedToken } from '../mobile/wallet/cardFocus';
 
-const resolveIcon = (icon: string) => (isUri(icon) ? icon : `${ONESAT_MAINNET_CONTENT_URL}/${icon}`);
 
 type PriceData = {
   id: string;
@@ -63,7 +62,7 @@ const YoursChip = () => (
 
 /** Token icon: a personal token shows its creator's profile picture (mobile/tokens/tokenIcon). */
 const TokenAssetRow = ({ t, usdBalance, still }: { t: Bsv21Balance; usdBalance: number; still?: boolean }) => {
-  const icon = useTokenIcon(t.id, getTokenName(t), t.icon ? resolveIcon(t.icon) : GENERIC_TOKEN_ICON);
+  const icon = useTokenIcon(t.id, getTokenName(t), tokenIconUrl(t.id, getTokenName(t), t.icon));
   return (
     <AssetRow
       animate
@@ -186,7 +185,7 @@ export const Bsv21TokensList = (props: Bsv21TokensListProps) => {
     setFocusedToken({
       id: t.id,
       name,
-      icon: t.icon ? resolveIcon(t.icon) : GENERIC_TOKEN_ICON,
+      icon: tokenIconUrl(t.id, name, t.icon),
       amount: `${showAmount(t.all.confirmed, t.dec)} ${t.sym || name}`,
       qty: Number(t.all.confirmed) / 10 ** (t.dec ?? 0),
       symbol: t.sym || name,
@@ -278,7 +277,7 @@ export const Bsv21TokensList = (props: Bsv21TokensListProps) => {
               balance={Number(showAmount(b.all.pending, b.dec))}
               decimals={b.dec}
               showPointer={true}
-              icon={b.icon ? resolveIcon(b.icon) : GENERIC_TOKEN_ICON}
+              icon={tokenIconUrl(b.id, getTokenName(b), b.icon)}
               ticker={getTokenName(b)}
               subline={<IssuerBadge tokenId={b.id} compact />}
               usdBalance={usdOf(b)}
@@ -414,7 +413,7 @@ export const Bsv21TokensList = (props: Bsv21TokensListProps) => {
                           balance={Number(showAmount(b.all.pending, b.dec))}
                           decimals={b.dec}
                           showPointer={true}
-                          icon={b.icon ? resolveIcon(b.icon) : GENERIC_TOKEN_ICON}
+                          icon={tokenIconUrl(b.id, getTokenName(b), b.icon)}
                           ticker={getTokenName(b)}
                           subline={<IssuerBadge tokenId={b.id} compact />}
                           usdBalance={

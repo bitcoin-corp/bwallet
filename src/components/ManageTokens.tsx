@@ -1,17 +1,13 @@
 import type { Bsv21Balance } from '@1sat/actions';
-import { ONESAT_MAINNET_CONTENT_URL } from '@1sat/actions';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Search, Star } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useServiceContext } from '../hooks/useServiceContext';
 import { Theme } from '../theme.types';
-import { GENERIC_TOKEN_ICON } from '../utils/constants';
+import { tokenIconUrl } from '../mobile/tokens/officialTokens';
 import { truncate } from '../utils/format';
-import { isUri } from '../utils/uri';
 import { ChromeStorageObject } from '../services/types/chromeStorage.types';
 import { ToggleSwitch } from './ToggleSwitch';
-
-const resolveIcon = (icon: string) => (isUri(icon) ? icon : `${ONESAT_MAINNET_CONTENT_URL}/${icon}`);
 
 export type ManageTokensProps = {
   tokens: Bsv21Balance[];
@@ -164,7 +160,7 @@ export const ManageTokens = (props: ManageTokensProps) => {
                   {/* Left: icon + name */}
                   <div className="flex items-center gap-3 min-w-0">
                     <img
-                      src={t.icon ? resolveIcon(t.icon) : GENERIC_TOKEN_ICON}
+                      src={tokenIconUrl(t.id, getTokenName(t), t.icon)}
                       alt={getTokenName(t)}
                       className="w-9 h-9 rounded-full object-cover flex-shrink-0"
                     />

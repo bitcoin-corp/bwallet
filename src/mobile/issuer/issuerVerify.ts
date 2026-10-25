@@ -3,6 +3,7 @@ import { BCHAT_ORIGIN } from '../chat/api';
 import { lookupPaymail } from '../names/paymail';
 import type { Fetch } from '../names/names';
 import { isTokenId, normTokenId, verifyIssueTx } from './issuer';
+import { officialToken } from '../tokens/officialTokens';
 
 /**
  * "Issued by $handle ✓": given a token id, fetch its deploy/mint tx, verify the issuer
@@ -20,6 +21,8 @@ export interface IssuerInfo {
   /** bit-sign has the issuer on record (independent server-side verification). */
   registered?: boolean;
   ticker?: string | null;
+  /** First-party token pinned by exact id in the wallet (tokens/officialTokens): the issuer's name. */
+  official?: string;
   reason?: string;
   at: number;
 }
@@ -50,8 +53,16 @@ const inflight = new Map<string, Promise<IssuerInfo>>();
 const ttl = (i: IssuerInfo) =>
   i.status === 'verified' ? VERIFIED_TTL : i.status === 'unverified' ? UNVERIFIED_TTL : UNKNOWN_TTL;
 
+/** A first-party token (exact id compiled into the wallet): vouched for by the wallet, not the mint tx. */
+function officialIssuer(id: string, now: number): IssuerInfo | null {
+  const o = officialToken(id);
+  return o ? { tokenId: id, status: 'verified', official: o.issuer, registered: true, at: now } : null;
+}
+
 export function cachedIssuer(tokenId: string, now = Date.now()): IssuerInfo | null {
   const id = normTokenId(tokenId);
+  const off = officialIssuer(id, now);
+  if (off) return off;
   let i = mem.get(id) ?? null;
   if (!i) {
     try {
@@ -93,6 +104,8 @@ async function registryLookup(f: Fetch, tokenId: string): Promise<RegistryRow | 
 export async function verifyIssuer(tokenId: string, f: Fetch = fetch, now = Date.now()): Promise<IssuerInfo> {
   const id = normTokenId(tokenId);
   if (!isTokenId(id)) return { tokenId: id, status: 'unknown', reason: 'not a token id', at: now };
+  const off = officialIssuer(id, now);
+  if (off) return off;
   const hit = cachedIssuer(id, now);
   if (hit) return hit;
   const running = inflight.get(id);
@@ -143,6 +156,7 @@ export async function verifyIssuer(tokenId: string, f: Fetch = fetch, now = Date
 export function issuerLabel(i: IssuerInfo | null | undefined): { text: string; verified: boolean } {
   if (!i || i.status === 'unknown') return { text: 'Checking issuer…', verified: false };
   if (i.status !== 'verified') return { text: 'Unverified issuer', verified: false };
+  if (i.official) return { text: `Issued by ${i.official} · official`, verified: true };
   const who = i.handle ? `$${i.handle.replace(/^\$/, '')}` : `${i.identityKey?.slice(0, 8)}…`;
   return { text: `Issued by ${who}${i.kyc ? ' · KYC' : ''}`, verified: true };
 }

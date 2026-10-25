@@ -39,13 +39,11 @@ import { useIdentity, resolveImageUrl } from '../hooks/useIdentity';
 import { useTheme } from '../hooks/useTheme';
 import {
   BSV_DECIMAL_CONVERSION,
-  GENERIC_TOKEN_ICON,
   MNEE_ICON_URL,
   MNEE_MOBILE_REFERRAL_LINK,
 } from '../utils/constants';
 import { formatNumberWithCommasAndDecimals, formatUSD } from '../utils/format';
 import { sleep } from '../utils/sleep';
-import { isUri } from '../utils/uri';
 import { AssetRow } from '../components/AssetRow';
 import { DefaultTokenCards } from '../mobile/wallet/DefaultTokenCards';
 import { BSV_LOCK_ROUTE } from '../mobile/wallet/rowLock';
@@ -69,7 +67,7 @@ import { AssetPicker, type PickableAsset } from '../components/AssetPicker';
 import { SendConfirmation, type SendLineItem } from '../components/SendConfirmation';
 import { celebrateSend } from '../components/sent/sent';
 import { CoinHistory } from '../components/CoinHistory';
-import { getMneeBalance, sendMnee, deriveDepositAddresses, ONESAT_MAINNET_CONTENT_URL } from '@1sat/actions';
+import { getMneeBalance, sendMnee, deriveDepositAddresses } from '@1sat/actions';
 import { MNEE_PROTOCOLS, mneeKeyDerivations } from '../utils/mneeDerivations';
 import { MneeClient } from '@1sat/client';
 import { PrivateKey } from '@bsv/sdk';
@@ -105,6 +103,7 @@ import { useRelayxAccount } from '../mobile/sweep/useRelayxAccount';
 import relayxIcon from '../mobile/brand/restore/relayx.svg';
 import { describeWalletError } from '../brand/walletError';
 import { publishBalance } from '../mobile/wallet/balanceStore';
+import { tokenIconUrl } from '../mobile/tokens/officialTokens';
 import {
   BALANCE_TIMEOUT_MS,
   RATE_TIMEOUT_MS,
@@ -1924,11 +1923,7 @@ export const BsvWallet = () => {
               ({
                 kind: 'bsv21' as const,
                 token: t,
-                icon: t.icon
-                  ? isUri(t.icon)
-                    ? t.icon
-                    : `${ONESAT_MAINNET_CONTENT_URL}/${t.icon}`
-                  : GENERIC_TOKEN_ICON,
+                icon: tokenIconUrl(t.id, t.sym || '', t.icon),
               }) as PickableAsset,
           )
       : []),

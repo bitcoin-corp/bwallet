@@ -7,7 +7,6 @@ import { ONE_SAT_MARKET_URL } from '../utils/constants';
 import { showAmount, normalize, truncate } from '../utils/format';
 import { sleep } from '../utils/sleep';
 import { getErrorMessage } from '../utils/tools';
-import { isUri } from '../utils/uri';
 import { Input } from './Input';
 import { SendConfirmation, type SendLineItem } from './SendConfirmation';
 import { Bsv21OverlayPrompt, type Bsv21OverlayIssue } from './Bsv21OverlayPrompt';
@@ -16,7 +15,6 @@ import { SpeedBump } from './SpeedBump';
 import { CoinHistory } from './CoinHistory';
 import {
   BSV21_BASKET,
-  ONESAT_MAINNET_CONTENT_URL,
   bsv21FieldsFromOutput,
   fundBsv21Overlay,
   sendBsv21,
@@ -53,6 +51,7 @@ import { celebrateSend } from './sent/sent';
 import { P2PKH } from '@bsv/sdk';
 import { maxOverlayFee, withTokenSendGuard, type OverlayFee } from '../mobile/wallet/send/tokenFee';
 import { HOLDER_DROP_ENABLED } from '../mobile/storeBuild';
+import { tokenIconUrl } from '../mobile/tokens/officialTokens';
 
 // Issuer tools › Airdrop to holders: bWalletX only, a lazy chunk the store build drops (storeBuild.ts).
 const HolderDropSheet = HOLDER_DROP_ENABLED ? lazy(() => import('../mobile/holderDrop/HolderDropSheet')) : null;
@@ -135,7 +134,6 @@ export const SendBsv21View = ({ token, onBack, prefill }: SendBsv21ViewProps) =>
   const [composing, setComposing] = useState(!!prefill);
   // Airdrop note (src/mobile/airdrops/note.ts): optional, written on chain in the same tx.
   const [note, setNote] = useState('');
-  const baseUrl = ONESAT_MAINNET_CONTENT_URL;
 
   const maxAmount = token.isConfirmed ? token.info.all.confirmed : token.info.all.pending;
   const maxDisplay = showAmount(maxAmount, token.info.dec);
@@ -253,6 +251,8 @@ export const SendBsv21View = ({ token, onBack, prefill }: SendBsv21ViewProps) =>
     }
 
     const tokenName = getTokenName(token.info);
+
+    const shownIcon = tokenIconUrl(token.info.id, tokenName, token.info.icon);
     // Consolidate duplicate addresses by summing amounts
     const tokenConsolidated = new Map<string, bigint>();
     const tokenOrder: string[] = [];
@@ -270,11 +270,7 @@ export const SendBsv21View = ({ token, onBack, prefill }: SendBsv21ViewProps) =>
     confirmedFeeRef.current = fee;
     if (fee) lineItems.push({ address: fee.address, amount: `up to ${fee.sats} sats (indexer fee)` });
 
-    const tokenIcon = token.info.icon
-      ? isUri(token.info.icon)
-        ? token.info.icon
-        : `${baseUrl}/${token.info.icon}`
-      : undefined;
+    const tokenIcon = shownIcon;
     setSendConfirmation({
       icon: tokenIcon,
       lineItems,
@@ -599,6 +595,7 @@ export const SendBsv21View = ({ token, onBack, prefill }: SendBsv21ViewProps) =>
   const row = theme.color.global.row;
   const accent = theme.color.component.primaryButtonLeftGradient;
   const tokenName = getTokenName(token.info);
+  const shownIcon = tokenIconUrl(token.info.id, tokenName, token.info.icon);
 
   const anyRecipientEmpty = recipients.some((r) => !r.address || !r.amountInput);
   // Group send: the running total across every recipient; Send stays off while it exceeds the balance.
@@ -642,18 +639,12 @@ export const SendBsv21View = ({ token, onBack, prefill }: SendBsv21ViewProps) =>
           <TokenIconHeader
             tokenId={token.info.id}
             ticker={tokenName}
-            onchain={token.info.icon ? (isUri(token.info.icon) ? token.info.icon : `${baseUrl}/${token.info.icon}`) : ''}
+            onchain={shownIcon}
           />
           {/* Balance chip — matches the BSV / MNEE send views */}
           <div className="flex flex-col items-center w-full mb-5 gap-1.5">
             <div className="flex items-center gap-2 px-4 py-2 rounded-full" style={{ background: row }}>
-              <Show when={!!token.info.icon && token.info.icon.length > 0}>
-                <img
-                  src={isUri(token.info.icon!) ? token.info.icon! : `${baseUrl}/${token.info.icon}`}
-                  alt={tokenName}
-                  className="w-4 h-4 rounded-full object-cover flex-shrink-0"
-                />
-              </Show>
+              <img src={shownIcon} alt={tokenName} className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
               <span className="text-xs" style={{ color: gray }}>
                 Balance
               </span>

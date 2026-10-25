@@ -1,7 +1,5 @@
 import { useMemo, useState, useSyncExternalStore } from 'react';
-import { ONESAT_MAINNET_CONTENT_URL } from '@1sat/actions';
-import { isUri } from '../../utils/uri';
-import { GENERIC_TOKEN_ICON } from '../../utils/constants';
+import { placeholderTokenIcon, tokenIconUrl } from '../tokens/officialTokens';
 import { useTokenIcon } from '../tokens/tokenIcon';
 import bsvCoin from '../../assets/bsv-coin.svg';
 import { useWalletFeed } from '../wide/walletFeed';
@@ -17,11 +15,7 @@ type SortKey = 'sym' | 'amt' | 'price' | 'usd';
 /** A holding's picture, as on the phone (Bsv21TokensList): BSV's coin, an on-chain icon resolved to a URL, a
  *  personal token's creator photo, else the generic token art. Never a raw outpoint (it broke as an image). */
 const TokIcon = ({ row }: { row: Row }) => {
-  const onchain = row.icon
-    ? isUri(row.icon)
-      ? row.icon
-      : `${ONESAT_MAINNET_CONTENT_URL}/${row.icon}`
-    : GENERIC_TOKEN_ICON;
+  const onchain = tokenIconUrl(row.id, row.sym, row.icon);
   const icon = useTokenIcon(row.id === 'bsv' || row.id === 'mnee' ? undefined : row.id, row.sym, onchain);
   const [broken, setBroken] = useState(false);
   if (row.id === 'bsv') return <img className="ww-tok" src={bsvCoin} alt="" />;
@@ -29,7 +23,7 @@ const TokIcon = ({ row }: { row: Row }) => {
   return (
     <img
       className="ww-tok"
-      src={broken ? GENERIC_TOKEN_ICON : icon.url}
+      src={broken ? placeholderTokenIcon(row.sym) : icon.url}
       alt=""
       referrerPolicy="no-referrer"
       onError={() => setBroken(true)}

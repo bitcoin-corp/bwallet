@@ -15,9 +15,11 @@ export function IssuerBadge({ tokenId, compact = false }: { tokenId: string | nu
     <span
       data-testid="issuer-badge"
       title={
-        verified && info?.identityKey
-          ? `Signed in the mint tx by identity key ${info.identityKey}`
-          : (info?.reason ?? text)
+        info?.official
+          ? 'First-party token: this exact token id is built into bWalletX'
+          : verified && info?.identityKey
+            ? `Signed in the mint tx by identity key ${info.identityKey}`
+            : (info?.reason ?? text)
       }
       style={{
         display: 'inline-flex',

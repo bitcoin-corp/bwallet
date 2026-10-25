@@ -1,10 +1,8 @@
-import { ONESAT_MAINNET_CONTENT_URL } from '@1sat/actions';
 import { Gamepad2, Send, Trophy } from 'lucide-react';
-import { isUri } from '../../../utils/uri';
+import { tokenIconUrl } from '../../tokens/officialTokens';
 import { earnLabel, formatAmount, unlockLine, type Reward } from './rewards';
 
 const GOLD = 'var(--bw-accent-hi)';
-const iconUrl = (icon: string | null) => (!icon ? null : isUri(icon) ? icon : `${ONESAT_MAINNET_CONTENT_URL}/${icon}`);
 
 export type RewardCardsProps = {
   rewards: readonly Reward[];
@@ -26,7 +24,7 @@ export const RewardCards = ({ rewards, showUnlock, showEarn, onSend, onEarn }: R
       </h2>
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))' }}>
         {rewards.map((r) => {
-          const src = iconUrl(r.icon);
+          const src = tokenIconUrl(r.id, r.symbol, r.icon);
           const unlock = showUnlock ? unlockLine(r) : null;
           return (
             <article
@@ -36,13 +34,7 @@ export const RewardCards = ({ rewards, showUnlock, showEarn, onSend, onEarn }: R
               style={{ background: 'var(--bw-surface)', border: '1px solid #3a2f0c' }}
             >
               <div className="flex items-center gap-3 min-w-0">
-                {src ? (
-                  <img src={src} alt="" className="w-12 h-12 rounded-full object-cover flex-shrink-0" />
-                ) : (
-                  <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 bg-[#2b2f36]">
-                    <Trophy size={22} color={GOLD} />
-                  </div>
-                )}
+                <img src={src} alt="" className="w-12 h-12 rounded-full object-cover flex-shrink-0" />
                 <div className="min-w-0">
                   <div className="text-2xl font-bold text-white break-words">{formatAmount(r.amountRaw, r.dec)}</div>
                   <div className="text-base font-semibold break-words" style={{ color: GOLD }}>
