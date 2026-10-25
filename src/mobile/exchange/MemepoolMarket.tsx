@@ -4,11 +4,12 @@ import { fiatLabel, unitPriceLabel, bsvLabel } from './exchangeData';
 import { openExternal } from './useTokenRowActions';
 import { TokenRoomStore } from './TokenRoomStore';
 import { MEMEPOOL_SORTS, fetchMemepoolCoins, memepoolTradeUrl, type MemepoolCoin, type MemepoolSort } from './memepool';
+import { MemepoolTradeSheet } from './memepool/TradeSheet';
 
 /**
- * Exchange › Memepool: every coin on TX Blaster's MEMEPOOL launchpad, read-only. No buying or selling here:
- * "Trade on Memepool" opens their coin page. The Exchange is bWalletX only (MARKET_ENABLED), so none of this
- * ships in a store build.
+ * Exchange › Memepool: every coin on TX Blaster's MEMEPOOL launchpad. "Buy or sell" trades it from this wallet
+ * (memepool/TradeSheet.tsx, owner 25 Oct 2026); "Open on Memepool" opens their coin page. The Exchange is bWalletX
+ * only (MARKET_ENABLED), so none of this ships in a store build.
  */
 const MUTED = '#98A2B3';
 const GOLD = '#F5C518';
@@ -44,6 +45,7 @@ export const MemepoolMarket = ({ rate }: { rate: number }) => {
   const [failed, setFailed] = useState(false);
   const [q, setQ] = useState('');
   const [tick, setTick] = useState(0);
+  const [trading, setTrading] = useState<MemepoolCoin | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -69,8 +71,8 @@ export const MemepoolMarket = ({ rate }: { rate: number }) => {
   return (
     <div className="flex flex-col gap-3 w-full">
       <p className="text-xs m-0" style={{ color: MUTED }}>
-        Coins launched on Memepool by TX Blaster. Prices come from each coin's bonding curve. To buy or sell, open the
-        coin on Memepool.
+        Coins launched on Memepool by TX Blaster. Prices come from each coin's bonding curve. Buy or sell from your
+        wallet, up to 1 BSV a trade.
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2" role="group" aria-label="Sort Memepool coins">
         {MEMEPOOL_SORTS.map(([id, label]) => (
@@ -162,11 +164,19 @@ export const MemepoolMarket = ({ rate }: { rate: number }) => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => openExternal(memepoolTradeUrl(c.id))}
+                  onClick={() => setTrading(c)}
                   className="flex items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold cursor-pointer border-0"
                   style={{ background: GOLD, color: '#000' }}
                 >
-                  Trade on Memepool <ExternalLink size={14} />
+                  Buy or sell
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openExternal(memepoolTradeUrl(c.id))}
+                  className="flex items-center justify-center gap-1.5 bg-transparent border-0 text-xs font-bold cursor-pointer"
+                  style={{ color: MUTED }}
+                >
+                  Open on Memepool <ExternalLink size={12} />
                 </button>
                 <TokenRoomStore id={c.id} sym={c.sym} />
               </div>
@@ -175,9 +185,10 @@ export const MemepoolMarket = ({ rate }: { rate: number }) => {
         </>
       )}
       <p className="text-[11px] m-0" style={{ color: MUTED }}>
-        Listed from txblaster.xyz. bWalletX doesn't run Memepool and can't trade these coins for you. Memecoins can go
-        to zero.
+        Listed from txblaster.xyz. bWalletX doesn't run Memepool: each coin's pool is held by their server. Memecoins
+        can go to zero.
       </p>
+      {trading && <MemepoolTradeSheet coin={trading} rate={rate} onClose={() => setTrading(null)} />}
     </div>
   );
 };

@@ -1,8 +1,16 @@
 # Native trading of launchpad tokens (Memepool and TokenBlaster): design
 
-Status: **design only, awaiting the owner's approval.** No code in this document is built. Today the Exchange lists
-Memepool coins read-only ("Trade on Memepool" opens txblaster.xyz) and TokenBlaster coins with the in-app BlastPad
-trade sheet that already exists (`src/mobile/market/launchpad/client.ts` + `validate.ts`).
+Status: **approved by the owner 25 Oct 2026 ("yes to all three") and built** in `src/mobile/exchange/memepool/`:
+1 BSV cap per trade (not 20), 3% default slippage, refuse coins whose `/api/proof` row isn't healthy, and the trade
+files are on `.github/money-paths.txt`. Differences from the plan below, found while building:
+
+- **Buys set their BSV aside first.** Memepool spends named coins and the in-app wallet can't sign its own coins one
+  by one, so a buy first pays the amount to a fresh BRC-29 key of the same wallet (a payment to itself), offers that
+  coin, and takes it back into the balance if the trade isn't made. Sells offer the token coins directly.
+- **Curve:** stage 1 is constant product on virtual reserves, the tail (after graduation) on the real reserves. A
+  trade that would cross between them is refused (finish it on Memepool). Checked against their live `/quote`.
+- **409 after signing:** re-prepared once, then always a fresh sheet (never signed again without the user).
+- **Sells** offer only token coins (no fee coin): the payout pays the network fee, as their own page does.
 
 ## 1. Memepool (TX Blaster, txblaster.xyz/memepool)
 
