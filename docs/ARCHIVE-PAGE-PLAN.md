@@ -35,7 +35,7 @@ The decrypt permission therefore only ever exists inside the wallet (admin) and 
 ## 2. Finding records
 
 1. **Wallet history first.** `listActions({ labels: ['bmintx archive'], includeOutputs: true,
-   includeOutputLockingScripts: true, limit, offset })`. Records are vouts 0…n-1 of each batch; skip the seal
+includeOutputLockingScripts: true, limit, offset })`. Records are vouts 0…n-1 of each batch; skip the seal
    and change outputs; keep only outputs that parse as spec §3. This works on any device that syncs the same
    wallet storage (remote storage, `DEFAULT_STORAGE_REMOTE_URL`).
 2. **After a restore from 12 words on a new device.** Labels live in wallet storage, not on chain. If the
@@ -93,7 +93,7 @@ The owner has a ~22 GB X archive. Most of that is media; the posts are in `data/
 
 1. User ticks items. A bar shows "Reveal 12 posts".
 2. **One sheet**, inside the wallet: OG-style card, "Make 12 posts public on bChatX", the fee, and the warning:
-   *"This can't be undone. These posts will be public on chain for good. Your private copies stay locked."*
+   _"This can't be undone. These posts will be public on chain for good. Your private copies stay locked."_
 3. The wallet builds one reveal post per transaction (spec §6: feed posts are keyed by txid). `reveal` is the
    record's `txid:vout`; `source`, `source_id`, `source_at`, `source_url` come from the decrypted record.
 4. Threads: reveal parents before replies in the same batch. If a parent was revealed, the reply gets
@@ -149,18 +149,18 @@ Start with A since the bit-sign parsing code exists; move to B when the file rea
 
 ## 10. Status
 
-| Item | Status |
-|---|---|
-| Record format v1 (spec, test vectors) | live (bit-sign PR #442) |
-| `[2, "bmintx archive"]` pinned to bmintx.com | live (`src/services/pinnedProtocols.ts`) |
-| `/archive` route in the wallet | coming |
-| Find records via `listActions` label | coming |
-| Chain scan after restore | coming |
-| Page-by-page decrypt, memory-only cache | coming |
-| Search everything | coming |
-| Read from the file on this computer | coming |
-| Reveal with one sheet and one-way warning | coming |
-| bChatX link to the page | coming |
-| bChatX reads reveal posts ("Originally on X") | coming (check bit-sign) |
-| Wallet "mint privately" request for bChatX | coming |
-| Import inside the wallet (option B) | coming |
+| Item                                          | Status                                   |
+| --------------------------------------------- | ---------------------------------------- |
+| Record format v1 (spec, test vectors)         | live (bit-sign PR #442)                  |
+| `[2, "bmintx archive"]` pinned to bmintx.com  | live (`src/services/pinnedProtocols.ts`) |
+| `/archive` route in the wallet                | coming                                   |
+| Find records via `listActions` label          | coming                                   |
+| Chain scan after restore                      | coming                                   |
+| Page-by-page decrypt, memory-only cache       | coming                                   |
+| Search everything                             | coming                                   |
+| Read from the file on this computer           | coming                                   |
+| Reveal with one sheet and one-way warning     | coming                                   |
+| bChatX link to the page                       | coming                                   |
+| bChatX reads reveal posts ("Originally on X") | coming (check bit-sign)                  |
+| Wallet "mint privately" request for bChatX    | coming                                   |
+| Import inside the wallet (option B)           | coming                                   |
