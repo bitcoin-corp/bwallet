@@ -70,6 +70,15 @@ if (STORE_CHANNEL) {
     __dirname,
     'src/mobile/theme/tokenblasterShopX.store.ts',
   );
+  // Leanne The Dark (owner, 25 Oct 2026): deliberately bWalletX only, pack and art.
+  MOBILE_SWAPS[resolve(__dirname, 'src/mobile/theme/leanneX.ts')] = resolve(
+    __dirname,
+    'src/mobile/theme/leanneX.store.ts',
+  );
+  MOBILE_SWAPS[resolve(__dirname, 'src/mobile/theme/leanneArtX.ts')] = resolve(
+    __dirname,
+    'src/mobile/theme/leanneArtX.store.ts',
+  );
 }
 const brand = () => sharedBrand(MOBILE_SWAPS);
 
