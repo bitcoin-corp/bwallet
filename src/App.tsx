@@ -24,6 +24,7 @@ import { PageLoader } from './components/PageLoader';
 import { useServiceContext } from './hooks/useServiceContext';
 import { SyncingBlocks } from './components/SyncingBlocks';
 import { StorageRepairOverlay } from './components/StorageRepairOverlay';
+import { RemoteBackupBanner } from './components/RemoteBackupBanner';
 import { MasterRestore } from './pages/onboarding/MasterRestore';
 import { BlockHeightProvider } from './contexts/providers/BlockHeightProvider';
 import { SyncProvider } from './contexts/providers/SyncProvider';
@@ -199,6 +200,7 @@ export const App = () => {
               <SnackbarProvider>
                 <SyncingBlocks />
                 <StorageRepairOverlay />
+                <RemoteBackupBanner />
                 <SentHost />
                 {IS_EXTENSION && <PanelPrompt />}
                 {showGuest && guestNames && guest && (

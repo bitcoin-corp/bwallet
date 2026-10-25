@@ -96,7 +96,13 @@ const BCORP_TEXT: Swaps = {
   // Market buys made before the Oct 2026 upstream merge stored their token details (customInstructions)
   // encrypted twice, and the permissions manager removes one layer, so balances skipped them. Peel up
   // to three layers when a decrypted value is still base64 ciphertext; anything else is unchanged.
+  // Backup sync pages default to ~10 MB (maxRoughSize 1e7). wallet.1sat.app answers 400 ERR_AUTH_MALFORMED or
+  // 413 ERR_BODY_TOO_LARGE to bodies that size, and the boot merge in setActive then throws, so initWallet
+  // opened without the backup and big wallets (the owner's iPhone, 25 Oct 2026) never backed up. Ask for
+  // ~400 KB pages (JSON + base64 roughly doubles that on the wire). Added 3 Oct, lost in the d10f3ce2 merge.
   'node_modules/@bsv/wallet-toolbox-client/out/index.client.mjs': [
+    ['maxRoughSize: maxRoughSize || 1e7', 'maxRoughSize: maxRoughSize || 4e5'],
+    ['maxItems: 1e3,\n\t\t\tmaxRoughSize: 1e7', 'maxItems: 1e3,\n\t\t\tmaxRoughSize: 4e5'],
     ['this.maxRecursionDepth = 12;', 'this.maxRecursionDepth = 64;'],
     [
       'async maybeDecryptMetadata(ciphertext) {',
@@ -113,7 +119,13 @@ const BCORP_TEXT: Swaps = {
         '  async maybeDecryptMetadataOnce(ciphertext) {',
     ],
   ],
+  // @1sat/client's own nested toolbox copy (2.14.8): same backup page size.
+  'node_modules/@1sat/client/node_modules/@bsv/wallet-toolbox-client/out/index.client.mjs': [
+    ['maxRoughSize: maxRoughSize || 1e7', 'maxRoughSize: maxRoughSize || 4e5'],
+    ['maxItems: 1e3,\n\t\t\tmaxRoughSize: 1e7', 'maxItems: 1e3,\n\t\t\tmaxRoughSize: 4e5'],
+  ],
   'node_modules/@1sat/connect/dist/index.js': [
+    ['maxRoughSize: maxRoughSize || 1e7', 'maxRoughSize: maxRoughSize || 4e5'],
     ['this.maxRecursionDepth = 12;', 'this.maxRecursionDepth = 64;'],
     [
       'async maybeDecryptMetadata(ciphertext) {',

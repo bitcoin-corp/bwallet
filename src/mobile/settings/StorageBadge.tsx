@@ -3,6 +3,7 @@ import { Database, ChevronRight } from 'lucide-react';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { useStorageRepair } from '../../hooks/useStorageRepair';
 import { ErrorActions } from '../errors/ErrorActions';
+import { RemoteBackupLine } from '../../components/RemoteBackupBanner';
 import { SYNC_HEALTH_KEY, storageLabel, syncHealthLabel, type SyncHealth } from '../../services/storageHealth';
 
 const GOLD = 'var(--bw-accent)';
@@ -78,6 +79,9 @@ export const StorageBadge = () => {
           <p className="m-0 mt-2" style={{ color: MUTED }}>
             {h.text}
           </p>
+          <div className="mt-1">
+            <RemoteBackupLine />
+          </div>
           <button
             type="button"
             disabled={repairing}
