@@ -170,6 +170,7 @@ export function queuedResult(error: unknown, fallbackTxid?: string | null): Queu
     pending: true,
     message: QUEUED_MESSAGE,
     sendWithResults: (sent.length ? sent : [txid]).map((t) => ({ txid: t, status: 'sending' as const })),
-    ...(Array.isArray(e.tx) ? { tx: e.tx as number[] } : {}),
+    // The signed tx (AtomicBEEF) as number[]: the toolbox may hand it over as a Uint8Array.
+    ...(Array.isArray(e.tx) ? { tx: e.tx as number[] } : e.tx instanceof Uint8Array ? { tx: Array.from(e.tx) } : {}),
   };
 }
