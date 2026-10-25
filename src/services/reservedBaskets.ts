@@ -11,7 +11,19 @@ const TRUST_SITE_BASKET = 'bwalletx.trust-site';
 /** The "Block this site" record: kept in the same store so "Forget site" in Settings removes it (unblocks). */
 export const BLOCK_SITE_BASKET = 'bwalletx.block-site';
 
-const RESERVED = new Set(['default', '1sat', 'bsv21', 'lock', 'opns', 'fund', 'funding', 'vesting', TRUST_SITE_BASKET]);
+const RESERVED = new Set([
+  'default',
+  '1sat',
+  'bsv21',
+  // The legacy name of 'bsv21' (services/legacyBaskets.ts): an account not yet re-filed keeps its tokens there.
+  'p 1sat bsv21',
+  'lock',
+  'opns',
+  'fund',
+  'funding',
+  'vesting',
+  TRUST_SITE_BASKET,
+]);
 
 export const RESERVED_BASKET_REFUSAL = 'This basket is reserved for bWalletX itself';
 
@@ -61,6 +73,16 @@ export function guardReservedBaskets<T extends object>(manager: T, adminOriginat
       if (args?.originator !== adminOriginator && isReservedBasket(args?.basket))
         throw new Error(`${RESERVED_BASKET_REFUSAL}: "${String(args.basket)}"`);
       return (ensure as (a: unknown) => Promise<boolean>).call(manager, args);
+    };
+  }
+  // A 'p <scheme> …' basket goes to its permission module, not ensureBasketAccess: refuse a reserved one first.
+  for (const method of ['listOutputs', 'relinquishOutput']) {
+    const fn = m[method];
+    if (typeof fn !== 'function') continue;
+    m[method] = async (args: { basket?: unknown }, originator?: string) => {
+      if (originator !== adminOriginator && isReservedBasket(args?.basket))
+        throw new Error(`${RESERVED_BASKET_REFUSAL}: "${String(args.basket)}"`);
+      return (fn as (a: unknown, o?: string) => Promise<unknown>).call(manager, args, originator);
     };
   }
   const grouped = m.grantGroupedPermission;

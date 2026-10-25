@@ -768,3 +768,22 @@ describe('never approve a line the user cannot read (mixed careful batch, 24 Oct
     expect(r.stale).toBe(true);
   });
 });
+
+describe('labels on the payment sheet', () => {
+  test('a payment carrying new labels shows them on its pay line', () => {
+    const model = buildSheetModel({
+      originator: 'game.example',
+      items: [
+        {
+          requestID: 'p1',
+          type: 'spending',
+          originator: 'game.example',
+          spending: { satoshis: 500 },
+          labels: ['tokenblaster'],
+        },
+      ],
+    });
+    expect(model.payment?.labels).toEqual(['tokenblaster']);
+    expect(model.payment?.detail).toContain('labels: tokenblaster');
+  });
+});

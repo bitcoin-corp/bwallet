@@ -13,6 +13,14 @@ import {
   type ReconnectState,
 } from './services/reconnectGate';
 import { siteThemeFor } from './mobile/theme/connectTheme';
+import {
+  isBasketRead,
+  ManifestOnce,
+  SessionBasketDenials,
+  SESSION_DENIALS_KEY,
+  wantsManifestSheet,
+} from './services/sessionDenials';
+import { takeLabelsForSheet } from './services/labelsOnSpend';
 import type { AccentId } from './mobile/theme/accents';
 import { revokeOriginatorInAccounts } from './services/accountPermissionStore';
 import { routeBchatUrl } from './services/bchatOrigin';
@@ -1037,6 +1045,25 @@ const reconnectSeen = (originator: string): void => {
   const now = Date.now();
   void updateReconnectState((s) => ({ state: noteCall(s, originator, now), result: null })).catch(() => undefined);
 };
+// Fewer prompts (services/sessionDenials.ts, TokenBlaster playtest 25 Oct 2026): a No to reading a basket stands
+// for the browser session, and a site's manifest shows as one sheet on its first identity-key request.
+const basketDenials = new SessionBasketDenials({
+  load: async () => {
+    const got = await chrome.storage.session.get(SESSION_DENIALS_KEY);
+    const v = (got as Record<string, unknown>)[SESSION_DENIALS_KEY];
+    return Array.isArray(v) ? (v as string[]) : [];
+  },
+  save: async (keys) => {
+    await chrome.storage.session.set({ [SESSION_DENIALS_KEY]: keys });
+  },
+});
+const manifestOnce = new ManifestOnce();
+/** A basket read the user refused: remember it for the session. */
+const noteBasketDenial = (r: { type?: string; basket?: unknown; usageType?: unknown; originator?: string }) => {
+  if (r.originator && r.originator !== ADMIN_ORIGINATOR && isBasketRead(r))
+    void basketDenials.add(normalizeOriginator(r.originator), r.basket);
+};
+
 /** One reconnect sheet per site: identity calls that arrive while it is open share its answer. */
 const reconnectAsks = new ReconnectAsks();
 const IDENTITY_SHEET_LINE = 'identity key retrieval';
@@ -1534,9 +1561,19 @@ const showPermissionPrompt = (request: PermissionRequest & { requestID: string }
     if (request.type === 'spending') pass.charged = request.spending?.satoshis;
     return accountContext.wallet.grantPermission({ requestID: request.requestID, ephemeral: true });
   }
-  return Promise.all([siteBlocked(request.originator), siteTrustedFor(request)]).then(
-    ([blocked, trusted]) =>
+  const deniedThisSession =
+    request.originator && request.originator !== ADMIN_ORIGINATOR && isBasketRead(request)
+      ? basketDenials.has(normalizeOriginator(request.originator), request.basket)
+      : Promise.resolve(false);
+  return Promise.all([siteBlocked(request.originator), siteTrustedFor(request), deniedThisSession]).then(
+    ([blocked, trusted, denied]) =>
       new Promise<void>((resolve, reject) => {
+        if (denied) {
+          // Refused earlier this browser session: the No stands, without another sheet. Never becomes a Yes.
+          accountContext?.wallet.denyPermission(request.requestID).catch(() => undefined);
+          reject(userDeniedError());
+          return;
+        }
         if (blocked) {
           accountContext?.wallet.denyPermission(request.requestID).catch(() => undefined);
           reject(new Error(BLOCKED_SITE_REFUSAL));
@@ -1552,6 +1589,11 @@ const showPermissionPrompt = (request: PermissionRequest & { requestID: string }
         }
         let bundle;
         try {
+          // New labels of this payment's action go on its sheet (services/labelsOnSpend.ts), not a sheet of their own.
+          if (request.type === 'spending' && mintSite) {
+            const labels = takeLabelsForSheet(mintSite);
+            if (labels.length > 0) (request as BundleRequest).labels = labels;
+          }
           // A request arriving while this site's sheet is open waits for its own sheet (never joins that one).
           bundle = permissionBundler.add(request as BundledRequest & BundleRequest);
         } catch (error) {
@@ -2749,6 +2791,11 @@ if (!(
                     return;
                   }
                 }
+                // First identity-key request this session: the site's manifest as ONE sheet, before the key.
+                if (wantsManifestSheet(message.params, message.originator, ADMIN_ORIGINATOR)) {
+                  const site = message.originator;
+                  await manifestOnce.run(site, async () => (await ensureWallet()).waitForAuthentication({}, site));
+                }
                 return trackProtocolCall(() => processCWIGetPublicKey(message, sendResponse));
               }),
             );
@@ -3499,6 +3546,9 @@ if (!(
       // Envelopes and streaming grants are spend rights too: Forget site / Revoke all / unpair ends them (Coin
       // return) and revokes the site's streaming grants (b-Aware rows 53, 62, 24 Oct 2026).
       const site = normalizeOriginator(message.originator);
+      // Session memory too: its basket-read No's and its manifest sheet (services/sessionDenials.ts).
+      await basketDenials.forget(site);
+      manifestOnce.forget(site);
       await accountContext?.envelopes.close(site);
       await updateStreamState((st) => ({ state: revokeGrantsForOriginator(st, site, Date.now()), result: undefined }));
       // Grants are per account; a device-wide pairing is withdrawn from the other accounts' stores too.
@@ -3563,6 +3613,7 @@ if (!(
           pending.reject(error);
         });
     } else {
+      noteBasketDenial(pending.request);
       // Deny the permission
       accountContext?.wallet
         .denyPermission(response.requestID)
@@ -4044,6 +4095,8 @@ if (!(
           pendingPermissionRequests.delete(r.requestID);
           if (!pending) return;
           if (isReconnectRequestId(r.requestID)) return pending.reject(new Error('Permission denied by user'));
+          // A blocked sheet is handled by the block itself; a plain No to a basket read stands for the session.
+          if (!response.block) noteBasketDenial(r as BundleRequest);
           try {
             await wallet?.denyPermission(r.requestID);
           } finally {

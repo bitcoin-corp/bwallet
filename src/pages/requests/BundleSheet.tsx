@@ -323,6 +323,11 @@ export const BundleSheet = (props: {
           {model.payment.description && <> &ldquo;{model.payment.description}&rdquo;</>}
         </p>
       )}
+      {model.payment?.labels?.length ? (
+        <p className="m-0" style={{ fontSize: 13, color: CARD.muted }} data-testid="payment-labels">
+          Labels: {model.payment.labels.join(', ')}
+        </p>
+      ) : null}
       {showAllowance && (
         <div className="flex items-center gap-3" style={{ minHeight: 44 }}>
           <input
@@ -511,6 +516,11 @@ export const BundleSheet = (props: {
             <span className="truncate" style={{ fontSize: 13, color: CARD.muted }}>
               {model.payment?.description ? `“${model.payment.description}”` : 'Straight from your wallet'}
             </span>
+            {model.payment?.labels?.length ? (
+              <span className="truncate" style={{ fontSize: 12, color: CARD.muted }} data-testid="payment-labels">
+                Labels: {model.payment.labels.join(', ')}
+              </span>
+            ) : null}
           </div>
         </div>
         <div className="flex items-center gap-2" style={{ fontSize: 14, color: CARD.soft }}>

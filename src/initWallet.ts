@@ -23,6 +23,7 @@ import {
 } from '@1sat/wallet-browser';
 import { preserveOriginalErrors } from './services/permissionAbortGuard';
 import { guardReservedBaskets, revokeReservedBasketGrants } from './services/reservedBaskets';
+import { guardLabelsOnSpend } from './services/labelsOnSpend';
 import { guardReservedProtocols, revokeReservedProtocolGrants } from './services/reservedProtocols';
 import { guardAllowance } from './services/allowanceGuard';
 import { ALLOWANCES_ENABLED } from './services/allowanceFlag';
@@ -407,52 +408,57 @@ export const initWallet = async (
   // Wallet-internal protocols (bTrust, Locks, funds, presign…) are refused to every outside originator before any
   // prompt (services/reservedProtocols.ts, security audit 19 Oct 2026 C1).
   // The wallet's own baskets (coins, ordinals, tokens, locks, names) likewise (services/reservedBaskets.ts).
-  const wallet = guardReservedBaskets(
-    guardReservedProtocols(
-      // A message naming another site (a login challenge fetched from good.com) is never signed for evil.com
-      // (services/crossSiteSignGuard.ts, payment-safety audit 24 Oct 2026 B1).
-      guardCrossSiteSigning(
-        preserveOriginalErrors(
-          withLocalSpendLedger(
-            // Envelopes by default: a site's payment goes through without a sheet only when it fits that site's
-            // envelope; stored allowances grant nothing (services/envelopes.ts, owner 24 Oct 2026). With
-            // ALLOWANCES_ENABLED, the old monthly allowance with its per-payment cap and payee allowlist
-            // (services/allowanceGuard.ts, payment-safety audit 24 Oct 2026 B2).
-            ALLOWANCES_ENABLED
-              ? guardAllowance(
-                  new LocalWalletPermissionsManager(
-                    baseWallet,
-                    ADMIN_ORIGINATOR,
-                    { permissionModules: assetModules },
-                    { store: permissionStore },
-                  ),
-                  { store: permissionStore, adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
-                )
-              : ENVELOPES_ENABLED
-                ? guardEnvelopes(
+  // A new label on a site's payment shows as a line on that payment's sheet, not a sheet of its own
+  // (services/labelsOnSpend.ts, TokenBlaster playtest 25 Oct 2026).
+  const wallet = guardLabelsOnSpend(
+    guardReservedBaskets(
+      guardReservedProtocols(
+        // A message naming another site (a login challenge fetched from good.com) is never signed for evil.com
+        // (services/crossSiteSignGuard.ts, payment-safety audit 24 Oct 2026 B1).
+        guardCrossSiteSigning(
+          preserveOriginalErrors(
+            withLocalSpendLedger(
+              // Envelopes by default: a site's payment goes through without a sheet only when it fits that site's
+              // envelope; stored allowances grant nothing (services/envelopes.ts, owner 24 Oct 2026). With
+              // ALLOWANCES_ENABLED, the old monthly allowance with its per-payment cap and payee allowlist
+              // (services/allowanceGuard.ts, payment-safety audit 24 Oct 2026 B2).
+              ALLOWANCES_ENABLED
+                ? guardAllowance(
                     new LocalWalletPermissionsManager(
                       baseWallet,
                       ADMIN_ORIGINATOR,
                       { permissionModules: assetModules },
                       { store: permissionStore },
                     ),
-                    { envelopes, adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
+                    { store: permissionStore, adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
                   )
-                : // Store builds have no envelopes (storeBuild.ts ENVELOPES_ENABLED): every payment shows its sheet.
-                  new LocalWalletPermissionsManager(
-                    baseWallet,
-                    ADMIN_ORIGINATOR,
-                    { permissionModules: assetModules },
-                    { store: permissionStore },
-                  ),
-            spendLedger,
+                : ENVELOPES_ENABLED
+                  ? guardEnvelopes(
+                      new LocalWalletPermissionsManager(
+                        baseWallet,
+                        ADMIN_ORIGINATOR,
+                        { permissionModules: assetModules },
+                        { store: permissionStore },
+                      ),
+                      { envelopes, adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
+                    )
+                  : // Store builds have no envelopes (storeBuild.ts ENVELOPES_ENABLED): every payment shows its sheet.
+                    new LocalWalletPermissionsManager(
+                      baseWallet,
+                      ADMIN_ORIGINATOR,
+                      { permissionModules: assetModules },
+                      { store: permissionStore },
+                    ),
+              spendLedger,
+            ),
           ),
+          ADMIN_ORIGINATOR,
         ),
         ADMIN_ORIGINATOR,
       ),
       ADMIN_ORIGINATOR,
     ),
-    ADMIN_ORIGINATOR,
+    { adminOriginator: ADMIN_ORIGINATOR, normalize: normalizeOriginator },
   );
   // Upgrade migration (C1): grants a site already holds for a reserved protocol are removed. Idempotent.
   await revokeReservedProtocolGrants(permissionStore, ADMIN_ORIGINATOR)
