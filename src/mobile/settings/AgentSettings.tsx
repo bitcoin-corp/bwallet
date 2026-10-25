@@ -6,11 +6,12 @@ import { DAILY_LIMITS, useAgentPrefs, type AgentMode } from '../agent/agentPrefs
 import { PROVIDERS, PROVIDER_IDS, callProvider, cleanModel, type ProviderId } from '../agent/providers';
 import { deleteKey, loadKey, maskKey, saveKey } from '../agent/keyStore';
 import { STORE_AGENT_NOTE, STORE_BUILD } from '../storeBuild';
+import { ASK_B_FREE, ASK_B_FREE_TEXT } from '../agent/agent';
 import { consentInfo, consentTarget, hasConsent, revokeConsent } from '../agent/consent';
 
 /**
- * Settings › b agent: how the b agent is paid for. Pay per message (BSV, with a daily limit) or
- * the user's own provider key (kept in the device's secure storage, sent only to that provider).
+ * Settings › b agent: how the b agent runs. bCorp's service (free for now, ASK_B_FREE; else pay per message in
+ * BSV with a daily limit) or the user's own provider key (kept in the device's secure storage, sent only to that provider).
  */
 const GOLD = 'var(--bw-accent-hi)';
 const PANEL = '#17191E';
@@ -69,7 +70,7 @@ const Pills = <T extends string | number>({
 );
 
 const MODES: { id: AgentMode; label: string }[] = [
-  { id: 'paid', label: 'Pay per message' },
+  { id: 'paid', label: ASK_B_FREE ? 'Free' : 'Pay per message' },
   { id: 'own', label: 'Own API key' },
 ];
 
@@ -255,7 +256,9 @@ export const AgentSettings = ({ Section, Row, Divider }: Props) => {
             STORE_BUILD
               ? STORE_AGENT_NOTE
               : prefs.mode === 'paid'
-                ? 'Pay per message from this wallet'
+                ? ASK_B_FREE
+                  ? ASK_B_FREE_TEXT
+                  : 'Pay per message from this wallet'
                 : 'Use your own AI provider key'
           }
           isFirst
@@ -266,14 +269,14 @@ export const AgentSettings = ({ Section, Row, Divider }: Props) => {
           </div>
         )}
         <Divider />
-        {prefs.mode === 'paid' ? (
+        {prefs.mode === 'paid' && ASK_B_FREE ? null : prefs.mode === 'paid' ? (
           <Row
             icon={<Bot size={16} />}
             label="Daily limit"
             description="The most the b agent can spend in a day. Small messages under your one-click limit skip the confirm."
           />
         ) : null}
-        {prefs.mode === 'paid' ? (
+        {prefs.mode === 'paid' && ASK_B_FREE ? null : prefs.mode === 'paid' ? (
           <div className="px-4 pb-3 pl-12">
             <Pills
               label="Daily limit"

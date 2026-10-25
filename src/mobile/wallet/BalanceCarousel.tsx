@@ -458,10 +458,7 @@ const BCREDITS_AGREEMENT: Agreement = {
       'What they pay for',
       'bCredits are spent only on b, the bWalletX agent. Each b reply costs what it costs to run × 1.35, rounded up to whole bCredits. b never runs you into debt.',
     ],
-    [
-      'Today',
-      'Ask b uses bCredits once the server has switched bCredits on for b; until then Ask b is paid per message in BSV.',
-    ],
+    ['Today', 'Talking to b is free for now, so Ask b does not spend bCredits or BSV.'],
     ['Top-ups', 'Each top-up is up to £20.'],
     ['Expiry', 'bCredits do not expire.'],
     ['Refunds', 'bCredits are non-refundable except where the law requires.'],

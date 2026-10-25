@@ -8,7 +8,12 @@ import {
   parseQuote,
   payDecision,
   turnBody,
+  freeBody,
+  freeFallbackReply,
+  FREE_REST_TEXT,
 } from './paid';
+import { ASK_B_FREE, ASK_B_FREE_TEXT } from './agent';
+import { ADD_ON_PRICE_NOTE } from '../bweb/bweb';
 import { addSpend, dayOf, parseAgentPrefs, spentToday } from './agentPrefs';
 
 const ADDR = '1BoatSLRHtKNngkdXEeobR76b53LETtpyT';
@@ -86,6 +91,32 @@ describe('paid backend', () => {
     await be.turn(q, 'tx', [{ role: 'user', text: 'hey' }], 'GUIDE', 'ABCDEF');
     expect((calls[2].body as { beef?: string }).beef).toBe('ABCDEF');
     expect(JSON.stringify(calls)).not.toMatch(/sk-|api[_-]?key/i);
+  });
+});
+
+describe('free Ask b', () => {
+  test('is on, and the copy says so plainly', () => {
+    expect(ASK_B_FREE).toBe(true);
+    expect(ASK_B_FREE_TEXT).toBe('Talking to b is free for now.');
+    expect(ADD_ON_PRICE_NOTE).toMatch(/free for now/);
+  });
+  test('a free turn calls /agent/free only: no quote, no txid, no payment, never a key', async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    const be = bitsignPaidBackend(async (_m, path, body) => {
+      calls.push({ path, body });
+      return { text: ' sure ', free: true, remaining: 49 };
+    });
+    expect(await be.free([{ role: 'user', text: 'hey' }], 'GUIDE')).toBe('sure');
+    expect(calls.map((c) => c.path)).toEqual(['/api/bitsign/agent/free']);
+    expect(Object.keys(freeBody([], 'g')).sort()).toEqual(['client', 'messages', 'system']);
+    expect(JSON.stringify(calls)).not.toMatch(/quoteId|txid|beef|sk-|api[_-]?key/i);
+  });
+  test('when b needs a rest, the report still goes through', () => {
+    expect(FREE_REST_TEXT).toMatch(/Bug reports still go through/);
+    expect(freeFallbackReply(FREE_REST_TEXT, 'Logged as #F-12.')).toBe(`${FREE_REST_TEXT}\n\nLogged as #F-12.`);
+    expect(freeFallbackReply(null, 'Logged.')).toMatch(
+      /^b can't answer just now, but your message was passed to the team\.\n\nLogged\.$/,
+    );
   });
 });
 

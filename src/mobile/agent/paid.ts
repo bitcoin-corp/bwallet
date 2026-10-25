@@ -34,6 +34,8 @@ export interface PaidBackend {
   quote(messages: AgentMessage[]): Promise<Quote>;
   /** `beef` = the signed payment (hex BEEF / raw tx) so the server can verify + broadcast it without waiting on indexers. */
   turn(quote: Quote, txid: string, messages: AgentMessage[], system: string, beef?: string): Promise<string>;
+  /** Free Ask b (agent.ts ASK_B_FREE): answered with no quote and no payment, under bit-sign's daily cap. */
+  free(messages: AgentMessage[], system: string): Promise<string>;
 }
 
 const obj = (v: unknown) => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
@@ -126,6 +128,26 @@ export const turnBody = (quote: Quote, txid: string, messages: AgentMessage[], s
   ...addOnsField(),
 });
 
+/** Body for a free turn: the transcript, the guide, the client and add-ons. No quote, no txid, never a key. */
+export const freeBody = (messages: AgentMessage[], system: string) => ({
+  messages,
+  system,
+  client: clientInfo(),
+  ...addOnsField(),
+});
+
+/** The error `code` bit-sign returns when b's free daily allowance is used up (429). */
+export const FREE_CAP_CODE = 'free_cap';
+export const FREE_REST_TEXT =
+  "b needs a rest — back tomorrow. Bug reports still go through: tell me what's wrong and it reaches the team.";
+
+/**
+ * When b can't answer for free (allowance used, or a server without /agent/free yet) the message still goes to
+ * the team (reportToB). What b shows: the server's rest words (or ours), then the report's ack.
+ */
+export const freeFallbackReply = (restText: string | null, reportLine: string) =>
+  `${restText?.trim() || "b can't answer just now, but your message was passed to the team."}\n\n${reportLine}`;
+
 const addOnsField = (): { addOns?: string[] } => {
   try {
     const on = enabledAddOns(loadBWeb());
@@ -213,4 +235,6 @@ export const bitsignPaidBackend = (
     ),
   turn: async (quote, txid, messages, system, beef) =>
     parseTurn(await call('POST', '/api/bitsign/agent/turn', turnBody(quote, txid, messages, system, beef))),
+  free: async (messages, system) =>
+    parseTurn(await call('POST', '/api/bitsign/agent/free', freeBody(messages, system))),
 });

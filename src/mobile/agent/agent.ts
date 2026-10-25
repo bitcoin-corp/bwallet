@@ -1,11 +1,20 @@
 /**
- * The b agent (top bar's centre b → /m/ask-b): a help assistant for using bWallet. It is NOT
- * free; it runs one of two ways, chosen in Settings › b agent (agentPrefs.ts):
+ * The b agent (top bar's centre b → /m/ask-b): a help assistant for using bWallet. It runs one of two
+ * ways, chosen in Settings › b agent (agentPrefs.ts):
  *   - 'own'  — the user's own provider key; the device calls the provider directly (providers.ts).
- *   - 'paid' — pay per message in BSV from the wallet, answered by bit-sign (paid.ts).
+ *   - 'paid' — answered by bit-sign. While ASK_B_FREE is on this costs nothing (bit-sign /agent/free, with a
+ *              daily cap); with it off, each message is paid in BSV from the wallet (paid.ts).
  * The system prompt is guide.ts. Replies are whole turns (no streaming). Pure helpers here.
  */
 import { containsPhrase } from '../errors/phraseGuard';
+
+/**
+ * Owner, 25 Oct 2026: "For now, it shouldn't cost users anything to talk to b. If they want to send bug reports
+ * and stuff, we want their feedback more than their money." On: the bCorp mode sends no payment and asks for no
+ * confirm; bit-sign answers free under a daily cap. Off: the old pay-per-message flow (paid.ts) comes back as is.
+ */
+export const ASK_B_FREE = true;
+export const ASK_B_FREE_TEXT = 'Talking to b is free for now.';
 
 export type AgentRole = 'user' | 'assistant';
 export type AgentMessage = { role: AgentRole; text: string };

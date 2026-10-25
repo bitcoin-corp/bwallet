@@ -12,15 +12,26 @@ import { fetchExchangeRate } from '../../utils/wallet';
 import { ChatApiError, saveSession, type BchatClient } from '../chat/api';
 import { kycClient, signedInClient } from '../kyc/kycWallet';
 import { oneClick } from '../settings/oneClick';
-import { MAX_INPUT, SECRET_WARNING, looksLikeSecret, transcript, type AgentMessage } from './agent';
+import {
+  ASK_B_FREE,
+  ASK_B_FREE_TEXT,
+  MAX_INPUT,
+  SECRET_WARNING,
+  looksLikeSecret,
+  transcript,
+  type AgentMessage,
+} from './agent';
 import { BWALLET_GUIDE } from './guide';
 import { PROVIDERS, callProvider } from './providers';
 import { loadKey } from './keyStore';
 import { KeyScreen } from '../settings/AgentSettings';
 import { limitSats, loadSpend, recordSpend, spentToday, useAgentPrefs } from './agentPrefs';
 import {
+  FREE_CAP_CODE,
+  FREE_REST_TEXT,
   NOT_YET_RETRY_MS,
   bitsignPaidBackend,
+  freeFallbackReply,
   formatPrice,
   payDecision,
   refuseText,
@@ -29,6 +40,7 @@ import {
   noKeyReply,
   paymentFailedText,
   reportToB,
+  type ReportResult,
 } from './paid';
 import { enqueueReport, failureReason, logQueued, outboxText } from './reportOutbox';
 import { BCREDITS_ENABLED, MARKET_ENABLED, STORE_BUILD } from '../storeBuild';
@@ -59,14 +71,15 @@ const storeNoPaid: PaidBackend = {
   price: () => Promise.reject(new Error('Use your own AI provider key')),
   quote: () => Promise.reject(new Error('Use your own AI provider key')),
   turn: () => Promise.reject(new Error('Use your own AI provider key')),
+  free: () => Promise.reject(new Error('Use your own AI provider key')),
 };
 import { money } from '../money/money';
 
 /**
  * The b agent conversation (status, messages, composer). Shown on the full page (/m/ask-b, AgentPage.tsx).
  * Helps people use bWallet (guide.ts).
- * Not free: either the user's own provider key (direct from the device) or pay per message in
- * BSV (paid.ts). See agent.ts.
+ * Either the user's own provider key (direct from the device) or bCorp's service: free for now
+ * (ASK_B_FREE, bit-sign /agent/free with a daily cap), else pay per message in BSV (paid.ts). See agent.ts.
  */
 const GOLD = 'var(--bw-accent-hi)';
 const PANEL = '#17191E';
@@ -268,6 +281,8 @@ export const AgentConversation = ({
         : bitsignPaidBackend((method, path, body) => withClient((c) => c.agentCall(method, path, body))),
     [withClient],
   );
+  /** Free Ask b (agent.ts ASK_B_FREE): bCorp's mode sends no payment, no confirm, no bCredits. */
+  const freeNow = ASK_B_FREE && prefs.mode !== 'own' && !STORE_BUILD;
 
   useEffect(() => {
     let live = true;
@@ -275,7 +290,7 @@ export const AgentConversation = ({
     if (prefs.mode === 'own') {
       setKeyReady(null);
       void loadKey(prefs.provider).then((k) => live && setKeyReady(!!k));
-    } else {
+    } else if (!freeNow) {
       setPrice(null);
       backend
         .price()
@@ -300,7 +315,7 @@ export const AgentConversation = ({
     return () => {
       live = false;
     };
-  }, [prefs.mode, prefs.provider, backend]);
+  }, [prefs.mode, prefs.provider, backend, freeNow]);
 
   const bsvUsd = price?.bsvUsd || rate;
   const askConfirm = (sats: number) => new Promise<boolean>((resolve) => setConfirm({ sats, resolve }));
@@ -401,6 +416,37 @@ export const AgentConversation = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId, apiContext]);
 
+  /** Pass a message to the team (bit-sign /agent/feedback). Offline or signed out: it waits in the outbox. */
+  const tellTeam = async (text: string): Promise<ReportResult | { queued: string }> => {
+    try {
+      return await reportToB((m, p, b) => withClient((c) => c.agentCall(m, p, b)), text);
+    } catch (e) {
+      const reason = failureReason(e);
+      logQueued(reason, e);
+      enqueueReport(accountId, text, reason);
+      return { queued: `${outboxText(reason)} You'll see it in Your reports as Waiting to send.` };
+    }
+  };
+
+  /**
+   * Free answer. When b's free allowance is used up (429 free_cap), or the server has no free path yet (404) or has
+   * it switched off (503), the message still reaches the team as a report: never a payment prompt.
+   */
+  const runFree = async (sent: AgentMessage[], text: string): Promise<string> => {
+    try {
+      return await backend.free(sent, system);
+    } catch (e) {
+      const status = e instanceof ChatApiError ? e.status : 0;
+      const capped = errorCode(e) === FREE_CAP_CODE;
+      if (!capped && status !== 404 && status !== 503) throw e;
+      const r = await tellTeam(text);
+      return freeFallbackReply(
+        capped ? (e instanceof Error && e.message) || FREE_REST_TEXT : null,
+        'ack' in r ? r.ack : r.queued,
+      );
+    }
+  };
+
   const runOwn = async (sent: AgentMessage[]) => {
     const key = await loadKey(prefs.provider);
     if (!key) throw new Error(`Add your ${provider.label} API key in Settings › b agent.`);
@@ -464,20 +510,16 @@ export const AgentConversation = ({
       // No key in own-key mode: b can't answer, but it still takes the message for the team (paid.ts reportToB).
       if (prefs.mode === 'own' && keyReady === false) {
         // Can't reach bit-sign (offline, signed out): the message waits in the outbox, never dropped.
-        const r = await reportToB((m, p, b) => withClient((c) => c.agentCall(m, p, b)), text).catch((e) => {
-          const reason = failureReason(e);
-          logQueued(reason, e);
-          enqueueReport(accountId, text, reason);
-          return reason;
-        });
-        const reply =
-          typeof r === 'string'
-            ? `${outboxText(r)} You'll see it in Your reports as Waiting to send.`
-            : noKeyReply(r, provider.label);
+        const r = await tellTeam(text);
+        const reply = 'queued' in r ? r.queued : noKeyReply(r, provider.label);
         setMessages([...next, { role: 'assistant', text: reply }]);
         return;
       }
       const sent = transcript(next);
+      if (freeNow) {
+        await answer(next, await runFree(sent, text));
+        return;
+      }
       // bCredits first when there is a balance; once used, an empty balance asks for a top-up (never debt).
       const way = await creditsForB.route(prefs.mode !== 'own');
       if (way === 'low') {
@@ -524,8 +566,9 @@ export const AgentConversation = ({
   const [nudgeHidden, setNudgeHidden] = useState(() => keyNudgeDismissed(accountId));
   useEffect(() => setNudgeHidden(keyNudgeDismissed(accountId)), [accountId]);
   const today = spentToday(loadSpend(), Date.now());
-  const status =
-    prefs.mode === 'own'
+  const status = freeNow
+    ? ASK_B_FREE_TEXT
+    : prefs.mode === 'own'
       ? keyReady === false
         ? 'No AI key yet: what you type here goes to the team as feedback. Add a key in Settings › b agent for answers.'
         : `Your ${provider.label} key · ${prefs.models[prefs.provider]}`
@@ -535,8 +578,8 @@ export const AgentConversation = ({
           ? `${formatPrice(price.sats, bsvUsd, price.usd)} per message · today ${money(today, bsvUsd)} / $${(prefs.dailyLimitCents / 100).toFixed(2)}`
           : (price.reason ?? 'Paid messages are not available yet.');
   // Own-key mode sends even without a key: the message goes to the team as feedback (reportToB).
-  const canSend = prefs.mode === 'own' ? keyReady !== null : !!price?.enabled;
-  const statusKnown = prefs.mode === 'own' ? keyReady !== null : price !== null;
+  const canSend = freeNow || (prefs.mode === 'own' ? keyReady !== null : !!price?.enabled);
+  const statusKnown = freeNow || (prefs.mode === 'own' ? keyReady !== null : price !== null);
   // Spoken request: sent through send() like a typed one, so consent, the price and the confirm step all apply.
   // If b can't take it (no key, paid off) it stays typed in the composer.
   useEffect(() => {
