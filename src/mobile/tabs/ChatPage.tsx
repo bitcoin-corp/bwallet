@@ -446,6 +446,8 @@ const Conversation = ({
     void claimIssuerAdmin(room.ticker, me, claimDepsFor(client, apiContext));
   }, [entry, me, room.ticker, client, apiContext]);
   const [charge, setCharge] = useState<SpendCharge | null>(null);
+  /** The room's issuer address, from the room lookup: a message charge may only pay this (or burn). */
+  const [issuerAddress, setIssuerAddress] = useState<string | null>(null);
   const [confirmSend, setConfirmSend] = useState<{ text: string; existing?: ChatMessage } | null>(null);
   /** A payment already made for an optimistic message: a retry reuses it (bit-sign is idempotent per txid). */
   const paidFor = useRef(new Map<string, { beef: string; rule: string; txid: string }>());
@@ -455,7 +457,10 @@ const Conversation = ({
     void client
       .tokenRoom(entryKey)
       .then(parseLookup)
-      .then((l) => setCharge(l?.spendCharge ?? null))
+      .then((l) => {
+        setCharge(l?.spendCharge ?? null);
+        setIssuerAddress(l?.issuer?.address ?? null);
+      })
       .catch(() => {});
   }, [client, entryKey]);
   useEffect(loadCharge, [loadCharge]);
@@ -685,7 +690,13 @@ const Conversation = ({
     const go = async () => {
       let spend = paidFor.current.get(localId);
       if (!spend && pay && entryKey) {
-        const p = await payForMessage(apiContext, { ticker: room.ticker, handle: me, text: body, charge: pay });
+        const p = await payForMessage(apiContext, {
+          ticker: room.ticker,
+          handle: me,
+          text: body,
+          charge: pay,
+          issuerAddress,
+        });
         spend = { beef: p.beef, rule: pay.rule, txid: p.txid };
         paidFor.current.set(localId, spend);
       }

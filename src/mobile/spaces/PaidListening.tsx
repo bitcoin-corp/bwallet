@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useServiceContext } from '../../hooks/useServiceContext';
-import { payForMessage, releasePayment } from '../chat/roomSpend';
+import { payForCharges, releasePayment } from '../chat/roomSpend';
 import { useBsvUsd } from '../money/money';
 import { ErrorActions } from '../errors/ErrorActions';
 import {
@@ -92,7 +92,7 @@ export default function PaidListening({ client, ticker, role }: Props) {
     if (step !== 'pay' || !st.plan || !st.sig) return;
     busy.current = true;
     const plan = st.plan;
-    void payPlan(apiContext, client, plan, st.sig, { payForMessage, releasePayment })
+    void payPlan(apiContext, client, plan, st.sig, { payForMessage: payForCharges, releasePayment })
       .then(() => {
         setSpent((s) => s + planTotal(plan));
         setMinutes((m) => m + 1);

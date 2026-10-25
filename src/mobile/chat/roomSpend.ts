@@ -27,6 +27,8 @@ import {
 import { buildInputAssetLabel, buildTokenLabel, readAssetIdTag } from '@1sat/types';
 import { formatRaw } from './tokenRooms';
 import { withTokenKeyCheck } from '../../services/tokenSpendGuard';
+import { checkPayTo } from '../../services/guardedPay';
+import { assertNotPaused } from '../config/killSwitch';
 
 /** Token id equality (dot or underscore outpoint form). */
 const normalizeBsv21TokenId = (id: string) => id.trim().toLowerCase().replace('.', '_');
@@ -238,10 +240,34 @@ type ListedOutput = { outpoint: string; tags?: string[]; customInstructions?: st
  * the post (`spend.beef`) and the txid. Token inputs are only spent once the overlay says they
  * are valid (as sendBsv21 does), so the server's provenance check passes.
  */
+/**
+ * b-Aware 25 Oct 2026: a charge's payee must be the room's issuer (from the room, not from the charge), or a burn.
+ * Pure; throws GuardedPayError.
+ */
+export function checkChargePayees(charges: MessageCharge[], issuerAddress: string | null | undefined): void {
+  for (const c of charges) {
+    if (c.unit === 'token' && c.to === 'burn') continue;
+    checkPayTo(c.to, { kind: 'bound', address: issuerAddress, who: "the room's issuer" });
+  }
+}
+
 export async function payForMessage(
+  ctx: OneSatContext,
+  m: { ticker: string; handle: string; text: string; charge: SpendCharge; issuerAddress: string | null | undefined },
+): Promise<{ beef: string; txid: string }> {
+  checkChargePayees(m.charge.charges, m.issuerAddress);
+  return payForCharges(ctx, m);
+}
+
+/**
+ * Paid listening (spaces/paidListen.ts) pays the Space's speakers from a plan the user approved; its payees are
+ * checked there, not against the issuer.
+ */
+export async function payForCharges(
   ctx: OneSatContext,
   m: { ticker: string; handle: string; text: string; charge: SpendCharge },
 ): Promise<{ beef: string; txid: string }> {
+  await assertNotPaused('spending');
   const tokenIds = m.charge.charges.flatMap((c) => (c.unit === 'token' ? [c.tokenId] : []));
   if (!tokenIds.length) return payForMessageOnce(ctx, m);
   // F-3: token inputs whose records can't be signed are fixed before, and once after, an empty unlock.

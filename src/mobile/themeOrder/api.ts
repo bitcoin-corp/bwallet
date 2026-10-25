@@ -1,5 +1,6 @@
 import { buildOrdinalCustomInstructions, ORDINALS_BASKET, P1SAT_PROTOCOL, type OneSatContext } from '@1sat/actions';
 import { buildInscriptionScript } from '@1sat/templates';
+import { guardedPay, scriptAddress, type Shown } from '../../services/guardedPay';
 import type { WalletInterface } from '@bsv/sdk';
 import { P2PKH, PublicKey, Random, Utils } from '@bsv/sdk';
 import { storeReceiptMap, storeReceiptSvg, STORE_RECEIPT_TYPE, type StoreReceipt } from '../storeReceipt/receipt';
@@ -98,6 +99,14 @@ export const getQuote = async (f: Fetch, wallet: Signer, fields: Record<string, 
 /** Renew an edition for another year: a new quote for the same slug. */
 export const getRenewQuote = (f: Fetch, wallet: Signer, slug: string) => getQuote(f, wallet, { slug, renew: slug });
 
+/** A $1 store theme; nothing near this is a real price. Editions ($99 a year) get a larger ceiling. */
+export const MAX_THEME_BUY_SATS = 20_000_000;
+export const MAX_EDITION_SATS = 1_000_000_000;
+
+/** What the Pay sheet shows for a quote: each output as address + sats (refuses a non-P2PKH payment). */
+export const quoteShown = (q: Quote): Shown[] =>
+  q.outputs.filter((o) => o.satoshis > 1).map((o) => ({ address: scriptAddress(o.script), sats: o.satoshis }));
+
 /** The quote's outputs + the memo as createAction outputs. Pure. */
 export const quoteOutputs = (q: Quote) => [
   ...q.outputs.map((o) => ({ lockingScript: o.script, satoshis: o.satoshis, outputDescription: 'Theme edition' })),
@@ -107,11 +116,11 @@ export const quoteOutputs = (q: Quote) => [
 /** Call only after the user pressed Pay on the approval sheet. Returns the order the server recorded. */
 export const payQuote = async (ctx: OneSatContext, f: Fetch, q: Quote): Promise<MyOrder> => {
   if (Date.parse(q.expires_at) < Date.now()) throw new ThemeOrderError(MESSAGES.quote_expired, 'quote_expired', 410);
-  const r = await ctx.wallet.createAction({
-    description: 'bWalletX theme edition',
-    outputs: quoteOutputs(q),
-    options: NO_SEND,
-  });
+  const outputs = quoteOutputs(q);
+  const r = await guardedPay(
+    { outputs, shown: quoteShown(q), trust: { kind: 'pinned' }, maxSats: MAX_EDITION_SATS },
+    () => ctx.wallet.createAction({ description: 'bWalletX theme edition', outputs, options: NO_SEND }),
+  );
   if (!r.tx || !r.txid) throw new Error('The wallet did not return the payment');
   try {
     const signed = await signRequest(ctx.wallet, 'theme-orders-claim', { quote_id: q.quote_id, txid: r.txid });
@@ -184,16 +193,21 @@ export const payBuyQuote = async (
   if (Date.parse(q.expires_at) < Date.now()) throw new ThemeOrderError(MESSAGES.quote_expired, 'quote_expired', 410);
   const receipt =
     q.receipt && q.receipt.order === q.quote_id ? await receiptOutput(ctx, q.receipt, opts.art ?? null) : null;
-  const r = await ctx.wallet.createAction({
-    // "Theme purchase · NPG": the history labels it (wallet/txHistory.ts).
-    description: `Theme purchase · ${opts.label ?? q.receipt?.item.label ?? q.pack}`,
-    outputs: [
-      ...q.outputs.map((o) => ({ lockingScript: o.script, satoshis: o.satoshis, outputDescription: 'Theme' })),
-      { lockingScript: q.memo_hex, satoshis: 0, outputDescription: 'Theme purchase reference' },
-      ...(receipt ? [receipt.output] : []),
-    ],
-    options: NO_SEND,
-  });
+  const outputs = [
+    ...q.outputs.map((o) => ({ lockingScript: o.script, satoshis: o.satoshis, outputDescription: 'Theme' })),
+    { lockingScript: q.memo_hex, satoshis: 0, outputDescription: 'Theme purchase reference' },
+    ...(receipt ? [receipt.output] : []),
+  ];
+  const r = await guardedPay(
+    { outputs, shown: quoteShown(q), trust: { kind: 'pinned' }, maxSats: MAX_THEME_BUY_SATS },
+    () =>
+      ctx.wallet.createAction({
+        // "Theme purchase · NPG": the history labels it (wallet/txHistory.ts).
+        description: `Theme purchase · ${opts.label ?? q.receipt?.item.label ?? q.pack}`,
+        outputs,
+        options: NO_SEND,
+      }),
+  );
   if (!r.tx || !r.txid) throw new Error('The wallet did not return the payment');
   try {
     const signed = await signRequest(ctx.wallet, 'theme-buy-claim', { quote_id: q.quote_id, txid: r.txid });

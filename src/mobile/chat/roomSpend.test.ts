@@ -148,7 +148,13 @@ describe('room spend: the wallet never broadcasts', () => {
         },
       },
     } as never;
-    const r = await payForMessage(ctx, { ticker: 'CHAT', handle: 'alice', text: 'gm', charge: charge([sats]) });
+    const r = await payForMessage(ctx, {
+      ticker: 'CHAT',
+      handle: 'alice',
+      text: 'gm',
+      charge: charge([sats]),
+      issuerAddress: ISSUER,
+    });
     expect(calls.length).toBe(1);
     expect(calls[0].options?.noSend).toBe(true);
     expect(r).toEqual({ beef: '010203', txid: 'ab'.repeat(32) });
