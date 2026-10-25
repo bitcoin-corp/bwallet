@@ -6,7 +6,8 @@ import { setCardUnit, useCardUnit } from './cardValue';
  * The bottom-right fiat/BSV switch, the BSV card's own (.bw-wcard-unit). One shared setting: flipping it on any
  * balance card flips every card. The fiat side shows the Settings › Currency symbol ($ by default, £ for GBP).
  */
-export const CardUnitSwitch = ({ fx }: { fx: Fx }) => {
+/** `bsvLabel`: the main wallet card passes "$b" (MAIN_CARD_UNIT); every other card keeps "BSV". */
+export const CardUnitSwitch = ({ fx, bsvLabel = 'BSV' }: { fx: Fx; bsvLabel?: string }) => {
   const unit = useCardUnit();
   const pick = (u: 'usd' | 'bsv') => (e: MouseEvent) => {
     e.stopPropagation();
@@ -22,7 +23,7 @@ export const CardUnitSwitch = ({ fx }: { fx: Fx }) => {
           className={unit === u ? 'is-on' : undefined}
           onClick={pick(u)}
         >
-          {u === 'usd' ? fiatSymbol(fx) : 'BSV'}
+          {u === 'usd' ? fiatSymbol(fx) : bsvLabel}
         </button>
       ))}
     </div>

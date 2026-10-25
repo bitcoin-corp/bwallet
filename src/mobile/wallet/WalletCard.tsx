@@ -87,7 +87,7 @@ import { displayedSats, refreshDelay } from './live/liveLogic';
 import { useCountUp } from './live/useCountUp';
 import { BALANCE_CARDS_ENABLED } from '../storeBuild';
 import { AddressBookPull } from './AddressBook';
-import { cardSats, memberSince, cardBsv } from './walletCardText';
+import { cardSats, memberSince, cardBsv, MAIN_CARD_UNIT } from './walletCardText';
 import { useCardUnit } from './cardValue';
 import { CardUnitSwitch } from './CardUnitSwitch';
 /** Balance cards: a lazy chunk, absent from store builds (storeBuild.ts). */
@@ -609,13 +609,13 @@ const WalletCardInner = ({
                   title={syncing ? 'Syncing…' : 'Balance'}
                   style={(() => {
                     // Same size as the $ balance; long amounts shrink to stay on one line.
-                    const len = (unit === 'usd' ? formatUSD(animUsd) : cardBsv(animSats)).length;
+                    const len = (unit === 'usd' ? formatUSD(animUsd) : cardBsv(animSats, MAIN_CARD_UNIT)).length;
                     return len > 11
                       ? { fontSize: `clamp(18px, ${Math.min(10, 120 / len).toFixed(2)}vw, 42px)` }
                       : undefined;
                   })()}
                 >
-                  {unit === 'usd' ? formatUSD(animUsd) : cardBsv(animSats)}
+                  {unit === 'usd' ? formatUSD(animUsd) : cardBsv(animSats, MAIN_CARD_UNIT)}
                   {syncing && (
                     <Loader2 size={16} className="animate-spin bw-wcard-sync" color="var(--bw-wcard-muted, #8e8e89)" />
                   )}
@@ -695,7 +695,7 @@ const WalletCardInner = ({
                   )}
                 </div>
                 {/* $/BSV switch: same row as the address, right (owner, 9 Oct 2026). */}
-                <CardUnitSwitch fx={fx} />
+                <CardUnitSwitch fx={fx} bsvLabel={MAIN_CARD_UNIT} />
               </div>
               {since && (
                 <div className="bw-wcard-since">
@@ -866,7 +866,7 @@ const WalletCardInner = ({
                     look={look}
                     isDefault={!savedLook && !cardImage && !design}
                     handle={t.tag || cardPaymail(names.paymail)}
-                    balance={unit === 'usd' ? formatUSD(animUsd) : cardBsv(animSats)}
+                    balance={unit === 'usd' ? formatUSD(animUsd) : cardBsv(animSats, MAIN_CARD_UNIT)}
                     sub={unit === 'usd' ? cardSats(animSats) : formatUSD(animUsd)}
                     onChange={setLook}
                     onReset={() => {

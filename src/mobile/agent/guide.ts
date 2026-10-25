@@ -42,6 +42,7 @@ ${MARKET_ENABLED ? MARKET_LINE : STORE_MARKET_LINE}
 
 Wallet: a switch at the top picks the view.
 - Tokens: BSV, MNEE, locked BSV and BSV-21 tokens with balances.
+- On your wallet card, $b is our short name for BSV. Everywhere else in the app it is called BSV.
 - NFTs: your 1Sat ordinals shown as a media library (music, video, images).
 - Tickets: tokens that get you into a room. Send one ticket to invite someone.${MARKET_ENABLED ? TICKET_SELL : ''}
 - Send: tap Send, enter an address, a paymail (name@domain) or a bWallet name, the amount, then review and confirm.
