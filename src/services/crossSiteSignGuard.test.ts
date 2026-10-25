@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { boundHosts, crossSiteSignRefusal, guardCrossSiteSigning, sameSite } from './crossSiteSignGuard';
+import {
+  BLIND_SIGN_REFUSAL,
+  boundHosts,
+  crossSiteSignRefusal,
+  guardCrossSiteSigning,
+  sameSite,
+} from './crossSiteSignGuard';
 
 const bytes = (s: string) => Array.from(new TextEncoder().encode(s));
 const sig = (s: string) => ({ protocolID: [2, 'good login'], keyID: '1', counterparty: 'anyone', data: bytes(s) });
@@ -37,7 +43,7 @@ describe('crossSiteSignRefusal (audit 24 Oct B1)', () => {
     expect(crossSiteSignRefusal('evil.com', sig('bwx-podcast:42:nonce'))).toBeNull();
     expect(crossSiteSignRefusal('evil.com', sig('look at https://good.com/post/1'))).toBeNull();
     expect(crossSiteSignRefusal('evil.com', { data: [0, 255, 1, 2, 200, 3] })).toBeNull();
-    expect(crossSiteSignRefusal('evil.com', { hashToDirectlySign: [1, 2, 3] })).toBeNull();
+    // hashToDirectlySign from an outside caller is now refused (b-Aware 24 Oct, see below).
     expect(crossSiteSignRefusal(undefined, sig(JSON.stringify({ domain: 'good.com' })))).toBeNull();
   });
 
@@ -133,5 +139,29 @@ describe('sameSite: shared hosting and dot boundaries', () => {
       ['notbchatx.com', 'bchatx.com'],
     ])
       expect(crossSiteSignRefusal(evil, sig(JSON.stringify({ domain: good })))).not.toBeNull();
+  });
+});
+
+describe('b-Aware 24-25 Oct: encoded and blind challenges', () => {
+  const msg = 'good.example wants you to sign in with your Bitcoin account';
+  const caller = 'https://evil.example';
+  test('a challenge sent as base64 or hex is read and checked', () => {
+    expect(crossSiteSignRefusal(caller, { data: bytes(btoa(msg)) })).toContain('good.example');
+    const hex = Array.from(new TextEncoder().encode(msg), (b) => b.toString(16).padStart(2, '0')).join('');
+    expect(crossSiteSignRefusal(caller, { data: bytes(hex) })).toContain('good.example');
+    expect(crossSiteSignRefusal(caller, { data: bytes(`{"challenge":"${btoa(msg)}"}`) })).toContain('good.example');
+  });
+  test('JSON escapes and percent-encoding do not hide the site', () => {
+    expect(crossSiteSignRefusal(caller, { data: bytes('{"\\u0064omain":"good\\u002eexample"}') })).toContain(
+      'good.example',
+    );
+    expect(crossSiteSignRefusal(caller, { data: bytes('domain%3Dgood.example') })).toContain('good.example');
+  });
+  test('a hash to sign blind is refused for outside callers', () => {
+    expect(crossSiteSignRefusal(caller, { hashToDirectlySign: [1, 2, 3] })).toBe(BLIND_SIGN_REFUSAL);
+  });
+  test('the caller signing its own encoded challenge, and plain posts, still work', () => {
+    expect(crossSiteSignRefusal('https://good.example', { data: bytes(btoa(msg)) })).toBeNull();
+    expect(crossSiteSignRefusal(caller, { data: bytes('hello world, a plain post') })).toBeNull();
   });
 });

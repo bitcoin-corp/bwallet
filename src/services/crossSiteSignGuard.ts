@@ -107,15 +107,77 @@ export const boundHosts = (text: string): string[] => {
 };
 
 export const CROSS_SITE_REFUSAL = 'This message is for a different site than the one asking you to sign it';
+export const BLIND_SIGN_REFUSAL = 'Sites cannot ask for a signature over a hash the wallet cannot read';
+
+const printable = (text: string) => {
+  if (!text) return false;
+  let n = 0;
+  for (const ch of text) if (ch >= ' ' || ch === '\n' || ch === '\r' || ch === '\t') n++;
+  return n / text.length >= 0.9;
+};
+const utf8 = (bytes: Uint8Array): string | null => {
+  try {
+    const t = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return printable(t) ? t : null;
+  } catch {
+    return null;
+  }
+};
+const B64_RE = /^[A-Za-z0-9+/_-]{16,}={0,2}$/;
+const HEX_RE = /^(?:[0-9a-fA-F]{2}){8,}$/;
+
+/**
+ * The same text in the other spellings a challenge can hide a site name in (b-Aware 24-25 Oct 2026): JSON escapes
+ * (\u0064omain, evil\u002ecom), percent-encoding, and a whole message or a token inside it sent as base64 or hex.
+ * Bounded: a few layers, a few hundred candidates.
+ */
+export const textVariants = (text: string): string[] => {
+  const out = new Set<string>();
+  const todo: [string, number][] = [[text, 0]];
+  while (todo.length && out.size < 256) {
+    const [t, depth] = todo.shift()!;
+    if (out.has(t)) continue;
+    out.add(t);
+    if (depth >= 3) continue;
+    const add = (v: string | null) => v && v !== t && todo.push([v, depth + 1]);
+    add(
+      t.replace(/\\u([0-9a-fA-F]{4})/g, (_, h: string) => String.fromCharCode(parseInt(h, 16))).replace(/\\\//g, '/'),
+    );
+    try {
+      add(decodeURIComponent(t.replace(/\+/g, ' ')));
+    } catch {
+      /* not percent-encoded */
+    }
+    for (const tok of new Set([t.trim(), ...(t.match(/[A-Za-z0-9+/_=-]{16,}/g) ?? [])])) {
+      if (HEX_RE.test(tok)) add(utf8(Uint8Array.from(tok.match(/../g)!.map((h) => parseInt(h, 16)))));
+      else if (B64_RE.test(tok)) {
+        try {
+          const b = atob(
+            tok
+              .replace(/-/g, '+')
+              .replace(/_/g, '/')
+              .padEnd(Math.ceil(tok.length / 4) * 4, '='),
+          );
+          add(utf8(Uint8Array.from(b, (c) => c.charCodeAt(0))));
+        } catch {
+          /* not base64 */
+        }
+      }
+    }
+  }
+  return [...out];
+};
 
 /** Why this outside call must be refused, or null. Only text data that names a site is checked. */
 export const crossSiteSignRefusal = (originator: string | undefined, args: unknown): string | null => {
   if (!originator || !args || typeof args !== 'object') return null;
   const caller = bareHost(originator);
   if (!caller) return null;
+  // A bare hash can't be read, so it can't be checked: an outside caller must send the data itself.
+  if ((args as { hashToDirectlySign?: unknown }).hashToDirectlySign !== undefined) return BLIND_SIGN_REFUSAL;
   const text = decodeText((args as { data?: unknown }).data);
   if (text === null) return null;
-  const hosts = boundHosts(text);
+  const hosts = [...new Set(textVariants(text).flatMap(boundHosts))];
   if (hosts.length === 0) return null;
   // Every site the message names must be the caller's: one matching field must not launder another.
   const other = hosts.find((h) => !sameSite(h, caller));
