@@ -92,6 +92,7 @@ import { HandleFlow } from '../names/HandleFlow';
 import { avatarFor, B_AVATAR, pendingBQuestions, rememberAvatar, useAvatars } from '../chat/avatars';
 import { ChatAvatar as Avatar } from '../chat/ChatAvatar';
 import { roomHeaderBackground, roomOwnerOrigin, useRoomLook } from '../chat/roomLook';
+import { gateIconUrl, lacksGate, lockedLine, roomTokenGate } from '../chat/roomGate';
 import { roomSetupState, shouldOfferRoomSetup } from '../chat/roomSetupPrompt';
 import type { ReplyRef } from '../chat/api';
 import {
@@ -328,7 +329,9 @@ const usePoll = (fn: () => void, ms: number, enabled: boolean) => {
 /** A room's own picture (metadata.icon, https only), e.g. the bWallet Help Desk's (owner, 6 Oct 2026). */
 const roomIcon = (room: ChatRoom): string | null => {
   const icon = (room.metadata as { icon?: unknown } | null | undefined)?.icon;
-  return typeof icon === 'string' && /^https:\/\//.test(icon) ? icon : null;
+  if (typeof icon === 'string' && /^https:\/\//.test(icon)) return icon;
+  // A token-gated room shows its token's on-chain icon, never the generic gold avatar (owner, 25 Oct 2026).
+  return gateIconUrl(roomTokenGate(room.metadata));
 };
 /** Official rooms (metadata.open.official) show how to ask $b. */
 const isOfficialRoom = (room: ChatRoom) =>
@@ -744,11 +747,7 @@ const Conversation = ({
   const [drafting, setDrafting] = useState(false);
   const draftable = canAskBDraft(room, !!entry) && !isOfficialRoom(room);
   // A connected game's theme dresses its room (chat/roomLook.ts). Never the Help Desk, official rooms or store builds.
-  const look = useRoomLook(
-    room.ticker,
-    !STORE_BUILD && !isLounge(room.ticker) && !isOfficialRoom(room),
-    roomOwnerOrigin(room.metadata),
-  );
+  const look = useRoomLook(room.ticker, !STORE_BUILD && !isLounge(room.ticker) && !isOfficialRoom(room), room.metadata);
   const askB = () => {
     setDraft((d) => (/^\/b(\s|$)/i.test(d) ? d : `/b ${d}`));
     requestAnimationFrame(() => composer.current?.focus());
@@ -766,8 +765,11 @@ const Conversation = ({
         right: 'var(--ww-conv-right, 0px)',
         top: 'calc(var(--wallet-inset-top, 0px) + var(--ww-conv-top, 3.5rem))',
         bottom: 'calc(env(safe-area-inset-bottom) + var(--dock-h, 3.75rem) + var(--ww-conv-bottom, 0px))',
-        // A dark game theme colours the room; a light one keeps the dark room so the message colours still read.
+        // A room with its own look wears it over the user's app theme (owner, 25 Oct 2026: the $TERRORNODE room
+        // came out green from the phone's frog theme). The accent variable is set for the whole room, so every
+        // GOLD in it (buttons, links, badges) is the room's. A light look keeps the dark room so messages still read.
         background: look?.mode === 'dark' ? look.bg : BG,
+        ...(look ? ({ '--bw-accent-hi': look.accentHi, '--bw-accent': look.accent } as CSSProperties) : {}),
       }}
     >
       {/* The connected game's room: a short balance card on top (chat/SiteRoomViews.tsx; only for that room).
@@ -2304,11 +2306,7 @@ const OpenRoomRow = ({
   const key = roomKeyOf(room.ticker);
   const muted = isMuted(commands.prefs, key);
   // A connected game's room shows the game's logo when it has no picture of its own (chat/roomLook.ts).
-  const look = useRoomLook(
-    room.ticker,
-    !STORE_BUILD && !isLounge(room.ticker) && !info?.official,
-    roomOwnerOrigin(room.metadata),
-  );
+  const look = useRoomLook(room.ticker, !STORE_BUILD && !isLounge(room.ticker) && !info?.official, room.metadata);
   return (
     <li>
       <ChatSwipeRow
@@ -2731,9 +2729,44 @@ const RoomsPage = ({ header }: { header: React.ReactNode }) => {
   };
 
   const q = query.trim().toLowerCase().replace(/^\$/, '');
+  // Open rooms that also carry a token gate (chat/roomGate.ts): bit-sign's count of what I hold, per gate key.
+  // A room I don't qualify for leaves "Your rooms" and shows only as a locked card under Public rooms.
+  const [gateHeld, setGateHeld] = useState<Record<string, string | null>>({});
+  useEffect(() => {
+    const keys = [
+      ...new Set((rooms ?? []).map((r) => roomTokenGate(r.metadata)?.key).filter((k): k is string => !!k)),
+    ].filter((k) => !(k in gateHeld));
+    if (!handle || !keys.length) return;
+    let live = true;
+    void Promise.all(
+      keys.map(async (k) => [k, parseLookup(await client.tokenRoom(k).catch(() => null))?.heldRaw ?? null] as const),
+    ).then((r) => live && setGateHeld((cur) => ({ ...cur, ...Object.fromEntries(r) })));
+    return () => {
+      live = false;
+    };
+  }, [rooms, handle, client]); // eslint-disable-line react-hooks/exhaustive-deps
+  const gateLacking = useCallback(
+    (r: ChatRoom) => {
+      const g = roomTokenGate(r.metadata);
+      return !!g && lacksGate(g, gateHeld[g.key]);
+    },
+    [gateHeld],
+  );
   const myOpen = useMemo(
-    () => (rooms ?? []).filter(isOpenRoom).filter((r) => !q || `${r.name ?? ''} ${r.ticker}`.toLowerCase().includes(q)),
-    [rooms, q],
+    () =>
+      (rooms ?? [])
+        .filter(isOpenRoom)
+        .filter((r) => !gateLacking(r))
+        .filter((r) => !q || `${r.name ?? ''} ${r.ticker}`.toLowerCase().includes(q)),
+    [rooms, q, gateLacking],
+  );
+  const lockedOpen = useMemo(
+    () =>
+      (rooms ?? [])
+        .filter(isOpenRoom)
+        .filter(gateLacking)
+        .filter((r) => !q || `${r.name ?? ''} ${r.ticker}`.toLowerCase().includes(q)),
+    [rooms, q, gateLacking],
   );
   const browse = useMemo(
     () => browseList(publicRooms, new Set((rooms ?? []).map((r) => r.ticker.toUpperCase())), query),
@@ -2839,6 +2872,12 @@ const RoomsPage = ({ header }: { header: React.ReactNode }) => {
   shownKeys.current = yoursShown.map(yourKey);
 
   const openOpenRoom = (room: ChatRoom, joinSpace = false) => {
+    // A token-gated room I don't qualify for never opens: show its lock with the real terms instead.
+    const gate = roomTokenGate(room.metadata);
+    if (gate && lacksGate(gate, gateHeld[gate.key])) {
+      setLocked({ gate, heldRaw: gateHeld[gate.key] ?? null, members: room.party_count ?? null });
+      return;
+    }
     setRooms((cur) => cur?.map((r) => (r.ticker === room.ticker ? { ...r, unread: 0 } : r)) ?? cur);
     setHidden(new Set());
     setOpen({ room, entry: null, joinSpace });
@@ -3346,7 +3385,7 @@ const RoomsPage = ({ header }: { header: React.ReactNode }) => {
               </>
             )}
             {!bappsView && <ListLabel>Public rooms</ListLabel>}
-            {!bappsView && browseShown.length === 0 && (
+            {!bappsView && browseShown.length === 0 && lockedOpen.length === 0 && (
               <p className="px-4 pb-2 text-xs" style={{ color: MUTED }}>
                 {query
                   ? 'No public rooms match.'
@@ -3354,6 +3393,33 @@ const RoomsPage = ({ header }: { header: React.ReactNode }) => {
                     ? 'You’re in every bApp room open to the public.'
                     : 'No other public rooms right now. Start one.'}
               </p>
+            )}
+            {!bappsView && lockedOpen.length > 0 && (
+              <ul className="w-full">
+                {lockedOpen.map((r) => {
+                  const g = roomTokenGate(r.metadata);
+                  return (
+                    <li key={`locked:${r.ticker}`}>
+                      <button
+                        onClick={() => openOpenRoom(r)}
+                        className="w-full flex items-center gap-3 px-4 py-[10px] text-left active:bg-[#111]"
+                        data-locked-room={r.ticker}
+                      >
+                        <Avatar title={r.name || `$${r.ticker}`} src={roomIcon(r)} />
+                        <div className="flex-1 min-w-0">
+                          <div className={`flex items-center gap-1 text-[15px] font-semibold text-white ${ELLIPSIS}`}>
+                            <span className={ELLIPSIS}>{r.name || `$${r.ticker}`}</span>
+                            <Lock size={12} color={MUTED} className="shrink-0" />
+                          </div>
+                          <div className={`text-[12px] ${ELLIPSIS}`} style={{ color: MUTED }}>
+                            {g ? lockedLine(g, !!roomOwnerOrigin(r.metadata)) : ''}
+                          </div>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
             <ul className="w-full">
               {(bappsView ? [] : browseShown).map((r) => (

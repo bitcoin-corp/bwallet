@@ -280,7 +280,7 @@ async function fetchImage(url: string | undefined, origin: string, max: number, 
 }
 
 /** The theme's pictures, fetched by the wallet (same origin, size-capped) and kept as data: URLs. */
-async function withImages(t: ConnectTheme, origin: string, f: Fetch): Promise<WornTheme> {
+export async function withImages(t: ConnectTheme, origin: string, f: Fetch): Promise<WornTheme> {
   const [logoData, artData, roomArtData] = await Promise.all([
     fetchImage(t.logo, origin, LOGO_MAX_BYTES, f),
     fetchImage(t.cardArt, origin, ART_MAX_BYTES, f),

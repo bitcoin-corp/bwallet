@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import {
+  CACHE_MS,
   CONNECT_THEME_EVENT,
+  MISS_CACHE_MS,
+  fetchConnectTheme,
+  fetchSubTheme,
   loadConnectTheme,
+  parseConnectTheme,
+  withImages,
   shouldWearSiteTheme,
   themeOrigin,
   trueHost,
@@ -127,7 +133,6 @@ export const roomSite = (ticker: string, s: Store | null = local()): Entry | nul
     : null;
 };
 
-/** The room's look right now: the remembered site must still be connected with its theme on, and still name it. */
 /**
  * Ownership: a site may only dress a room that names that site as its own. The room's owner sets `metadata.site`
  * (its https origin) on bChatX; the theme's origin must equal it. A room with no `metadata.site`, or another
@@ -155,25 +160,128 @@ export async function loadRoomLook(
   return roomLookFrom(t, ticker);
 }
 
+// ---- the room's look from the server (no connection needed) ----
+
+/**
+ * A room's look without the user ever connecting its site (owner, 25 Oct 2026: the phone showed the $TERRORNODE room
+ * plain because tokenblaster.lol was never connected inside the app). Two sources, both tied to the room's own site
+ * (metadata.site, set by the room's owner on bit-sign), so one site can never dress another's room:
+ *
+ * 1. `metadata.look` on the room: the same fields as a theme file ({name, mode, accent, accentHi, bg, surface, text,
+ *    logo, roomArt | cardArt}), run through parseConnectTheme with origin = metadata.site, so every picture must be an
+ *    https URL on that site and is fetched by the wallet (size-capped, kept as a data: URL).
+ * 2. Else the site's public theme file (/.well-known/bwalletx-theme.json): the root theme or the `paths` sub-theme
+ *    whose `room` names this ticker.
+ *
+ * Cached per device for a day (an hour when the site has none).
+ */
+type Fetch = typeof fetch;
+const SERVER_KEY = 'bwx.roomLook.server';
+type ServerEntry = { at: number; look: RoomLook | null };
+const serverMem = new Map<string, ServerEntry>();
+const serverInflight = new Map<string, Promise<RoomLook | null>>();
+
+async function lookFromSite(origin: string, ticker: string, f: Fetch): Promise<RoomLook | null> {
+  const root = await fetchConnectTheme(origin, f).catch(() => null);
+  if (!root) return null;
+  const own = roomLookFrom(root, ticker);
+  if (own) return own;
+  for (const url of Object.values(root.paths ?? {})) {
+    const sub = await fetchSubTheme(url, origin, f).catch(() => null);
+    const l = roomLookFrom(sub, ticker);
+    if (l) return l;
+  }
+  return null;
+}
+
+export async function serverRoomLook(
+  ticker: string,
+  metadata: unknown,
+  opts: { s?: Store | null; f?: Fetch; now?: number } = {},
+): Promise<RoomLook | null> {
+  const { s = local(), f = fetch, now = Date.now() } = opts;
+  const want = roomTicker(ticker);
+  const owner = roomOwnerOrigin(metadata);
+  if (!want || !owner) return null;
+  const raw = (metadata as { look?: unknown }).look;
+  const declared = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+  // The cache key carries the declared look, so an owner's edit on bit-sign shows at once.
+  const key = `${owner} ${want} ${declared ? JSON.stringify(declared).slice(0, 2048) : '-'}`;
+  const hit = serverMem.get(key) ?? readServer(s)[key];
+  if (hit && now - hit.at < (hit.look ? CACHE_MS : MISS_CACHE_MS)) return hit.look;
+  const running = serverInflight.get(key);
+  if (running) return running;
+  const p = (async () => {
+    if (declared) {
+      const parsed = parseConnectTheme({ ...declared, room: want }, owner);
+      if (parsed.theme) return roomLookFrom(await withImages(parsed.theme, owner, f), want);
+    }
+    return lookFromSite(owner, want, f);
+  })()
+    .catch(() => null)
+    .then((look) => {
+      const entry = { at: now, look };
+      serverMem.set(key, entry);
+      writeServer(s, key, entry);
+      return look;
+    })
+    .finally(() => serverInflight.delete(key));
+  serverInflight.set(key, p);
+  return p;
+}
+
+const readServer = (s: Store | null): Record<string, ServerEntry> => {
+  try {
+    const v = JSON.parse(s?.getItem(SERVER_KEY) ?? 'null') as unknown;
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, ServerEntry>) : {};
+  } catch {
+    return {};
+  }
+};
+const writeServer = (s: Store | null, key: string, e: ServerEntry) => {
+  const keep = Object.entries({ ...readServer(s), [key]: e })
+    .sort((a, b) => b[1].at - a[1].at)
+    .slice(0, 12);
+  try {
+    s?.setItem(SERVER_KEY, JSON.stringify(Object.fromEntries(keep)));
+  } catch {
+    /* storage blocked or full: the in-memory copy still serves this session */
+  }
+};
+
+/** The room's look: the connected site's theme on this device first, else the server's (serverRoomLook). */
+export async function anyRoomLook(
+  ticker: string,
+  metadata: unknown,
+  opts: { s?: Store | null; f?: Fetch; load?: typeof loadConnectTheme } = {},
+): Promise<RoomLook | null> {
+  const owner = roomOwnerOrigin(metadata);
+  if (!owner) return null;
+  const device = await loadRoomLook(ticker, { s: opts.s, load: opts.load, owner }).catch(() => null);
+  return device ?? serverRoomLook(ticker, metadata, opts);
+}
+
 /** React: the look for an open room (null for no ticker, a disabled room, or no themed site). */
 export function useRoomLook(
   ticker: string | null | undefined,
   enabled = true,
-  /** The room's own site (roomOwnerOrigin of its metadata); no owner, no look. */
-  owner: string | null = null,
+  /** The room's metadata: its site (metadata.site; no site, no look) and optional metadata.look. */
+  metadata: unknown = null,
 ): RoomLook | null {
   const [look, setLook] = useState<RoomLook | null>(null);
+  const owner = roomOwnerOrigin(metadata);
+  const declared = JSON.stringify((metadata as { look?: unknown } | null)?.look ?? null);
   useEffect(() => {
     setLook(null);
     if (!ticker || !enabled || !owner) return;
     let live = true;
-    const refresh = () => void loadRoomLook(ticker, { owner }).then((l) => live && setLook(l));
+    const refresh = () => void anyRoomLook(ticker, metadata).then((l) => live && setLook(l));
     refresh();
     window.addEventListener(CONNECT_THEME_EVENT, refresh);
     return () => {
       live = false;
       window.removeEventListener(CONNECT_THEME_EVENT, refresh);
     };
-  }, [ticker, enabled, owner]);
+  }, [ticker, enabled, owner, declared]); // eslint-disable-line react-hooks/exhaustive-deps
   return look;
 }
