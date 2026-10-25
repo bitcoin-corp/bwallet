@@ -15,6 +15,7 @@ import { accountNamesFor } from '../names/accountNames';
 import { lookupPaymail } from '../names/paymail';
 import { OpnsNameCard } from '../names/OpnsNameCard';
 import { isOpnsType } from '../names/opnsName';
+import { OpnsNameSection } from '../names/OpnsNameActions';
 import type { AirdropItem } from './inbox';
 import { clipText, contentOutpoint, kindLabel, nftUrls, viewKind, type ViewKind } from './nftView';
 import { deviceSender, senderLabel, type DeviceAccount } from './sender';
@@ -237,7 +238,14 @@ export const NftViewer = ({ item, onClose }: { item: AirdropItem; onClose: () =>
             Loading…
           </p>
         )}
-        {isName && <OpnsNameCard url={content} from={who.label} />}
+        {isName && (
+          <div className="flex h-full w-full flex-col gap-4 overflow-y-auto py-2">
+            <div className="w-full shrink-0 overflow-hidden rounded-2xl" style={{ height: '34vh' }}>
+              <OpnsNameCard url={content} from={who.label} />
+            </div>
+            <OpnsNameSection url={content} from={who.label} held={false} />
+          </div>
+        )}
         {content && !failed && kind === 'video' && videoSrc === undefined && (
           <div className="w-48 h-48 rounded-xl overflow-hidden">
             <VideoPoster outpoint={contentOutpoint(item)} title={nftTitle(item)} />

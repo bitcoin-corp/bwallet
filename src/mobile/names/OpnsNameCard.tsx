@@ -1,6 +1,7 @@
-/** A name NFT drawn as a name card (opnsName.ts): the name as React text in large type, a small "name" label. */
+/** A name NFT drawn as a name card (opnsName.ts): a gold "Name" badge and the full name as React text in large type. */
 import { useEffect, useState } from 'react';
 import { OPNS_FETCH_MAX, opnsNameFrom } from './opnsName';
+import { nameBavatarUri, shortFrom } from './nameCard';
 
 const GOLD = 'var(--bw-accent)';
 
@@ -37,25 +38,52 @@ export const OpnsNameCard = ({
   compact?: boolean;
 }) => {
   const { name, loading } = useOpnsName(url, fallback);
+  // Gold bAvatar art drawn from the name behind it (gold by default, never a grey placeholder).
+  const art = name && !compact ? nameBavatarUri(name) : '';
   return (
     <div
-      className="flex h-full w-full flex-col items-center justify-center gap-1 overflow-hidden text-center"
-      style={{ padding: compact ? 4 : 24 }}
+      className="relative flex h-full w-full flex-col items-center justify-center gap-2 overflow-hidden text-center"
+      style={{
+        padding: compact ? 6 : 24,
+        containerType: compact ? 'inline-size' : undefined,
+        background: 'radial-gradient(circle at 30% 20%, #3a2c05 0%, #17191E 70%)',
+      }}
     >
-      <span className="uppercase tracking-widest" style={{ color: '#98A2B3', fontSize: compact ? 8 : 11 }}>
-        name
+      {art && (
+        <img
+          src={art}
+          alt=""
+          aria-hidden
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-35"
+        />
+      )}
+      <span
+        className="relative rounded-full font-bold uppercase tracking-widest"
+        style={{
+          background: GOLD,
+          color: '#010101',
+          fontSize: compact ? 9 : 12,
+          padding: compact ? '1px 8px' : '3px 12px',
+        }}
+      >
+        Name
       </span>
       <span
-        className="max-w-full break-all font-bold leading-tight"
-        style={{ color: name ? GOLD : '#98A2B3', fontSize: compact ? 13 : 40 }}
+        className="relative max-w-full break-all font-extrabold leading-tight"
+        style={{
+          color: name ? GOLD : '#98A2B3',
+          fontSize: compact ? nameSize(name) : 48,
+          textShadow: '0 2px 12px rgba(0,0,0,0.8)',
+        }}
       >
         {name ?? (loading ? '…' : 'Not a valid name')}
       </span>
       {from && !compact && (
-        <span className="text-xs" style={{ color: '#98A2B3' }}>
-          from {from}
-        </span>
+        <span className="relative text-sm font-semibold text-white">A gift from {shortFrom(from)}</span>
       )}
     </div>
   );
 };
+
+/** Grid tiles: the name as large as the tile allows (container width), a long one still shown in full. */
+const nameSize = (name: string | null) => `max(9px, min(34px, calc(150cqw / ${Math.max(name?.length ?? 1, 3)})))`;

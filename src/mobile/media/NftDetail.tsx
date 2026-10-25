@@ -40,6 +40,8 @@ import {
 } from './nftSend';
 import { txidOf, walletTxStates } from './unbroadcast';
 import { STORE_BUILD } from '../storeBuild';
+import { isOpnsType } from '../names/opnsName';
+import { OpnsNameSection } from '../names/OpnsNameActions';
 import { ReceiptBadge } from '../storeReceipt/ReceiptBadge';
 import { isStoreReceipt } from '../storeReceipt/receipt';
 import {
@@ -316,6 +318,15 @@ export const NftDetail = ({
           origin={origin}
           chainLink={link || undefined}
         />
+        {/* A name NFT: what it is and what it can do (Name card, owner 25 Oct 2026). */}
+        {isOpnsType(item.type) && !sent && !burned && (
+          <OpnsNameSection
+            url={item.url}
+            fallback={item.name}
+            held={!pending && onChain !== false}
+            onSend={() => setSending(true)}
+          />
+        )}
         {/* Theme-store receipts: not in the App Store / Play edition (store audit, docs/STORE-AUDIT.md). */}
         {!STORE_BUILD && isStoreReceipt(item.output.tags) && <ReceiptBadge txid={txidOf(item.output.outpoint)} />}
         {nftCreator(item.output.tags) && (

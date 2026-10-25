@@ -7,6 +7,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { OpnsNameCard } from '../names/OpnsNameCard';
 import { isOpnsType } from '../names/opnsName';
+import { OpnsNameSection } from '../names/OpnsNameActions';
 import { useAlbums } from '../albums/useAlbums';
 import { AddToAlbumSheet, AlbumBar, HIDE_NOTE } from '../albums/AlbumSheets';
 import {
@@ -254,7 +255,11 @@ const Tile = ({
       <div className="pt-1.5 min-w-0">
         <div className="text-xs font-semibold text-white truncate">{it.name}</div>
         <div className="text-[10px] text-[#98A2B3] truncate">
-          {it.collection ? collectionLabel(it.collection) : (it.contentType ?? 'Unknown type')}
+          {it.collection
+            ? collectionLabel(it.collection)
+            : isOpnsType(it.contentType)
+              ? 'Name · tap for what it can do'
+              : (it.contentType ?? 'Unknown type')}
         </div>
       </div>
     </div>
@@ -532,6 +537,14 @@ const DetailPanel = ({
           chainLink={ordinalsUrl(it.origin) || undefined}
         />
         {it.pending && <PendingCard />}
+        {isOpnsType(m.type) && (
+          <OpnsNameSection
+            url={m.url}
+            fallback={m.name}
+            held={!it.pending}
+            onSend={it.listed || it.legacyListing ? undefined : () => setSending(true)}
+          />
+        )}
         <div className="rounded-2xl bg-[#111216] border border-white/5 px-3 py-1">
           {facts.description && <Row label="Description">{facts.description}</Row>}
           <Row label="Outpoint">{it.outpoint}</Row>
