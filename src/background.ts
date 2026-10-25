@@ -25,7 +25,7 @@ import type { AccentId } from './mobile/theme/accents';
 import { revokeOriginatorInAccounts } from './services/accountPermissionStore';
 import { routeBchatUrl } from './services/bchatOrigin';
 import { createMasterBackupGate } from './services/masterBackupGate';
-import { promptsShowInPanel } from './services/panelPrompt';
+import { promptForNewPanel, promptsShowInPanel } from './services/panelPrompt';
 import { isSessionExpired } from './utils/lockTimeout';
 import { originatorForOrigin } from './services/originKey';
 import { PAIR_MIRROR_KEY, isPairedOriginator, pairedGrantAllowed, setPairMirror, takePendingFor } from './services/pairedPromptGuard';
@@ -403,13 +403,31 @@ const activePopupPorts = new Set<chrome.runtime.Port>();
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name === 'extension-popup') {
     activePopupPorts.add(port);
-    if (panelPromptOnConnect) {
-      const { kind, requestID } = panelPromptOnConnect;
+    // A panel that just (re)connected gets whatever is pending, at once: the prompt we opened it for, else the
+    // oldest queued one. The panel announces PANEL_READY once its listener is attached (App.tsx keepPanelPort);
+    // older panels don't, so the short delay stays as a fallback. Never waits on a click in the page.
+    const pushPending = (to: chrome.runtime.Port) => {
+      if (!promptsShowInPanel(1, chrome)) return;
+      const p = promptForNewPanel(panelPromptOnConnect, getNextPendingPrompt());
       panelPromptOnConnect = undefined;
+      if (!p) return;
       promptInPanel = true;
-      // Give the panel's listener a moment to attach before posting.
-      setTimeout(() => postToPanels({ action: 'SHOW_PROMPT_PANEL', kind, requestID }), 300);
-    }
+      try {
+        to.postMessage({ action: 'SHOW_PROMPT_PANEL', kind: p.kind, requestID: p.requestID });
+      } catch {
+        /* panel closing */
+      }
+    };
+    let ready = false;
+    port.onMessage.addListener((m: unknown) => {
+      if ((m as { action?: string })?.action !== 'PANEL_READY') return;
+      ready = true;
+      pushPending(port);
+      void pushSiteTheme(true);
+    });
+    setTimeout(() => {
+      if (!ready) pushPending(port);
+    }, 300);
     // A panel opening while a themed site is active wears its theme straight away.
     setTimeout(() => void pushSiteTheme(true), 300);
     port.onDisconnect.addListener(() => {

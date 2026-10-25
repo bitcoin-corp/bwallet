@@ -1,44 +1,61 @@
-import { useContext, useEffect, useRef } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { BottomMenuContext } from '../../contexts/BottomMenuContext';
 import { asMenuItem } from '../tabs/tabs';
 import { requestRoomByTicker } from './segmentNav';
 import { sharedChatClient } from './sharedRooms';
-import { activeSiteRoom, onSiteRoom, roomKnown, useActiveSiteRoom } from './siteRoom';
+import { roomKnown, siteLabel, useActiveSiteRoom } from './siteRoom';
 import { useCardBalance } from '../wallet/balanceStore';
 import { money, useBsvUsd } from '../money/money';
 
 /**
- * Opens the connected game's room (siteRoom.ts) when it becomes the active site, and goes back home when the site
- * disconnects or the user moves to a tab with nothing connected. Unknown room or no chat session: nothing happens,
- * the normal home screen stays.
+ * The connected game's room is one tap away, never opened by itself (owner, 25 Oct 2026: connecting to a site such as
+ * tokenblaster.lol must not switch the wallet to its room; the site's theme still applies). A small chip shows while
+ * that site is the active tab, the room is one the wallet lists, and chat is signed in. Tapping it opens the room.
  */
-export const SiteRoomEngine = () => {
+export const SiteRoomChip = () => {
   const handleSelect = useContext(BottomMenuContext)?.handleSelect;
-  const opened = useRef<string | null>(null);
+  const r = useActiveSiteRoom();
+  const [known, setKnown] = useState<string | null>(null);
+  const [hidden, setHidden] = useState<string | null>(null);
   useEffect(() => {
-    if (!handleSelect) return;
-    let seq = 0;
-    const go = async () => {
-      const mine = ++seq;
-      const r = activeSiteRoom();
-      if (!r) {
-        if (opened.current) handleSelect(asMenuItem('bsv'));
-        opened.current = null;
-        return;
-      }
-      if (opened.current === r.ticker) return;
-      const client = sharedChatClient();
-      if (!client.current) return; // not signed in to chat: home stays
-      const rooms = await client.rooms().catch(() => []);
-      if (mine !== seq || activeSiteRoom()?.ticker !== r.ticker || !roomKnown(rooms, r.ticker)) return;
-      opened.current = r.ticker;
-      handleSelect(asMenuItem('chat'));
-      requestRoomByTicker(r.ticker, false);
+    setKnown(null);
+    if (!r) return;
+    let live = true;
+    const client = sharedChatClient();
+    if (!client.current) return; // not signed in to chat: no chip
+    void client
+      .rooms()
+      .catch(() => [])
+      .then((rooms) => {
+        if (live && roomKnown(rooms, r.ticker)) setKnown(r.ticker);
+      });
+    return () => {
+      live = false;
     };
-    void go();
-    return onSiteRoom(() => void go());
-  }, [handleSelect]);
-  return null;
+  }, [r]);
+  if (!handleSelect || !r || known !== r.ticker || hidden === r.ticker) return null;
+  const site = siteLabel(r.origin);
+  return (
+    <button
+      type="button"
+      data-testid="bwx-site-room-chip"
+      onClick={() => {
+        setHidden(r.ticker);
+        handleSelect(asMenuItem('chat'));
+        requestRoomByTicker(r.ticker, false);
+      }}
+      className="fixed z-[900] border-0 rounded-full px-3 py-1.5 text-xs font-semibold"
+      style={{
+        top: 8,
+        right: 8,
+        background: 'var(--bw-surface, #17191E)',
+        color: 'var(--bw-text, #FFFFFF)',
+        border: '1px solid var(--bw-line, #2B2F36)',
+      }}
+    >
+      Open {site} room
+    </button>
+  );
 };
 
 /**

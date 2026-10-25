@@ -1,5 +1,6 @@
 import { lazy, Suspense, useContext, useEffect, useState } from 'react';
-import { SiteRoomEngine } from './mobile/chat/SiteRoomViews';
+import { SiteRoomChip } from './mobile/chat/SiteRoomViews';
+import { keepPanelPort } from './services/panelPrompt';
 import { STORE_BUILD } from './mobile/storeBuild';
 import { wearActiveSite } from './mobile/theme/siteLook';
 import { MemoryRouter as Router, Route, Routes } from 'react-router-dom';
@@ -86,9 +87,10 @@ export const App = () => {
   // Establish a port connection so the background knows the popup is open.
   // Port disconnects automatically when the popup closes — no timers needed.
   useEffect(() => {
-    const port = chrome.runtime.connect({ name: 'extension-popup' });
+    // Kept open across service-worker restarts (services/panelPrompt.ts keepPanelPort): a panel the new worker
+    // can't see gets no prompts until the user happens to click or scroll (5.2.x after a Chrome restart).
     // bWalletX: approval prompts arrive here when the side panel is open (mobile/PanelPrompt.tsx).
-    port.onMessage?.addListener((msg: unknown) => {
+    return keepPanelPort(() => chrome.runtime.connect({ name: 'extension-popup' }), (msg: unknown) => {
       // A site is waiting on waitForAuthentication: show the unlock screen even if this panel thought it was unlocked.
       if ((msg as { action?: string })?.action === 'SHOW_UNLOCK_PANEL') setIsLocked(true);
       // A connected site that declared a theme is the active tab (mobile/theme/connectTheme.ts); null = put ours back.
@@ -110,7 +112,6 @@ export const App = () => {
       }
       window.dispatchEvent(new CustomEvent(PANEL_PROMPT_EVENT, { detail: msg }));
     });
-    return () => port.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -218,8 +219,8 @@ export const App = () => {
                 <Show when={!isLocked} whenFalseContent={<UnlockWallet onUnlock={handleUnlock} />}>
                   <UsbGate>
                     <UsbBackupRunner />
-                    {/* The connected game's room (mobile/chat/siteRoom.ts); store builds never. */}
-                    {!STORE_BUILD && <SiteRoomEngine />}
+                    {/* The connected game's room: a chip to open it, never opened by itself (mobile/chat/siteRoom.ts); store builds never. */}
+                    {!STORE_BUILD && <SiteRoomChip />}
                     <UsbBackupPill />
                     <Show
                       when={!isSwitchingAccount}

@@ -33,3 +33,21 @@ describe('site room', () => {
     expect(activeSiteRoom()).toBeNull();
   });
 });
+
+describe('site room is never opened automatically (owner, 25 Oct 2026)', () => {
+  test('no engine navigates to the room; a chip does on tap', async () => {
+    const { readFileSync } = await import('fs');
+    const views = readFileSync(new URL('./SiteRoomViews.tsx', import.meta.url), 'utf8');
+    const app = readFileSync(new URL('../../App.tsx', import.meta.url), 'utf8');
+    expect(app).not.toContain('SiteRoomEngine');
+    expect(app).toContain('<SiteRoomChip />');
+    // requestRoomByTicker only inside the chip's onClick.
+    const calls = views.split('requestRoomByTicker(').length - 1;
+    expect(calls).toBe(1);
+    expect(views).toMatch(/onClick=\{\(\) => \{[\s\S]*?requestRoomByTicker\(/);
+  });
+  test('chip label', async () => {
+    const { siteLabel } = await import('./siteRoom');
+    expect(siteLabel('https://www.tokenblaster.lol')).toBe('tokenblaster.lol');
+  });
+});

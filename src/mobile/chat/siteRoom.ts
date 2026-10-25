@@ -3,7 +3,7 @@ import { useSyncExternalStore } from 'react';
 /**
  * The connected game's room (owner, 24 Oct 2026). A site's theme file (or a path sub-theme, docs/SITE-THEME.md)
  * may name its chat room with `room`: the ticker of a room the wallet already lists. While that site is the active
- * tab and connected, the extension opens straight to that room, dressed in the site's look, with a short balance
+ * tab and connected, the extension offers a chip that opens that room (never automatically), dressed in the site's look, with a short balance
  * card above it. Switching tabs follows the active game; nothing connected → the normal home screen.
  *
  * No new chat infrastructure: the room is opened through the Chat tab's own ticker hand-off (segmentNav.ts), and only
@@ -34,3 +34,12 @@ export const useActiveSiteRoom = (): SiteRoom | null => useSyncExternalStore(onS
 /** Whether the room list has this ticker (case-insensitive). */
 export const roomKnown = (rooms: ReadonlyArray<{ ticker: string }>, ticker: string): boolean =>
   rooms.some((r) => r.ticker.replace(/^\$/, '').toUpperCase() === ticker);
+
+/** "https://www.tokenblaster.lol" → "tokenblaster.lol". */
+export const siteLabel = (origin: string): string => {
+  try {
+    return new URL(origin).hostname.replace(/^www\./, '');
+  } catch {
+    return origin;
+  }
+};

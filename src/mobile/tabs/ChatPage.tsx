@@ -773,7 +773,7 @@ const Conversation = ({
       }}
     >
       {/* The connected game's room: a short balance card on top (chat/SiteRoomViews.tsx; only for that room).
-          Store builds never (like SiteRoomEngine in App.tsx). */}
+          Store builds never (like SiteRoomChip in App.tsx). */}
       {!STORE_BUILD && <SiteRoomBalance ticker={room.ticker} />}
       <div
         // Two rows (owner, 17 Oct 2026): back, picture, name and details on the first; the room's buttons on the

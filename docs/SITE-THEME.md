@@ -107,13 +107,14 @@ is picked by the wallet.
 
 ## The game's room (extension)
 
-Owner, 24 Oct 2026: when a site or game is connected, the extension opens straight to its chat room, in its look.
+Owner, 25 Oct 2026 (replaces 24 Oct): connecting a site or game never switches the wallet to its chat room. The
+site's theme still applies. While that site is the active tab, a small "Open <site> room" chip opens the room on a tap.
 
 - The room is the `room` of the theme in force for the active tab: the root file, or the path sub-theme for that
-  page (so `/arcade/assault` opens the Assault room). Switching to another connected game follows it; nothing
-  connected, the user's own home screen comes back.
-- Only a room the wallet already lists (`/api/bitsign/rooms`) is opened, through the Chat tab's own ticker hand-off.
-  Unknown room, no chat sign-in, or a bad `room` value: the normal home screen, nothing else changes.
+  page (so `/arcade/assault` offers the Assault room). Switching to another connected game follows it; nothing
+  connected, no chip.
+- The chip shows only for a room the wallet already lists (`/api/bitsign/rooms`) and opens it through the Chat tab's
+  own ticker hand-off. Unknown room, no chat sign-in, or a bad `room` value: no chip, nothing else changes.
 - Above the room, a short balance card: the balance in dollars large, BSV small, in the site's colours. It shows the
   last balance the wallet card read.
 - Store builds never do this: rooms there can take a penny ticket, and the store edition sells no paid content.
