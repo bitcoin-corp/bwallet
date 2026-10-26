@@ -1,3 +1,4 @@
+import { formatPairCode } from '../../pair/protocol';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Check, Link2, Loader2, ShieldCheck } from 'lucide-react';
@@ -170,8 +171,12 @@ export default function PairSheet({
             <p className="mt-6 text-sm" style={{ color: MUTED }}>
               Check the website shows the same code:
             </p>
-            <p className="mt-2 font-mono text-4xl font-bold tracking-[0.3em]" style={{ color: GOLD }}>
-              {stage.p.code}
+            <p
+              className={`mt-2 whitespace-nowrap font-mono font-bold ${stage.p.code.length > 4 ? 'text-3xl tracking-[0.15em]' : 'text-4xl tracking-[0.3em]'}`}
+              style={{ color: GOLD }}
+              data-testid="pair-code"
+            >
+              {formatPairCode(stage.p.code)}
             </p>
             <p className="mt-6 text-xs" style={{ color: MUTED }}>
               The site can ask for approvals, which you&apos;ll see here as usual. It can&apos;t move anything without

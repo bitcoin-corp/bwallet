@@ -6,7 +6,9 @@
  *   QR:     https://www.bwallet.space/pair?v=1&r=<relay host>&c=<channel>&k=<site pubkey>&o=<origin>&e=<expiry>
  *   key:    ECDH(secp256k1) → HKDF-SHA256(salt = channel bytes, info = "bwallet-pair-v1") → AES-256-GCM
  *   frame:  { s: seq, n: nonce b64, d: ciphertext b64 }, AAD = "<sender role>|<s>", s strictly increasing
- *   code:   first 2 bytes of SHA-256(key bits) → 4 digits, shown on both screens
+ *   code:   shown on both screens. Links with `cd=8` (BRC-185): 8 digits from 5 bytes of a separate HKDF output
+ *           (info "bwallet-pair-code-v2"). Links without it (older sites and CLIs): the legacy 4 digits, first 2 bytes
+ *           of SHA-256(key bits).
  */
 import { PrivateKey, PublicKey, Signature, Utils } from '@bsv/sdk';
 
@@ -50,7 +52,14 @@ export type PairLink = {
   rid?: string;
   b?: BrowserHint;
   s2?: string;
+  /** Comparison-code length the site will show (BRC-185 alignment). Absent = legacy 4 digits. */
+  cd?: CodeDigits;
 };
+
+/** Code lengths a link may ask for. 8 is the BRC-185 length; 4 is kept for sites on older @bwalletx/connect. */
+export type CodeDigits = 4 | 8;
+export const CODE_DIGITS_NEW: CodeDigits = 8;
+const PAIR_CODE_INFO = 'bwallet-pair-code-v2';
 
 /** Plaintext messages inside encrypted frames. */
 export type PairMessage =
@@ -62,7 +71,11 @@ export type PairMessage =
 
 /** Unencrypted frames: from the relay, and the phone's hello (its key isn't shared yet). */
 export type RelayFrame = { t: 'relay'; verifiedOrigin?: string; peer?: 'joined' | 'left'; role?: Role; error?: string };
-export type HelloFrame = { t: 'hello'; k: string; info: WalletInfo };
+/**
+ * `cd`: the code length this wallet is showing. Sent (as 8) only when the link asked for `cd=8`, so a site knows the
+ * wallet understood it; a hello without it comes from an older wallet showing 4 digits.
+ */
+export type HelloFrame = { t: 'hello'; k: string; info: WalletInfo; cd?: CodeDigits };
 export type SealedFrame = { s: number; n: string; d: string };
 
 const enc = new TextEncoder();
@@ -93,6 +106,7 @@ export function pairUrl(link: PairLink): string {
   if (link.rid) q.set('rid', link.rid);
   if (link.b) q.set('b', link.b);
   if (link.s2) q.set('s2', link.s2);
+  if (link.cd) q.set('cd', String(link.cd));
   return `https://${PAIR_HOST}/pair?${q}`;
 }
 
@@ -129,6 +143,10 @@ export function parsePairUrl(
   if ((BROWSER_HINTS as readonly string[]).includes(b)) link.b = b as BrowserHint;
   const sig2 = g('s2');
   if (sig2 && /^30[0-9a-f]{10,150}$/i.test(sig2)) link.s2 = sig2.toLowerCase();
+  // Code length: only the exact values are honoured; anything else keeps the legacy 4 (never fatal).
+  const cd = g('cd');
+  if (cd === '8') link.cd = 8;
+  else if (cd === '4') link.cd = 4;
   return link;
 }
 
@@ -155,14 +173,16 @@ export const pairProofMessage = (l: Pick<PairLink, 'c' | 'k' | 'o' | 'e'>) =>
 export const signPairProof = (l: Pick<PairLink, 'c' | 'k' | 'o' | 'e'>, originKey: PrivateKey) =>
   Utils.toHex(originKey.sign(pairProofMessage(l)).toDER() as number[]);
 
-type V2Fields = Pick<PairLink, 'c' | 'k' | 'o' | 'e'> & { ret: string; rid: string; b?: string };
+type V2Fields = Pick<PairLink, 'c' | 'k' | 'o' | 'e'> & { ret: string; rid: string; b?: string; cd?: CodeDigits };
 /**
  * v2: also binds the return URL, the request id and the browser hint, so none of them can be swapped on a real
- * site's link. `b` is empty when the link has none.
+ * site's link. `b` is empty when the link has none. A link with `cd` appends `|cd=<n>`, so the code length can't be
+ * downgraded on a proven link; links without `cd` sign exactly the old string.
  */
 export const pairProofMessageV2 = (l: V2Fields) =>
   Utils.toArray(
-    `${PAIR_INFO_V2}|proof|${l.c}|${l.k.toLowerCase()}|${l.o}|${l.e}|${l.ret}|${l.rid}|${l.b ?? ''}`,
+    `${PAIR_INFO_V2}|proof|${l.c}|${l.k.toLowerCase()}|${l.o}|${l.e}|${l.ret}|${l.rid}|${l.b ?? ''}` +
+      (l.cd ? `|cd=${l.cd}` : ''),
     'utf8',
   );
 
@@ -235,8 +255,12 @@ export const relaySocketUrl = (relay: string, channel: string, role: Role, expir
   return `${local ? 'ws' : 'wss'}://${relay}/v1/c/${channel}?${q}`;
 };
 
-/** Shared AES key + 4-digit comparison code from my private key and their public key. */
-export async function deriveSession(mine: PrivateKey, theirs: string, channel: string) {
+/**
+ * Shared AES key + comparison code from my private key and their public key. `digits` comes from the link's `cd`
+ * (default 4, the legacy code older sites show). The 8-digit code uses independent bytes, so it never starts with the
+ * 4-digit one: a stripped `cd` shows a code that doesn't match the site's, rather than a matching prefix.
+ */
+export async function deriveSession(mine: PrivateKey, theirs: string, channel: string, digits: CodeDigits = 4) {
   const point = mine.deriveSharedSecret(PublicKey.fromString(theirs));
   const ikm = new Uint8Array(point.encode(true) as number[]);
   const base = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
@@ -248,10 +272,28 @@ export async function deriveSession(mine: PrivateKey, theirs: string, channel: s
     ),
   );
   const key = await crypto.subtle.importKey('raw', bits, 'AES-GCM', false, ['encrypt', 'decrypt']);
-  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', bits));
-  const code = String(((h[0] << 8) | h[1]) % 10000).padStart(4, '0');
+  let code: string;
+  if (digits === 8) {
+    const c = new Uint8Array(
+      await crypto.subtle.deriveBits(
+        { name: 'HKDF', hash: 'SHA-256', salt: fromB64url(channel), info: enc.encode(PAIR_CODE_INFO) },
+        base,
+        64,
+      ),
+    );
+    // 5 bytes (2^40) mod 10^8: bias under 0.01%.
+    let n = 0n;
+    for (let i = 0; i < 5; i++) n = (n << 8n) | BigInt(c[i]);
+    code = (n % 100_000_000n).toString().padStart(8, '0');
+  } else {
+    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', bits));
+    code = String(((h[0] << 8) | h[1]) % 10000).padStart(4, '0');
+  }
   return { key, code };
 }
+
+/** How a comparison code is shown: 8 digits in two groups of 4 ("1234 5678"), 4 digits as they are. */
+export const formatPairCode = (code: string) => (code.length === 8 ? `${code.slice(0, 4)} ${code.slice(4)}` : code);
 
 /** One direction-aware encrypted pipe. `me` is the sender role used in the AAD. */
 export class Sealer {

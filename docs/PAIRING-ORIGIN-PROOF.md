@@ -11,10 +11,22 @@ older wallets ignore the new fields and still see your v1 proof.
 | `rid` | A one-time request id: 16 random bytes, base64url (22 chars; 16–64 `[A-Za-z0-9_-]` accepted). New for every link.                    |
 | `b`   | Browser hint: `safari`, `chrome`, `firefox`, `samsung`, `edge`, `brave` or `other`. Optional.                                        |
 | `s2`  | The v2 proof: DER signature (hex), by a key in your `/.well-known/bwalletx-pair.json`, over the UTF-8 string below.                  |
+| `cd`  | Comparison-code length: `8` (BRC-185). Optional; without it the wallet shows the legacy 4 digits.                                    |
 
 ```
-bwallet-pair-v2|proof|<c>|<k lowercase>|<o>|<e>|<ret>|<rid>|<b, or empty>
+bwallet-pair-v2|proof|<c>|<k lowercase>|<o>|<e>|<ret>|<rid>|<b, or empty>[|cd=<cd>]
 ```
+
+The `|cd=<cd>` suffix is added only when the link carries `cd`, so a link without it signs exactly the old string.
+
+**Comparison code (`cd`).** Both screens show a code derived from the shared secret. With `cd=8` it is 8 digits:
+HKDF-SHA256(ikm = the compressed ECDH point, salt = channel bytes, info = `bwallet-pair-code-v2`, 64 bits), first 5
+bytes as a big-endian integer, mod 10^8, zero-padded, shown as `1234 5678`. Without `cd` (sites on older
+`@bwalletx/connect`, older CLIs) it is the legacy 4 digits: first 2 bytes of SHA-256(AES key bits) mod 10^4. The two
+codes use independent bytes, so a link whose `cd` was stripped shows a code that doesn't match, never a matching
+prefix. A wallet that understands `cd=8` says so in its hello frame (`{"t":"hello",…,"cd":8}`). A wallet that predates
+`cd` sends no `cd` and shows 4 digits, so a site that asked for 8 shows the 4-digit code when the hello has no `cd`.
+Negotiation is per link: new site + new wallet = 8 digits, anything older = 4.
 
 `signPairProofV2` in `src/pair/protocol.ts` builds it. Example link (line breaks added):
 
@@ -76,7 +88,7 @@ Security audit 19 Oct 2026, finding H1 (and C2/M4 on the seedless branches).
 
 A paired site talks to the phone through relay.bwallet.space. The relay tells the phone which origin opened the
 channel, but it reads that from the WebSocket `Origin` header. Browsers set that header honestly; any other client
-(Node, curl, a script) can set it to anything. The 4-digit code doesn't help: it comes from the attacker's own key,
+(Node, curl, a script) can set it to anything. The comparison code doesn't help: it comes from the attacker's own key,
 so the attacker's screen shows the same code.
 
 ## What ships now

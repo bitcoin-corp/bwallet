@@ -1,6 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 import { PrivateKey } from '@bsv/sdk';
-import { Sealer, deriveSession, isAllowedRelay, newChannel, pairUrl, parsePairUrl, relaySocketUrl } from './protocol';
+import {
+  Sealer,
+  deriveSession,
+  formatPairCode,
+  isAllowedRelay,
+  newChannel,
+  pairProofMessageV2,
+  pairUrl,
+  parsePairUrl,
+  relaySocketUrl,
+} from './protocol';
 
 describe('pairing protocol', () => {
   test('both sides derive the same key and code; frames round-trip', async () => {
@@ -66,5 +76,50 @@ describe('pairing protocol', () => {
     const f = await new Sealer(phone.key, 'wallet').seal({ t: 'res', id: '9', result: { txid: 'ab', tx } });
     const back = (await new Sealer(site.key, 'site').open(f)) as { result: { tx: number[] } };
     expect(back.result.tx.length).toBe(400_000);
+  });
+
+  test('cd=8 (BRC-185): both sides get the same 8 digits, the key is unchanged, no 4-digit prefix', async () => {
+    let prefixHits = 0;
+    for (let i = 0; i < 40; i++) {
+      const c = newChannel();
+      const S = PrivateKey.fromRandom();
+      const P = PrivateKey.fromRandom();
+      const site8 = await deriveSession(S, P.toPublicKey().toString(), c, 8);
+      const phone8 = await deriveSession(P, S.toPublicKey().toString(), c, 8);
+      const phone4 = await deriveSession(P, S.toPublicKey().toString(), c);
+      expect(site8.code).toMatch(/^\d{8}$/);
+      expect(phone8.code).toBe(site8.code);
+      expect(phone4.code).toMatch(/^\d{4}$/);
+      if (site8.code.startsWith(phone4.code)) prefixHits++;
+      // Same AES key whatever the code length: the frames still open.
+      const f = await new Sealer(site8.key, 'site').seal({ t: 'ping' });
+      expect(await new Sealer(phone4.key, 'wallet').open(f)).toEqual({ t: 'ping' });
+    }
+    expect(prefixHits).toBeLessThan(3); // independent bytes: ~1 in 10,000 each
+  });
+
+  test('cd link field: round-trips, only 4 or 8 honoured, absent = legacy', () => {
+    const k = PrivateKey.fromRandom().toPublicKey().toString();
+    const e = Math.floor(Date.now() / 1000) + 120;
+    const link = { v: '1', r: 'relay.bwallet.space', c: newChannel(), k, o: 'https://tokenblaster.lol', e };
+    expect(parsePairUrl(pairUrl(link)).cd).toBeUndefined();
+    expect(parsePairUrl(pairUrl({ ...link, cd: 8 })).cd).toBe(8);
+    expect(parsePairUrl(pairUrl({ ...link, cd: 4 })).cd).toBe(4);
+    expect(parsePairUrl(pairUrl(link) + '&cd=6').cd).toBeUndefined();
+    expect(parsePairUrl(pairUrl(link) + '&cd=88').cd).toBeUndefined();
+  });
+
+  test('v2 proof binds cd only when present (old sites sign the old string)', () => {
+    const base = { c: 'C', k: '02AB', o: 'https://a.lol', e: 1, ret: 'https://a.lol/x', rid: 'r', b: 'chrome' };
+    const txt = (n: number[]) => new TextDecoder().decode(new Uint8Array(n));
+    expect(txt(pairProofMessageV2(base))).toBe('bwallet-pair-v2|proof|C|02ab|https://a.lol|1|https://a.lol/x|r|chrome');
+    expect(txt(pairProofMessageV2({ ...base, cd: 8 }))).toBe(
+      'bwallet-pair-v2|proof|C|02ab|https://a.lol|1|https://a.lol/x|r|chrome|cd=8',
+    );
+  });
+
+  test('formatPairCode groups 8 digits, leaves 4 alone', () => {
+    expect(formatPairCode('12345678')).toBe('1234 5678');
+    expect(formatPairCode('0042')).toBe('0042');
   });
 });

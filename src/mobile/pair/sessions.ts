@@ -575,9 +575,10 @@ export function beginPairing(scanned: string, opts: { allowCli?: boolean } = {})
         t: 'hello',
         k: P.toPublicKey().toString(),
         info: { name: appNameFor(), rdns: 'space.bwallet.mobile' },
+        ...(link.cd === 8 && { cd: 8 as const }),
       };
       ws.send(JSON.stringify(hello));
-      const { key, code } = await deriveSession(P, link.k, link.c);
+      const { key, code } = await deriveSession(P, link.k, link.c, link.cd ?? 4);
       // The relay's origin is only a header; the host is shown plainly only when the site proves it (B3).
       const proofs =
         (link.s || link.s2) && f.verifiedOrigin !== CLI_ORIGIN

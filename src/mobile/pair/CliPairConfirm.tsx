@@ -1,3 +1,4 @@
+import { formatPairCode } from '../../pair/protocol';
 import { APP_NAME, MARKET_ENABLED } from '../storeBuild';
 import { useState } from 'react';
 import { Terminal } from 'lucide-react';
@@ -120,8 +121,12 @@ export const CliPairConfirm = ({
       <p className="mt-5 text-sm" style={{ color: MUTED }}>
         Check the terminal shows the same code:
       </p>
-      <p className="mt-2 font-mono text-4xl font-bold tracking-[0.3em]" style={{ color: GOLD }}>
-        {code}
+      <p
+        className={`mt-2 whitespace-nowrap font-mono font-bold ${code.length > 4 ? 'text-3xl tracking-[0.15em]' : 'text-4xl tracking-[0.3em]'}`}
+        style={{ color: GOLD }}
+        data-testid="pair-code"
+      >
+        {formatPairCode(code)}
       </p>
       <p className="mt-6 text-sm text-white">
         For <b>{account?.name || 'this account'}</b> only.{' '}

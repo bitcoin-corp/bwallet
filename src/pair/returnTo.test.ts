@@ -83,6 +83,15 @@ describe('v2 proof + plan', () => {
     expect(p).toEqual({ v1: true, v2: true });
     expect(planReturn(l, O, p.v2)).toEqual({ ret: `${O}/terrornode?x=1`, rid: RID, b: 'chrome' });
   });
+  test('cd=8 is bound into v2: proven when kept, and stripping it (a downgrade to 4 digits) breaks v2', async () => {
+    const l = parsePairUrl(pairUrl(v2({ cd: 8 })));
+    expect(l.cd).toBe(8);
+    expect((await verifyPairProofs(l, wellKnown)).v2).toBe(true);
+    const stripped = { ...l };
+    delete stripped.cd;
+    expect((await verifyPairProofs(stripped, wellKnown)).v2).toBe(false);
+    expect((await verifyPairProofs({ ...l, cd: 4 }, wellKnown)).v2).toBe(false);
+  });
   test('v1 link (no return fields) still pairs and is proven, with no return', async () => {
     const l = base();
     l.s = signPairProof(l, siteKey);
