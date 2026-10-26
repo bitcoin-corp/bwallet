@@ -437,6 +437,10 @@ function attach(l: Live) {
     if ((f as RelayFrame).t === 'relay') {
       const v = (f as RelayFrame).verifiedOrigin;
       if (v && v !== stored.origin) forget(stored.c, false); // the channel changed hands: refuse
+      // The site's tab came back (iOS kills its socket while the user is in bWallet, e.g. after a return-to-site):
+      // say `ready` again so it resumes and resends, without relying on the relay's 60 s queue.
+      const rf = f as RelayFrame;
+      if (rf.peer === 'joined' && rf.role === 'site') void reply(l, { t: 'ready' });
       return;
     }
     if (!isSealed(f)) return;

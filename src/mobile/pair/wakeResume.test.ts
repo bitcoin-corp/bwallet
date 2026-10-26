@@ -176,6 +176,28 @@ describe('phone pairing after the phone sleeps', () => {
     expect(res).toEqual({ t: 'res', id, result: { publicKey: '02ab' } });
   });
 
+  test('the site rejoining the channel (its socket died while the user was in bWallet) gets ready again', async () => {
+    const { site, phone } = await pair('WAKEEEEEEEEEEEEEEEEEEE');
+    const ws = FakeWS.all.at(-1)!;
+    // `phone` only opens frames newer than the last it read, so each count is of new frames only.
+    const count = async () => (await readAll(phone, ws)).filter((m) => m.t === 'ready').length;
+    await count();
+    ws.deliver({ t: 'relay', peer: 'left', role: 'site' });
+    ws.deliver({ t: 'relay', peer: 'joined', role: 'wallet' }); // our own role: no ready
+    await settle();
+    expect(await count()).toBe(0);
+    ws.deliver({ t: 'relay', peer: 'joined', role: 'site' });
+    await settle();
+    expect(await count()).toBe(1);
+    // The resumed site's call is answered on the same session.
+    const id = await ask(site, ws);
+    expect((await readAll(phone, ws)).find((m) => m.t === 'res' && m.id === id)).toEqual({
+      t: 'res',
+      id,
+      result: { publicKey: '02ab' },
+    });
+  });
+
   test('an expired session answers REPAIR_NEEDED and closes, never "Permission denied."', async () => {
     const { site, phone } = await pair('WAKECCCCCCCCCCCCCCCCCC');
     const ws = FakeWS.all.at(-1)!;

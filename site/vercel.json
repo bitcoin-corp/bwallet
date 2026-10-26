@@ -111,6 +111,10 @@
       "destination": "/pair.html"
     },
     {
+      "source": "/browse",
+      "destination": "/browse.html"
+    },
+    {
       "source": "/social",
       "destination": "/social.html"
     },

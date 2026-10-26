@@ -42,6 +42,7 @@ import { onPairLink, takePairLink } from '../pair/links';
 import { useSpaceInviteLinks } from '../spaces/inviteLinks';
 import { useSubscribeLinks } from '../pots/subscribeLink';
 import { AuthRequestHost } from '../auth/AuthSheet';
+import { BrowseLinkHost } from '../browse/BrowseLinkHost';
 
 const PairSheet = lazy(() => import('../pair/PairSheet'));
 const ScanSheet = lazy(() => import('../scan/ScanSheet'));
@@ -731,6 +732,7 @@ const TopNavBar = () => {
         />
       )}
       {!phoneLayoutOn() && <AuthRequestHost />}
+      {!phoneLayoutOn() && <BrowseLinkHost />}
       {pairOpen && (
         <Suspense fallback={null}>
           <PairSheet

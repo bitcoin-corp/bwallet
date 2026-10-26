@@ -54,6 +54,14 @@ To open a pairing straight in bWalletX, link to `https://www.bwallet.space/pair?
 (iOS universal link / Android app link). If the app isn't installed, that page offers the app, the web wallet and
 the store on a phone (never a QR).
 
+To open your page inside bWallet's own browser (no app switching for connect or pay), link to
+`https://www.bwallet.space/browse?url=<your https URL, URL-encoded>`. The app shows your host and opens the page
+on a tap; nothing is connected until the page asks as usual. Without the app, the link shows a Get bWallet banner and
+a button to continue in the phone's browser. App-scheme form: `bwalletx://browse?url=<…>`.
+
+When the phone's socket was dropped and the site rejoins the channel, the phone sends `{ t: 'ready' }` again as soon
+as the relay reports the site joined, so resume on that rather than relying on the relay's 60-second queue.
+
 To bring the user back to your page after they tap Connect, add `ret`, `rid`, `b` and the v2 proof `s2` to the link
 (keep `v=1` and `s`). The wallet then opens `ret#bwx=ok&rid=<rid>` in the browser named by `b`. Field names, the
 signed string, an example link and the exact rules are at the top of

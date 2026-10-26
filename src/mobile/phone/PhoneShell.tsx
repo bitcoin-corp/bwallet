@@ -1,5 +1,6 @@
 import { lazy, Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AuthRequestHost } from '../auth/AuthSheet';
+import { BrowseLinkHost } from '../browse/BrowseLinkHost';
 import { useReducedMotion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { BottomMenuContext, type MenuItems } from '../../contexts/BottomMenuContext';
@@ -612,6 +613,7 @@ const Shell = () => {
         </Suspense>
       )}
       <AuthRequestHost />
+      <BrowseLinkHost />
     </>
   );
 };

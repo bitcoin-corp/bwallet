@@ -32,6 +32,8 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="www.bwallet.space" android:path="/pair" />
                 <data android:scheme="https" android:host="www.bwallet.space" android:path="/social" />
+                <!-- Open in bWallet's browser: /browse?url=<https url> (src/mobile/browse/browseLink.ts) -->
+                <data android:scheme="https" android:host="www.bwallet.space" android:path="/browse" />
             </intent-filter>
             <!-- bwalletx://pair?… : site/pair.html "Open in the bWallet app" (a tap on www.bwallet.space itself
                  doesn't count as an app link). Same params as /pair; src/mobile/pair/links.ts pairLinkFrom. -->
@@ -40,6 +42,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="bwalletx" android:host="pair" />
+                <data android:scheme="bwalletx" android:host="browse" />
             </intent-filter>
             <!-- Continue with X / Google returns here (site/social.html → bwalletx://social#…) -->
             <intent-filter>

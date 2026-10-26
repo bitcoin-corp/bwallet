@@ -12,6 +12,10 @@
             "comment": "Phone pairing QR (src/mobile/pair)"
           },
           {
+            "/": "/browse",
+            "comment": "Open in bWallet's browser (src/mobile/browse)"
+          },
+          {
             "/": "/social",
             "comment": "Continue with X / Google return (src/mobile/social)"
           }

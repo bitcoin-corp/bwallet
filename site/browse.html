@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>Open in bWallet</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        margin: 0;
+        background: #000;
+        color: #e4e7ec;
+        font:
+          16px/1.6 'IBM Plex Sans',
+          system-ui,
+          sans-serif;
+      }
+      .banner {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+        background: #f5b800;
+        color: #000;
+        font-weight: 600;
+      }
+      .banner img {
+        width: 32px;
+        height: 32px;
+      }
+      .banner span {
+        flex: 1;
+      }
+      .banner a {
+        color: #000;
+        background: #fff;
+        border-radius: 10px;
+        padding: 6px 12px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+      main {
+        max-width: 440px;
+        margin: 0 auto;
+        padding: 36px 20px 48px;
+        text-align: center;
+      }
+      h1 {
+        font-family: 'Space Grotesk', system-ui, sans-serif;
+        color: #fff;
+        font-size: 24px;
+        margin: 0 0 8px;
+        word-break: break-all;
+      }
+      p {
+        color: #c0c6d0;
+      }
+      a.btn {
+        display: block;
+        margin-top: 12px;
+        padding: 12px 22px;
+        border-radius: 12px;
+        background: #f5b800;
+        color: #000;
+        font-weight: 700;
+        text-decoration: none;
+      }
+      a.btn.alt {
+        background: #17191e;
+        color: #fff;
+        border: 1px solid #ffffff1f;
+      }
+      html:not([data-state]) main,
+      html[data-state='bad'] .ok,
+      html[data-state='ok'] .bad {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="banner">
+      <img src="/logo.svg" alt="" />
+      <span>Get bWallet to open sites in its browser</span>
+      <a id="get-app" href="/get">Get bWallet</a>
+    </div>
+    <main>
+      <section class="ok">
+        <p>Open this page</p>
+        <h1 id="host"></h1>
+        <a class="btn" id="go" href="/">Continue to <span id="go-host"></span></a>
+        <a class="btn alt" id="open-app" href="bwalletx://">Open in the bWallet app</a>
+        <p>bWallet doesn&apos;t seem to be on this phone, so the page opens in this browser instead.</p>
+      </section>
+      <section class="bad">
+        <h1>This link doesn&apos;t work</h1>
+        <p>bWallet only opens secure (https) web pages.</p>
+      </section>
+    </main>
+    <script src="/browse.js"></script>
+  </body>
+</html>
