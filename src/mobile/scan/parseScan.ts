@@ -1,6 +1,7 @@
 import { parseRecipient } from '../names/names';
 import { PAIR_HOST } from '../../pair/protocol';
 import { parseAppLink, type AppLink } from '../spaces/invite';
+import { isPeerPayUri, parsePeerPay } from './peerpay';
 
 /**
  * What a scanned QR (or pasted text) means to bWallet. Pure: no network, no side effects.
@@ -12,7 +13,7 @@ export type Scan =
   | { kind: 'open'; text: string }
   /** The computer's "Put this wallet on your phone" code (https://web.bwalletx.com/restore?passkey=1&…). */
   | { kind: 'restore'; url: string }
-  | { kind: 'pay'; to: string; amountSats?: number; label?: string; message?: string }
+  | { kind: 'pay'; to: string; amountSats?: number; label?: string; message?: string; peerpay?: true }
   | { kind: 'person'; handle: string; to: string }
   /** A Space page, invite or room link (https /s/ /i/ /r/ on our hosts, or bwalletx://space|invite|room/…). */
   | { kind: 'join'; url: string; link: AppLink }
@@ -88,6 +89,13 @@ export const parseScan = (raw: string | null | undefined): Scan => {
 
   const link = parseAppLink(text);
   if (link) return { kind: 'join', url: text, link };
+
+  // BRC-125: peerpay:<identity key>?sats=<n>. Pre-fills Send only; an invalid key is shown as text, never paid.
+  if (isPeerPayUri(text)) {
+    const pp = parsePeerPay(text);
+    if (!pp) return { kind: 'text', text };
+    return { kind: 'pay', to: pp.key, ...(pp.amountSats ? { amountSats: pp.amountSats } : {}), peerpay: true };
+  }
 
   // BIP21: bitcoin:<address>?amount=0.01&label=…&message=… (also bsv:, payto:).
   const uri = text.match(/^(?:bitcoin|bsv|payto):(?:\/\/)?([^?]*)(?:\?(.*))?$/i);

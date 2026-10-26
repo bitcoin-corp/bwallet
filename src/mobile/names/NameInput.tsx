@@ -21,6 +21,8 @@ import { liveDomains, withDomain } from './paymailDomains';
 import { BWALLET_PAYMAIL_DOMAIN } from './config';
 import { payeeDetail, recipientHint } from './payeeText';
 import { PLAIN_KEY_WARNING } from './pubkeyRecipient';
+import { isPeerPayUri, parsePeerPay } from '../scan/peerpay';
+import { requestPay } from '../wallet/payNav';
 
 /**
  * Recipient box for the Send screens (build-time swap for upstream's address <Input>, see
@@ -94,7 +96,17 @@ export const NameInput = ({ theme, value, onChange, asset, placeholder, style, a
       trustCurrentKey(r.input.replace(/^\$/, '').split('@')[0], r.pubkey);
   };
 
-  const onType = (raw: string) => {
+  const onType = (input: string) => {
+    // A pasted BRC-125 peerpay: link: the key goes in this box. With an amount on the BSV Send card it is handed to
+    // the same pre-fill a scan uses (payNav), so the amount fills in too. Never sends: the user still confirms.
+    let raw = input;
+    if (isPeerPayUri(input)) {
+      const pp = parsePeerPay(input);
+      if (pp) {
+        raw = pp.key;
+        if (pp.amountSats && asset === 'bsv') requestPay(pp.key, pp.amountSats);
+      }
+    }
     setText(raw);
     const p = parseRecipient(raw);
     const n = ++seq.current;

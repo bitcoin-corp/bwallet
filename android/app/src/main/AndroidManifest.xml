@@ -44,6 +44,13 @@
                 <data android:scheme="bwalletx" android:host="pair" />
                 <data android:scheme="bwalletx" android:host="browse" />
             </intent-filter>
+            <!-- peerpay:<identity key>?sats=<n> (BRC-125): pre-fills Send, never sends (src/mobile/scan/peerpayLinks.ts) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="peerpay" />
+            </intent-filter>
             <!-- Continue with X / Google returns here (site/social.html → bwalletx://social#…) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

@@ -41,6 +41,7 @@ import { initPairing, setAgentPairDeps } from '../pair/sessions';
 import { onPairLink, takePairLink } from '../pair/links';
 import { useSpaceInviteLinks } from '../spaces/inviteLinks';
 import { useSubscribeLinks } from '../pots/subscribeLink';
+import { usePeerPayLinks } from '../scan/peerpayLinks';
 import { AuthRequestHost } from '../auth/AuthSheet';
 import { BrowseLinkHost } from '../browse/BrowseLinkHost';
 
@@ -133,6 +134,7 @@ const TopNavBar = () => {
   // Space invite links (spaces/inviteLinks.ts); PhoneShell owns them in the phone layout.
   useSpaceInviteLinks(!phoneLayoutOn());
   useSubscribeLinks(!phoneLayoutOn());
+  usePeerPayLinks(!phoneLayoutOn());
   useEffect(() => {
     if (phoneLayoutOn()) return;
     const show = () => {
