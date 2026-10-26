@@ -168,6 +168,10 @@ describe('TOKENBLASTER_ENABLED: tokenblaster.lol data and the 1Sat Ordnance 3D c
     const b = src('./BrowserPage.tsx');
     expect(b).toContain("...(TOKENBLASTER_ENABLED ? ['TERRORNODE'] : [])");
     expect(b).toMatch(/HOME_ADDITIONS[^=]*= TOKENBLASTER_ENABLED\s*\?/);
+    // The TERRORNODE hero: behind the flag, and swapped for an empty stand-in in a store build.
+    expect(b.match(/TOKENBLASTER_ENABLED && <TerrornodeHero /g)?.length).toBe(2);
+    expect(src('../../vite.config.mobile.ts')).toContain("'src/mobile/games/TerrornodeHeroX.store.tsx'");
+    expect(src('./games/TerrornodeHeroX.store.tsx')).not.toMatch(/tokenblaster|webp/i);
     expect(src('./feed/feeds.ts')).toContain(
       "...(TOKENBLASTER_ENABLED ? ([['tokenblaster', 'TokenBlaster']] as Entry[]) : [])",
     );

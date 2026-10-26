@@ -1,4 +1,5 @@
 import { BGamesHero } from './games/BGamesHero';
+import { TerrornodeHero } from './games/TerrornodeHeroX';
 import {
   BSPACES_ENABLED,
   MARKET_ENABLED,
@@ -1011,6 +1012,8 @@ const BrowserPage = ({
   /** Round 8: all app screens as sections of one page, each with a sticky header (tap to rename). */
   const sectionsBody = () => (
     <>
+      {/* TERRORNODE hero opens the bApps page (owner P0, 26 Oct 2026). bWalletX only (TOKENBLASTER_ENABLED). */}
+      {TOKENBLASTER_ENABLED && <TerrornodeHero onPlay={(u) => go(u)} />}
       {appScreens.screens.map((x, i) => (
         <div key={i} data-apps-section={i} className="flex flex-col gap-3">
           {/* The Games section opens with the bGames hero (owner, 11 Oct 2026). */}
@@ -1146,6 +1149,7 @@ const BrowserPage = ({
     if (i === 1) {
       return (
         <>
+          {TOKENBLASTER_ENABLED && <TerrornodeHero onPlay={(u) => go(u)} />}
           {bappsStore()}
           {note(`Open a bApp to use it inside your wallet. ${UNOFFICIAL_NOTICE}`)}
         </>

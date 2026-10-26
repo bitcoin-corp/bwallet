@@ -61,6 +61,11 @@ if (STORE_CHANNEL) {
     __dirname,
     'src/mobile/games/gamesCatalogX.store.ts',
   );
+  // TERRORNODE hero on the bApps page: not in the store bundle, art included.
+  MOBILE_SWAPS[resolve(__dirname, 'src/mobile/games/TerrornodeHeroX.tsx')] = resolve(
+    __dirname,
+    'src/mobile/games/TerrornodeHeroX.store.tsx',
+  );
   // TokenBlaster shop and theme packs in the Store: not in the store bundle, art included.
   MOBILE_SWAPS[resolve(__dirname, 'src/mobile/theme/tokenblasterX.ts')] = resolve(
     __dirname,
