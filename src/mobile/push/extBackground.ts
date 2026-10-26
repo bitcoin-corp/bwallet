@@ -29,6 +29,9 @@ sw.addEventListener('notificationclick', (event) => {
   const query = r ? `?${routeToQuery(r)}` : '';
   event.waitUntil(
     (async () => {
+      // A live meeting_invite also opens the bChatX room page in a tab (owner, 26 Oct 2026). openUrl is only ever a
+      // https://www.bchatx.com/room/<TICKER> rebuilt by logic.ts meetingRoute, never the payload's own url.
+      if (r?.openUrl) await chrome.tabs.create({ url: r.openUrl }).catch(() => undefined);
       const pages = await sw.clients.matchAll({ type: 'window', includeUncontrolled: true });
       const panel = pages.find((c) => /\/index\.html/.test(new URL(c.url).pathname));
       if (panel) {

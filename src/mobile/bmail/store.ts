@@ -246,6 +246,34 @@ export const takeBMailComposeTo = () => {
   composeTo = null;
   return t;
 };
+/**
+ * Owner, 26 Oct 2026: a compose link (meeting.ts parseComposeLink) opens Compose pre-filled; the user reviews it and
+ * presses Send, which is the normal send path (postage, approval). Nothing is ever sent from here.
+ */
+export type BMailDraftRequest = { to?: string; subject?: string; body?: string };
+let composeDraft: BMailDraftRequest | null = null;
+export const openBMailDraft = (d: BMailDraftRequest) => {
+  composeDraft = { ...d };
+  openBMail();
+};
+export const takeBMailDraft = () => {
+  const d = composeDraft;
+  composeDraft = null;
+  return d;
+};
+/** A meeting_invite tap before the meeting: the Inbox, on the invite for this room when it can be found. */
+let meetingTicker: string | null = null;
+export const openBMailMeeting = (ticker: string) => {
+  meetingTicker = ticker;
+  openBMail();
+};
+export const takeBMailMeeting = () => {
+  const t = meetingTicker;
+  meetingTicker = null;
+  return t;
+};
+/** Something is waiting for the bMail screen (asked for before the top bar was mounted, e.g. at launch). */
+export const bmailRequestPending = () => !!(composeTo || composeDraft || meetingTicker);
 export const openBMail = () => {
   try {
     window.dispatchEvent(new Event(OPEN_BMAIL_EVENT));

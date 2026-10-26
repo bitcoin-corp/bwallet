@@ -21,6 +21,8 @@ import { requestChatRoom } from '../chat/nav';
 import { isNative } from '../native';
 import { parseThemeLink } from '../theme/themeLink';
 import { requestThemeSheet } from '../theme/themeNav';
+import { parseComposeLink } from '../bmail/meeting';
+import { openBMailDraft } from '../bmail/store';
 import { parseAppLink, parsePage, parseSpaceInvite, type AppLink, type RoomPage } from './invite';
 
 const ROOM_LINKS = tokenRoomsEnabled();
@@ -35,6 +37,10 @@ export const offerAppLink = (url?: string | null) => {
   // bwalletx://theme/<pack> (bwalletx.com/themes Install): Theme › App colours offers that pack, every build.
   const theme = parseThemeLink(url);
   if (theme) return requestThemeSheet(theme);
+  // bwalletx://mail/compose?to=&subject=&body= (bChatX meeting invites, owner 26 Oct 2026): Compose, pre-filled.
+  // Every build. The user presses Send; nothing is sent from a link.
+  const compose = parseComposeLink(url);
+  if (compose) return openBMailDraft(compose);
   // Room X invite (…/i/x/<code>#k=…): the key stays in memory until the Chat claim screen takes it.
   // A build without X invites (Play / App Store) never swallows one: bchatx.com's web page opens instead.
   if (!XINVITES_ENABLED) {

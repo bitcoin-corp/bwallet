@@ -5,7 +5,7 @@
  */
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { OPEN_BMAIL_EVENT } from '../bmail/store';
+import { bmailRequestPending, OPEN_BMAIL_EVENT } from '../bmail/store';
 import { TabBadge } from '../../components/TabBadge';
 import { badgeLabel } from '../tabs/tabBadges';
 import { useBMailBadge } from '../tabs/useTabBadges';
@@ -27,6 +27,8 @@ export const AirdropsNavButton = ({ color, ring }: { color: string; ring: string
       navigate(BMAIL_ROUTE);
     };
     window.addEventListener(OPEN_BMAIL_EVENT, on);
+    // A compose link or meeting tap that arrived before this bar mounted (launch, before unlock) (owner, 26 Oct 2026).
+    if (bmailRequestPending()) on();
     return () => window.removeEventListener(OPEN_BMAIL_EVENT, on);
   }, [navigate, onMail]);
   return (

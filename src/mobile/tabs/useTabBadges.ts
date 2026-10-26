@@ -4,6 +4,7 @@ import { useAirdrops } from '../airdrops/useAirdrops';
 import { useBMailUnread } from '../bmail/useBMail';
 import { loadSession, SESSION_EVENT } from '../chat/api';
 import { roomKeyOf, useListPrefs } from '../chat/listPrefs';
+import { setIconBadge } from './iconBadge';
 import { badgesVersion, chatUnread, chatUnreadSplit, feedNew, markFeedViewed, subscribeBadges } from './tabBadges';
 
 /** The signed-in chat handle (null when signed out), live across sign in / out. */
@@ -32,7 +33,10 @@ export const useTabBadges = () => {
   const [prefs] = useListPrefs(handle);
   const muted = new Set(prefs.muted);
   const chat = handle ? chatUnread((t) => muted.has(roomKeyOf(t))) : 0;
-  return { chat, feed: feedNew(), bmail: useBMailBadge() };
+  const bmail = useBMailBadge();
+  // The extension's toolbar icon shows the same bMail number (iconBadge.ts; a no-op outside the extension).
+  useEffect(() => setIconBadge(bmail), [bmail]);
+  return { chat, feed: feedNew(), bmail };
 };
 
 /** bMail's count: new airdrops plus unread mail (the same number as the top-bar mailbox). */

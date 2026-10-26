@@ -5,6 +5,7 @@
  * Mentions (bell: All / Mentions / Off), DMs always notify, message previews off by default.
  */
 import type { Channel } from '../channel';
+import { bchatxRoomTicker, bchatxRoomUrl, meetingPhase } from '../bmail/meeting';
 
 export const PUSH_ORIGIN = 'https://push.bwalletx.com';
 
@@ -65,7 +66,17 @@ export const deviceBody = (o: {
 /** 'signins' = Settings › Chat › Recent sign-ins (the "New sign-in to bChat" alert); ticker is ''. */
 /** `space`: ticker is the Space slug (push kind space_live → bwalletx://space/<slug>). */
 /** `partner`: a partnership's shared account request (kind partner_account_*, url /m/lock); id = the request. */
-export type PushRoute = { segment: 'rooms' | 'dms' | 'signins' | 'space' | 'partner'; ticker: string; id?: string };
+/**
+ * `mail`: the bMail Inbox, opening the meeting invite for room `ticker` when it is there (kind meeting_invite before
+ * the meeting starts). `openUrl`: a bChatX room page to ALSO open in a browser tab (meeting already live; Desktop and
+ * the extension only, PushEngine.tsx). Owner, 26 Oct 2026.
+ */
+export type PushRoute = {
+  segment: 'rooms' | 'dms' | 'signins' | 'space' | 'partner' | 'mail';
+  ticker: string;
+  id?: string;
+  openUrl?: string;
+};
 const REQUEST_ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 const SPACE_SLUG_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -82,9 +93,13 @@ const truthy = (v: unknown) => v === true || v === 'true' || v === '1';
  * The room a notification is about: data.ticker (or data.room, or a `/room/<TICKER>` url), as a DM
  * when data.dm is set. Null when it isn't about a room (calls ring through CallScreen instead).
  */
-export const routeFromData = (data: Record<string, unknown> | null | undefined): PushRoute | null => {
+export const routeFromData = (
+  data: Record<string, unknown> | null | undefined,
+  now: number = Date.now(),
+): PushRoute | null => {
   if (!data || typeof data !== 'object') return null;
   if (data.kind === 'call') return null;
+  if (data.kind === 'meeting_invite') return meetingRoute(data, now);
   if (data.kind === 'sign_in') return { segment: 'signins', ticker: '' };
   if (data.kind === 'space_live') {
     // Prefer url (bwalletx://space/<slug>), fall back to slug.
@@ -108,6 +123,20 @@ export const routeFromData = (data: Record<string, unknown> | null | undefined):
   return { segment: truthy(data.dm) ? 'dms' : 'rooms', ticker };
 };
 
+/**
+ * meeting_invite {ticker, startsAt (ISO), durationMin, url}: live → the room now (plus the bChatX page on Desktop and
+ * the extension); not started yet, over, or no usable start → the bMail Inbox on that invite (owner, 26 Oct 2026).
+ */
+export const meetingRoute = (data: Record<string, unknown>, now: number): PushRoute | null => {
+  const ticker = normTicker(data.ticker) ?? bchatxRoomTicker(data.url);
+  if (!ticker) return null;
+  const startsAt = typeof data.startsAt === 'string' ? Date.parse(data.startsAt) : NaN;
+  const phase = meetingPhase(startsAt, Number(data.durationMin), now);
+  if (phase !== 'live') return { segment: 'mail', ticker };
+  // Only ever a bchatx.com room page, rebuilt from the ticker: data.url itself is never opened.
+  return { segment: 'rooms', ticker, openUrl: bchatxRoomUrl(ticker) };
+};
+
 /** Web Push click → `?push=dms:ABC` on the page it opens, read back with routeFromQuery. */
 export const routeToQuery = (r: PushRoute) =>
   `push=${r.segment}:${encodeURIComponent(r.ticker)}${r.segment === 'partner' && r.id ? `/${r.id}` : ''}`;
@@ -116,6 +145,9 @@ export const routeFromQuery = (search: string): PushRoute | null => {
   if (v === 'signins:' || v === 'signins') return { segment: 'signins', ticker: '' };
   const sp = v ? /^space:([A-Za-z0-9_-]{1,64})$/.exec(v) : null;
   if (sp) return { segment: 'space', ticker: sp[1] };
+  const ml = v ? /^mail:(.+)$/.exec(v) : null;
+  const mt = ml ? normTicker(ml[1]) : null;
+  if (mt) return { segment: 'mail', ticker: mt };
   const pa = v ? /^partner:([^/]+)(?:\/([A-Za-z0-9-]{1,64}))?$/.exec(v) : null;
   const pt = pa ? normTicker(pa[1]) : null;
   if (pa && pt) return pa[2] ? { segment: 'partner', ticker: pt, id: pa[2] } : { segment: 'partner', ticker: pt };

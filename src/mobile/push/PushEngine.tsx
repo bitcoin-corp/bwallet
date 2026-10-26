@@ -11,12 +11,25 @@ import { routeFromQuery, type PushRoute } from './logic';
 import { onPushRoute, syncPush, takeRouteFrom } from './register';
 import { offerAppLink } from '../spaces/inviteLinks';
 import { requestPartnerRequest } from '../placement/partnership/openRequest';
+import { openBMailDraft, openBMailMeeting } from '../bmail/store';
+import { COMPOSE_QUERY_KEYS, parseComposeQuery } from '../bmail/meeting';
+import { IS_EXTENSION } from '../extension';
+import { isTauri } from '../webApp';
 
 /**
  * App-wide, renders nothing (mounted next to NotifyEngine, vite.config.mobile.ts): keeps this device's
  * push registration in step with the bChat sign-in of the current account, and opens the room or DM a
  * tapped notification is about.
  */
+/** A new browser tab: Desktop via the Rust open_external (https only there too), the extension via window.open. */
+const openInBrowser = (url: string) => {
+  if (isTauri()) {
+    void import('../desktop/ipc').then((m) => m.openExternal(url)).catch(() => undefined);
+    return;
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+};
+
 const PushEngine = () => {
   const { chromeStorageService } = useServiceContext();
   // The context, not useBottomMenu: PushEngine mounts above <Router> (beside NotifyEngine), and
@@ -58,6 +71,11 @@ const PushEngine = () => {
       if (r.segment === 'space') return offerAppLink(`bwalletx://space/${r.ticker}`);
       // Shared account request: the Lock page › Partnership shares, scrolled to the request.
       if (r.segment === 'partner') return requestPartnerRequest(r.ticker, r.id ?? null);
+      // meeting_invite before it starts: the bMail Inbox, on the invite (owner, 26 Oct 2026).
+      if (r.segment === 'mail') return openBMailMeeting(r.ticker);
+      // A live meeting on Desktop or the extension also opens the bChatX room page (logic.ts meetingRoute builds
+      // openUrl from the ticker; it is always https://www.bchatx.com/room/<TICKER>).
+      if (r.openUrl && (IS_EXTENSION || isTauri())) openInBrowser(r.openUrl);
       handleSelect(asMenuItem('chat'));
       requestRoomByTicker(r.ticker, r.segment === 'dms');
     };
@@ -70,6 +88,14 @@ const PushEngine = () => {
         url.searchParams.delete('push');
         window.history.replaceState(null, '', url.toString());
         takeRouteFrom(r);
+      }
+      // Web compose link (?mail=compose&to=&subject=&body=, owner 26 Oct 2026): Compose pre-filled, never sent.
+      const compose = parseComposeQuery(window.location.search);
+      if (compose) {
+        const url = new URL(window.location.href);
+        COMPOSE_QUERY_KEYS.forEach((k) => url.searchParams.delete(k));
+        window.history.replaceState(null, '', url.toString());
+        openBMailDraft(compose);
       }
     } catch {
       /* no location */

@@ -173,6 +173,18 @@ export const initPushTaps = () => {
       lights: true,
       vibration: true,
     }).catch(() => undefined);
+  // Meeting invites (owner, 26 Oct 2026): their own channel so they can be silenced apart from chat. The push
+  // server (bwalletx-push deliver.ts) sends kind meeting_invite on this channel id.
+  if (PUSH_PLATFORM === 'android')
+    void PushNotifications.createChannel({
+      id: 'meeting_invite',
+      name: 'Meeting invites',
+      description: 'Meeting invites and when a meeting starts',
+      importance: 4,
+      visibility: 0,
+      lights: true,
+      vibration: true,
+    }).catch(() => undefined);
 };
 
 const getNativeToken = (): Promise<string> => {

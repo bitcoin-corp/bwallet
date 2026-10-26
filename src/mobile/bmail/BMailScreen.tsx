@@ -83,7 +83,9 @@ import {
   type TierId,
 } from './route';
 import type { Received, Sent } from './store';
-import { OPEN_BMAIL_EVENT, takeBMailComposeTo } from './store';
+import { OPEN_BMAIL_EVENT, takeBMailComposeTo, takeBMailDraft, takeBMailMeeting } from './store';
+import { canJoinMeeting, findMeetingLink, MEETING_EARLY_MS } from './meeting';
+import { takeRouteFrom } from '../push/register';
 import { useBMail } from './useBMail';
 import { PULL_THRESHOLD, usePullToRefresh } from './usePullToRefresh';
 import { BMAIL_OFFLINE_ACTION, friendlyMailError } from './friendlyError';
@@ -116,7 +118,8 @@ const f = (u: string, i?: RequestInit) => fetch(u, i);
 const AgreementsBox = BUREAU_ENABLED ? lazy(() => import('../bureau/AgreementsBox')) : null;
 
 type Tab = 'inbox' | 'requests' | 'sent' | 'archive' | 'quarantine' | 'bin';
-type Draft = { to?: string; toLabel?: string; subject?: string; inReplyTo?: string; credit?: boolean };
+/** `body`: a compose link's pre-filled text (meeting.ts); the user still reviews and presses Send (owner, 26 Oct 2026). */
+type Draft = { to?: string; toLabel?: string; subject?: string; body?: string; inReplyTo?: string; credit?: boolean };
 
 const btn = 'min-h-[44px] rounded-lg px-4 py-2 text-sm font-semibold bg-[#2b2f36] text-white';
 const gold = 'min-h-[44px] rounded-lg px-4 py-2 text-sm font-bold';
@@ -506,6 +509,47 @@ const ExampleReader = ({ e, onHide, onDelete }: { e: ExampleMail; onHide: () => 
   </div>
 );
 
+/**
+ * "Join meeting" for a letter that links a bChatX room (owner, 26 Oct 2026). On from 10 minutes before its stated
+ * start (always on when none is stated). Opens the room in the app; Desktop and the extension also open the bChatX
+ * page (PushEngine.tsx), always the canonical https://www.bchatx.com/room/<TICKER> rebuilt from the ticker.
+ */
+const JoinMeeting = ({ body }: { body: string }) => {
+  const link = useMemo(() => findMeetingLink(body), [body]);
+  const [now, setNow] = useState(() => Date.now());
+  const open = link ? canJoinMeeting(link.startsAt, now) : false;
+  useEffect(() => {
+    if (!link?.startsAt || open) return;
+    const t = window.setTimeout(
+      () => setNow(Date.now()),
+      Math.min(60_000, Math.max(1_000, link.startsAt - MEETING_EARLY_MS - Date.now())),
+    );
+    return () => window.clearTimeout(t);
+  }, [link, open, now]);
+  if (!link) return null;
+  const when = link.startsAt
+    ? new Date(link.startsAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+    : '';
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        disabled={!open}
+        onClick={() => takeRouteFrom({ segment: 'rooms', ticker: link.ticker, openUrl: link.url })}
+        className={gold}
+        style={{ background: GOLD, opacity: open ? 1 : 0.5 }}
+      >
+        Join meeting
+      </button>
+      {when && (
+        <span className="text-[11px]" style={{ color: MUTED }}>
+          {open ? `Started or starting at ${when}` : `Opens 10 minutes before ${when}`}
+        </span>
+      )}
+    </div>
+  );
+};
+
 const Reader = ({
   r,
   label,
@@ -579,6 +623,7 @@ const Reader = ({
             )}
           </div>
           {mail.ordinal && <ReceivedNft r={r} ordinal={mail.ordinal} />}
+          <JoinMeeting body={mail.body} />
           {!trusted && mailSegments(mail.body, false).some((x) => x.link) && (
             <div className="flex items-center gap-2 text-[11px]" style={{ color: MUTED }}>
               <span className="flex-1">Links from senders you haven&apos;t trusted are shown as text only.</span>
@@ -638,7 +683,7 @@ const Compose = ({
     draft.to ? { key: draft.to, label: draft.toLabel ?? shortKey(draft.to), priceSats: 0 } : null,
   );
   const [subject, setSubject] = useState(draft.subject ?? '');
-  const [body, setBody] = useState('');
+  const [body, setBody] = useState(draft.body ?? '');
   const [tier, setTier] = useState<TierId | 'free'>(draft.credit ? 'free' : 'standard');
   const [replyPaid, setReplyPaid] = useState(false);
   const [busy, setBusy] = useState('');
@@ -942,6 +987,7 @@ export const BMailScreen = ({ onClose, initialTab = 'inbox' }: { onClose: () => 
   const [example, setExample] = useState<ExampleMail | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [settings, setSettings] = useState(false);
+  const [meetingWanted, setMeetingWanted] = useState<string | null>(null);
   // Examples are remembered per account (owner, 19 Oct): Delete all / Delete one persist; Settings brings them back.
   const { chromeStorageService } = useServiceContext();
   const acct = chromeStorageService.getCurrentAccountObject().account?.addresses?.identityAddress ?? '';
@@ -961,11 +1007,31 @@ export const BMailScreen = ({ onClose, initialTab = 'inbox' }: { onClose: () => 
     const take = () => {
       const to = takeBMailComposeTo();
       if (to) setDraft({ toLabel: to });
+      // A compose link (bChatX meeting invite): the fields filled in, the recipient still looked up on Send.
+      const d = takeBMailDraft();
+      if (d) setDraft({ toLabel: d.to, subject: d.subject, body: d.body });
+      // A meeting_invite tap before the meeting: the Inbox, on that invite when it has been opened here before.
+      const ticker = takeBMailMeeting();
+      if (ticker) {
+        setDraft(null);
+        setTab('inbox');
+        setMeetingWanted(ticker);
+      }
     };
     take();
     window.addEventListener(OPEN_BMAIL_EVENT, take);
     return () => window.removeEventListener(OPEN_BMAIL_EVENT, take);
   }, []);
+  // The invite for a tapped meeting_invite: the newest opened letter linking that bChatX room. Unopened letters can't
+  // be matched (their subject and body are sealed), so then the Inbox simply stays open.
+  useEffect(() => {
+    if (!meetingWanted) return;
+    const hit = [...m.boxes.inbox, ...m.boxes.requests]
+      .filter((r) => r.opened && findMeetingLink(r.opened.body)?.ticker === meetingWanted)
+      .sort((a, b) => b.at - a.at)[0];
+    if (hit) setReading(hit);
+    if (hit || !m.loading) setMeetingWanted(null);
+  }, [meetingWanted, m.boxes, m.loading]);
   // bPhone friends only (owner, 9 Oct): people I wrote to are not pinned for that alone.
   const isContact = (k: string) => isCallFriend(k);
   const myPriceSats = m.priceSats;

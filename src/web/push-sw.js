@@ -28,6 +28,21 @@ const routeQuery = (d) => {
   if (!d || d.kind === 'call') return '';
   // "New sign-in to bChat" → Settings › Chat › Recent sign-ins (src/mobile/push/logic.ts).
   if (d.kind === 'sign_in') return 'push=signins:';
+  // Meeting invite (owner, 26 Oct 2026; logic.ts meetingRoute): live → the room, otherwise the bMail Inbox on it.
+  if (d.kind === 'meeting_invite') {
+    let mt = typeof d.ticker === 'string' ? d.ticker : '';
+    if (!mt && typeof d.url === 'string') {
+      const mm = /^https:\/\/(?:www\.)?bchatx\.com\/room\/([^/?#]+)/.exec(d.url);
+      if (mm) mt = decodeURIComponent(mm[1]);
+    }
+    mt = mt.trim().replace(/^\$/, '').toUpperCase();
+    if (!/^[A-Z0-9_.-]{1,64}$/.test(mt)) return '';
+    const start = typeof d.startsAt === 'string' ? Date.parse(d.startsAt) : NaN;
+    const mins = Number(d.durationMin) > 0 ? Number(d.durationMin) : 60;
+    const now = Date.now();
+    const live = Number.isFinite(start) && now >= start && now < start + mins * 60000;
+    return `push=${live ? 'rooms' : 'mail'}:${encodeURIComponent(mt)}`;
+  }
   let t = typeof d.ticker === 'string' ? d.ticker : typeof d.room === 'string' ? d.room : '';
   if (!t && typeof d.url === 'string') {
     const m = /\/room\/([^/?#]+)/.exec(d.url);

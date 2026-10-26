@@ -156,6 +156,18 @@ export const PushSettings = ({ Toggle }: { Toggle: ToggleC }) => {
               />
             }
           />
+          {/* Owner, 26 Oct 2026: bChatX meeting invites (push kind meeting_invite), on unless turned off. */}
+          <Row
+            label="Meeting invites"
+            sub="A notification when you're invited to a meeting, and a tap that joins it once it starts."
+            right={
+              <Toggle
+                label="Meeting invites"
+                on={prefs.categories.meeting_invite !== false}
+                onChange={(v) => void save({ ...prefs, categories: { ...prefs.categories, meeting_invite: v } })}
+              />
+            }
+          />
           <Row
             label="Quiet hours"
             sub="No notifications in these hours (calls still ring)."
