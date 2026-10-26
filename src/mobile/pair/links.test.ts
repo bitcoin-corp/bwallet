@@ -27,7 +27,23 @@ mock.module('@capacitor/app', () => ({
   },
 }));
 
-const { isPairLink, onPairLink, takePairLink } = await import('./links');
+const { isPairLink, onPairLink, pairLinkFrom, takePairLink } = await import('./links');
+
+describe('pairLinkFrom (pair.html "Open in the app" and the web wallet entry)', () => {
+  const Q = 'v=1&r=relay.bwallet.space&c=abc&ret=https%3A%2F%2Fx.example%2F&rid=r1d_r1d_r1d_r1d_r1d_r1';
+  test('the https link, bwalletx://pair and the web wallet bwxpair entry all become the https pairing link', () => {
+    const https = `https://www.bwallet.space/pair?${Q}`;
+    expect(pairLinkFrom(https)).toBe(https);
+    expect(pairLinkFrom(`bwalletx://pair?${Q}`)).toBe(https);
+    expect(pairLinkFrom(`https://web.bwalletx.com/m/settings?bwxpair=1&${Q}`)).toBe(https);
+  });
+  test('other links are not pairing links', () => {
+    expect(pairLinkFrom('bwalletx://social#x')).toBeNull();
+    expect(pairLinkFrom('bwallet://evil.example/pair')).toBeNull();
+    expect(pairLinkFrom('https://web.bwalletx.com/m/settings?bwxauth=1')).toBeNull();
+    expect(pairLinkFrom('not a url')).toBeNull();
+  });
+});
 
 describe('isPairLink', () => {
   test('accepts the pairing links bit-sign and bWalletX produce', () => {

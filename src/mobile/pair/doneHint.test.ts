@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { switchBackHint } from './doneHint';
+import { returnHint, switchBackHint } from './doneHint';
+
+describe('PairSheet done hint with a return', () => {
+  test('apps go back on their own; the web wallet asks for a tap and to stay open', () => {
+    expect(returnHint('www.tokenblaster.lol', false)).toContain('Taking you back to www.tokenblaster.lol');
+    expect(returnHint('www.tokenblaster.lol', true)).toContain('Tap Return to carry on at www.tokenblaster.lol');
+    expect(returnHint('www.tokenblaster.lol', true)).toContain('Keep this tab open');
+  });
+});
 
 describe('PairSheet done hint', () => {
   test('iOS says Safari, others "your browser", with the host', () => {

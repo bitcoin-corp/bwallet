@@ -933,6 +933,56 @@ public class YoursNativePlugin extends Plugin {
         call.resolve(out);
     }
 
+    /**
+     * Return-to-site after a phone pairing (src/pair/returnTo.ts): open an intent://…#Intent;scheme=https;package=…;
+     * S.browser_fallback_url=…;end URL in the browser the user came from. Only an https VIEW of a browsable URL is
+     * started (no component, selector or extras are copied); if that browser is gone, the https fallback opens in the
+     * default browser.
+     */
+    @PluginMethod
+    public void openIntentUri(PluginCall call) {
+        String uri = call.getString("uri");
+        if (uri == null || !uri.startsWith("intent://")) {
+            call.reject("Must provide an intent:// url");
+            return;
+        }
+        Intent parsed;
+        try {
+            parsed = Intent.parseUri(uri, Intent.URI_INTENT_SCHEME);
+        } catch (Exception e) {
+            call.reject("Bad intent url");
+            return;
+        }
+        Uri data = parsed.getData();
+        String fallback = parsed.getStringExtra("browser_fallback_url");
+        if (data == null || !"https".equals(data.getScheme())) {
+            call.reject("Return must be https");
+            return;
+        }
+        Intent view = new Intent(Intent.ACTION_VIEW, data);
+        view.addCategory(Intent.CATEGORY_BROWSABLE);
+        view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (parsed.getPackage() != null) view.setPackage(parsed.getPackage());
+        try {
+            getContext().startActivity(view);
+            call.resolve();
+            return;
+        } catch (android.content.ActivityNotFoundException e) {
+            // that browser isn't installed: fall through to the https fallback
+        }
+        Uri fb = fallback != null ? Uri.parse(fallback) : data;
+        if (!"https".equals(fb.getScheme())) fb = data;
+        try {
+            Intent plain = new Intent(Intent.ACTION_VIEW, fb);
+            plain.addCategory(Intent.CATEGORY_BROWSABLE);
+            plain.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(plain);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("No browser to return to");
+        }
+    }
+
     /** Open this app's details page in Android Settings (Permissions lives there). */
     @PluginMethod
     public void openAppSettings(PluginCall call) {

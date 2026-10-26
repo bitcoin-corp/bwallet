@@ -55,6 +55,8 @@ export interface YoursNativePlugin {
 
   /** Open this app's page in the OS Settings app (iOS: app-settings:, Android: app details). */
   openAppSettings(): Promise<void>;
+  /** Android: open an intent://…;scheme=https;package=… return URL (pair/openReturn.ts); https fallback inside. */
+  openIntentUri?(opts: { uri: string }): Promise<void>;
   /** iOS: AVCaptureDevice access for the mic or camera; prompts the first time. */
   mediaAccess(opts: { kind: 'mic' | 'camera' }): Promise<{ granted: boolean }>;
 

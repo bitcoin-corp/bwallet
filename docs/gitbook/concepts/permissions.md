@@ -51,7 +51,13 @@ When the phone rejoins the relay it sends `{ t: 'ready' }` again: resend anythin
 that already approved its identity key gets it with no sheet (the reconnect sheet never applies to a phone pairing).
 
 To open a pairing straight in bWalletX, link to `https://www.bwallet.space/pair?…` with the same query as the QR code
-(iOS universal link / Android app link). If the app isn't installed, send people to `https://bwalletx.com/get`.
+(iOS universal link / Android app link). If the app isn't installed, that page offers the app, the web wallet and
+the store on a phone (never a QR).
+
+To bring the user back to your page after they tap Connect, add `ret`, `rid`, `b` and the v2 proof `s2` to the link
+(keep `v=1` and `s`). The wallet then opens `ret#bwx=ok&rid=<rid>` in the browser named by `b`. Field names, the
+signed string, an example link and the exact rules are at the top of
+[`docs/PAIRING-ORIGIN-PROOF.md`](../../PAIRING-ORIGIN-PROOF.md).
 
 ```ts
 try {

@@ -29,8 +29,28 @@ export const isAllowedRelay = (relay: string, allowLocal = false) =>
 export type Role = 'site' | 'wallet';
 export type WalletInfo = { name: string; icon?: string; rdns: string };
 
-/** `s` (optional): the site's origin proof, a DER signature (hex) over pairProofMessage by a key in its well-known file. */
-export type PairLink = { v: string; r: string; c: string; k: string; o: string; e: number; s?: string };
+/** Browser hints a v2 link may carry (`b`): which browser the wallet should return the user to. */
+export const BROWSER_HINTS = ['safari', 'chrome', 'firefox', 'samsung', 'edge', 'brave', 'other'] as const;
+export type BrowserHint = (typeof BROWSER_HINTS)[number];
+
+/**
+ * `s` (optional): the site's v1 origin proof, a DER signature (hex) over pairProofMessage by a key in its well-known
+ * file. v2 return fields (docs/PAIRING-ORIGIN-PROOF.md, all optional, ignored by older wallets): `ret` the https URL to
+ * send the user back to, `rid` a one-time request id, `b` a browser hint, `s2` the v2 proof binding them.
+ */
+export type PairLink = {
+  v: string;
+  r: string;
+  c: string;
+  k: string;
+  o: string;
+  e: number;
+  s?: string;
+  ret?: string;
+  rid?: string;
+  b?: BrowserHint;
+  s2?: string;
+};
 
 /** Plaintext messages inside encrypted frames. */
 export type PairMessage =
@@ -69,6 +89,10 @@ export const newChannel = () => b64url(crypto.getRandomValues(new Uint8Array(16)
 export function pairUrl(link: PairLink): string {
   const q = new URLSearchParams({ v: link.v, r: link.r, c: link.c, k: link.k, o: link.o, e: String(link.e) });
   if (link.s) q.set('s', link.s);
+  if (link.ret) q.set('ret', link.ret);
+  if (link.rid) q.set('rid', link.rid);
+  if (link.b) q.set('b', link.b);
+  if (link.s2) q.set('s2', link.s2);
   return `https://${PAIR_HOST}/pair?${q}`;
 }
 
@@ -96,6 +120,15 @@ export function parsePairUrl(
   if (!Number.isFinite(link.e) || link.e < nowS) throw new Error('This code has expired. Ask the site for a new one.');
   const sig = g('s');
   if (sig && /^30[0-9a-f]{10,150}$/i.test(sig)) link.s = sig.toLowerCase();
+  // v2 return fields: malformed ones are dropped (the link still pairs, just without a return), never fatal.
+  const ret = g('ret');
+  if (ret && ret.length <= RET_MAX_BYTES) link.ret = ret;
+  const rid = g('rid');
+  if (RID_RE.test(rid)) link.rid = rid;
+  const b = g('b').toLowerCase();
+  if ((BROWSER_HINTS as readonly string[]).includes(b)) link.b = b as BrowserHint;
+  const sig2 = g('s2');
+  if (sig2 && /^30[0-9a-f]{10,150}$/i.test(sig2)) link.s2 = sig2.toLowerCase();
   return link;
 }
 
@@ -104,6 +137,11 @@ export function parsePairUrl(
 // origin by publishing pairing keys at https://<origin>/.well-known/bwalletx-pair.json ({"keys":["02…"]}), fetched by
 // the phone itself over TLS, and putting in the QR a signature by one of them over the channel, its ephemeral key,
 // the origin and the expiry. Without a valid proof the wallet shows the host as "claims to be".
+
+/** v2 limits: the return URL is at most 512 bytes; the request id is 16–64 base64url characters (16 random bytes = 22). */
+export const RET_MAX_BYTES = 512;
+export const RID_RE = /^[A-Za-z0-9_-]{16,64}$/;
+export const PAIR_INFO_V2 = 'bwallet-pair-v2';
 
 export const PAIR_PROOF_PATH = '/.well-known/bwalletx-pair.json';
 const PROOF_MAX_BYTES = 8 * 1024;
@@ -117,14 +155,39 @@ export const pairProofMessage = (l: Pick<PairLink, 'c' | 'k' | 'o' | 'e'>) =>
 export const signPairProof = (l: Pick<PairLink, 'c' | 'k' | 'o' | 'e'>, originKey: PrivateKey) =>
   Utils.toHex(originKey.sign(pairProofMessage(l)).toDER() as number[]);
 
-/** True only when the link's signature checks against a key the origin itself publishes. Never throws. */
+type V2Fields = Pick<PairLink, 'c' | 'k' | 'o' | 'e'> & { ret: string; rid: string; b?: string };
+/**
+ * v2: also binds the return URL, the request id and the browser hint, so none of them can be swapped on a real
+ * site's link. `b` is empty when the link has none.
+ */
+export const pairProofMessageV2 = (l: V2Fields) =>
+  Utils.toArray(
+    `${PAIR_INFO_V2}|proof|${l.c}|${l.k.toLowerCase()}|${l.o}|${l.e}|${l.ret}|${l.rid}|${l.b ?? ''}`,
+    'utf8',
+  );
+
+/** Site side: the v2 proof (`s2`). Sites send it next to `s`, so older wallets still see the v1 proof. */
+export const signPairProofV2 = (l: V2Fields, originKey: PrivateKey) =>
+  Utils.toHex(originKey.sign(pairProofMessageV2(l)).toDER() as number[]);
+
+/** True only when the link's v1 signature checks against a key the origin itself publishes. Never throws. */
 export async function verifyPairProof(link: PairLink, f: typeof fetch = fetch): Promise<boolean> {
-  if (!link.s) return false;
+  return (await verifyPairProofs(link, f)).v1;
+}
+
+/**
+ * Both proofs with one fetch of the well-known file. `v2` is true only when `s2` signs this link's channel, key,
+ * origin, expiry, `ret`, `rid` and `b`. Never throws.
+ */
+export async function verifyPairProofs(link: PairLink, f: typeof fetch = fetch): Promise<{ v1: boolean; v2: boolean }> {
+  const no = { v1: false, v2: false };
+  const want2 = !!(link.s2 && link.ret && link.rid);
+  if (!link.s && !want2) return no;
   const ctl = typeof AbortController === 'function' ? new AbortController() : null;
   const timer = ctl ? setTimeout(() => ctl.abort(), PROOF_TIMEOUT_MS) : null;
   try {
     const o = new URL(link.o);
-    if (o.protocol !== 'https:') return false;
+    if (o.protocol !== 'https:') return no;
     const r = await f(`${o.origin}${PAIR_PROOF_PATH}`, {
       credentials: 'omit',
       cache: 'no-store',
@@ -132,18 +195,30 @@ export async function verifyPairProof(link: PairLink, f: typeof fetch = fetch): 
       referrerPolicy: 'no-referrer',
       ...(ctl ? { signal: ctl.signal } : {}),
     });
-    if (!r.ok || (r.url && new URL(r.url).origin !== o.origin)) return false;
+    if (!r.ok || (r.url && new URL(r.url).origin !== o.origin)) return no;
     const text = await r.text();
-    if (text.length > PROOF_MAX_BYTES) return false;
+    if (text.length > PROOF_MAX_BYTES) return no;
     const keys = (JSON.parse(text) as { keys?: unknown }).keys;
-    if (!Array.isArray(keys)) return false;
-    const sig = Signature.fromDER(link.s, 'hex');
-    const msg = pairProofMessage(link);
-    return keys
+    if (!Array.isArray(keys)) return no;
+    const pubs = keys
       .slice(0, 8)
-      .some((k) => typeof k === 'string' && /^0[23][0-9a-f]{64}$/i.test(k) && PublicKey.fromString(k).verify(msg, sig));
+      .filter((k): k is string => typeof k === 'string' && /^0[23][0-9a-f]{64}$/i.test(k))
+      .map((k) => PublicKey.fromString(k));
+    const check = (sigHex: string | undefined, msg: number[]) => {
+      if (!sigHex) return false;
+      try {
+        const sig = Signature.fromDER(sigHex, 'hex');
+        return pubs.some((p) => p.verify(msg, sig));
+      } catch {
+        return false;
+      }
+    };
+    return {
+      v1: check(link.s, pairProofMessage(link)),
+      v2: want2 && check(link.s2, pairProofMessageV2({ ...link, ret: link.ret!, rid: link.rid! })),
+    };
   } catch {
-    return false;
+    return no;
   } finally {
     if (timer) clearTimeout(timer);
   }

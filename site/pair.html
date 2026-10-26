@@ -53,6 +53,30 @@
       b {
         color: #fff;
       }
+      html:not([data-kind]) main {
+        visibility: hidden;
+      }
+      .phone,
+      html[data-kind='ios'] .desktop,
+      html[data-kind='android'] .desktop {
+        display: none;
+      }
+      html[data-kind='ios'] .phone,
+      html[data-kind='android'] .phone {
+        display: block;
+      }
+      .phone a.btn {
+        display: block;
+        margin-top: 12px;
+      }
+      .phone a.btn.alt {
+        background: #17191e;
+        color: #fff;
+        border: 1px solid #ffffff1f;
+      }
+      .small {
+        font-size: 13px;
+      }
       a.btn {
         display: inline-block;
         margin-top: 22px;
@@ -66,21 +90,41 @@
     </style>
   </head>
   <body>
+    <noscript
+      ><style>
+        main {
+          visibility: visible;
+        }
+      </style></noscript
+    >
     <main>
       <img src="/logo.svg" alt="bWallet" />
       <h1>Connect with bWallet</h1>
-      <p>This code connects a website on your computer to the bWallet app on your phone.</p>
-      <ol>
-        <li>Open <b>bWallet</b> on this phone.</li>
-        <li>Tap the <b>menu</b> (top left), then <b>Scan to connect a website</b>.</li>
-        <li>Scan the code on your computer again, check the 4-digit code matches, and tap <b>Connect</b>.</li>
-      </ol>
-      <p>
-        Using the <b>bWalletX Chrome extension</b>? It picks this link up and opens the pairing check in its side panel
-        (or open bWalletX and paste the link under <b>Connect the CLI / an AI assistant</b>).
-      </p>
-      <p>Codes expire after two minutes; the website shows a fresh one automatically.</p>
-      <a class="btn" href="/">Get bWallet</a>
+      <section class="desktop">
+        <p>This code connects a website on your computer to the bWallet app on your phone.</p>
+        <ol>
+          <li>Open <b>bWallet</b> on this phone.</li>
+          <li>Tap the <b>menu</b> (top left), then <b>Scan to connect a website</b>.</li>
+          <li>Scan the code on your computer again, check the 4-digit code matches, and tap <b>Connect</b>.</li>
+        </ol>
+        <p>
+          Using the <b>bWalletX Chrome extension</b>? It picks this link up and opens the pairing check in its side
+          panel (or open bWalletX and paste the link under <b>Connect the CLI / an AI assistant</b>).
+        </p>
+        <p>Codes expire after two minutes; the website shows a fresh one automatically.</p>
+        <a class="btn" href="/get">Get bWallet</a>
+      </section>
+      <section class="phone">
+        <p><b id="site-host">The website</b> wants to connect to your bWallet.</p>
+        <a class="btn" id="open-app" href="bwalletx://">Open in the bWallet app</a>
+        <a class="btn alt" id="open-web" href="https://web.bwalletx.com/">Use the web wallet</a>
+        <a class="btn alt" id="get-app" href="/get">Get bWallet</a>
+        <p class="small">
+          After you approve, bWallet takes you back to the website. Requests expire after two minutes; if this one has,
+          go back and tap Connect again.
+        </p>
+      </section>
     </main>
+    <script src="/pair.js"></script>
   </body>
 </html>
