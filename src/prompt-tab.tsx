@@ -24,7 +24,8 @@ import { UsbCheckRequestPage } from './pages/requests/UsbCheckRequest';
 import { BundleSheet, type BundlePayload } from './pages/requests/BundleSheet';
 import type { OneSatPromptStorageEntry } from './services/oneSatPrompt';
 import { sendMessageAsync } from './utils/chromeHelpers';
-import type { PromptKind, StreamGrantPrompt, UsbCheckRequest } from './promptProtocol';
+import type { MintPrivatePrompt, PromptKind, StreamGrantPrompt, UsbCheckRequest } from './promptProtocol';
+import { MintPrivateRequestPage } from './pages/requests/MintPrivateRequest';
 import { StreamGrantRequestPage } from './pages/requests/StreamGrantRequest';
 import { EnvelopeRequestPage } from './pages/requests/EnvelopeRequest';
 import { ENVELOPES_ENABLED } from './mobile/storeBuild';
@@ -46,7 +47,8 @@ type PromptScreen =
   | { kind: 'counterpartyPermission'; requestID: string; payload: CounterpartyPermissionRequest }
   | { kind: 'oneSatPermission'; requestID: string; payload: OneSatPromptStorageEntry }
   | { kind: 'usbCheck'; requestID: string; payload: UsbCheckRequest }
-  | { kind: 'streamGrant'; requestID: string; payload: StreamGrantPrompt };
+  | { kind: 'streamGrant'; requestID: string; payload: StreamGrantPrompt }
+  | { kind: 'mintPrivate'; requestID: string; payload: MintPrivatePrompt };
 
 /** The site a request screen is for (from the request the background checked), for the frame's origin strip. */
 const screenOriginator = (s: PromptScreen): string | undefined =>
@@ -376,6 +378,9 @@ const PromptApp = () => {
                 onResponse={() => void advance()}
               />
             ))}
+          {screen.kind === 'mintPrivate' && (
+            <MintPrivateRequestPage key={screen.requestID} request={screen.payload} onResponse={() => void advance()} />
+          )}
           {screen.kind === 'usbCheck' && (
             <UsbCheckRequestPage key={screen.requestID} request={screen.payload} onResponse={() => void advance()} />
           )}

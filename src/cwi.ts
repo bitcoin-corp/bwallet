@@ -7,6 +7,7 @@ import type { WalletInterface } from '@bsv/sdk';
 import { createCWI, CWIEventName } from '@1sat/wallet-browser';
 import { replyError } from './services/userDenied';
 import { attachSpendingAuthorization } from './spendingAuthPage';
+import { attachMintPrivate } from './mintPrivatePage';
 
 // Re-export for backwards compatibility
 export { CWIEventName };
@@ -34,6 +35,8 @@ const transport = (action: string, params: unknown) =>
 export const CWI: WalletInterface = createCWI(transport as Parameters<typeof createCWI>[0]);
 // bWalletX extension: streaming spending grants (services/streamGrants.ts, docs/STREAMING-PERMISSIONS.md).
 attachSpendingAuthorization(CWI as unknown as Record<string, unknown>);
+// bWalletX: wallet.mintPrivate (services/mintPrivateSite.ts).
+attachMintPrivate(CWI as unknown as Record<string, unknown>, transport);
 
 // Inject CWI on window
 if (typeof window !== 'undefined') {

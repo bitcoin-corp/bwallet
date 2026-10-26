@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { IS_TAURI, openExternal } from './desktop/ipc';
 import { isCWIEventName } from '@1sat/wallet-browser';
+import { isMintPrivateAction } from '../services/mintPrivateAction';
 import { YoursNative, isNative } from './native';
 import { MOBILE_EXTENSION_ID } from './protocol';
 import { isReservedHost } from '../services/adminOriginator';
@@ -87,7 +88,8 @@ export const handleSiteCall = async (origin: string, url: string, type: string, 
   if (!key.originator) throw new Error(key.error);
   // A site at http://yours-mobile/ would carry the wallet's own admin originator (security review H1).
   if (isReservedHost(o.host, MOBILE_EXTENSION_ID)) throw new Error('Reserved originator');
-  if (!isCWIEventName(type)) throw new Error(`Unsupported request: ${type}`);
+  // wallet.mintPrivate (services/mintPrivateSite.ts) is the one non-standard call sites may make here.
+  if (!isCWIEventName(type) && !isMintPrivateAction(type)) throw new Error(`Unsupported request: ${type}`);
   if (url.startsWith(o.origin)) lastUrls.set(o.origin, url);
   let chrome = contexts.get(o.origin);
   if (!chrome) {

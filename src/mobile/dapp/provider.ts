@@ -6,6 +6,7 @@
  */
 import { isCWIEventName } from '@1sat/wallet-browser';
 import { isSpendingAuthAction } from '../../services/streamGrants';
+import { isMintPrivateAction } from '../../services/mintPrivateAction';
 import { CustomListenerName, type RequestEventDetail, type RequestParams } from '../../inject';
 import { CWI } from '../../cwi';
 import { announceWallet } from '../../brand/discovery';
@@ -46,7 +47,7 @@ const send = (payload: string): Promise<string> => {
 
 self.addEventListener(CustomListenerName.YOURS_REQUEST, (e: Event) => {
   const { type, messageId, params: originalParams = {} } = (e as CustomEvent<RequestEventDetail>).detail;
-  if (!type || !(isCWIEventName(type) || isSpendingAuthAction(type))) return;
+  if (!type || !(isCWIEventName(type) || isSpendingAuthAction(type) || isMintPrivateAction(type))) return;
 
   let params: RequestParams = {};
   if (Array.isArray(originalParams)) params.data = originalParams;

@@ -6,7 +6,8 @@ export type PromptKind =
   | 'counterpartyPermission'
   | 'oneSatPermission'
   | 'usbCheck'
-  | 'streamGrant';
+  | 'streamGrant'
+  | 'mintPrivate';
 
 /** A gated wallet call is waiting for a registered USB key to be confirmed present. */
 export interface UsbCheckRequest {
@@ -34,6 +35,20 @@ export interface StreamGrantPrompt {
    * answer is the sats to put in, not an hourly cap. `balanceSats` is what the envelope already holds.
    */
   envelope?: { balanceSats: number };
+}
+
+/** A site asks to lock posts privately to the user (services/mintPrivateSite.ts MintPrivateSheet). */
+export interface MintPrivatePrompt {
+  requestID: string;
+  /** Browser-derived, never page-claimed. */
+  originator: string;
+  /** This call. */
+  posts: number;
+  sats: number;
+  txs: number;
+  /** A chunked run: the sheet approves the whole run. */
+  sequence?: { chunks: number; index: number; totalPosts?: number; totalSats: number; totalTxs: number };
+  usdPerBsv?: number;
 }
 
 export interface PromptRef {

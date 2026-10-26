@@ -10,6 +10,7 @@
  * Only origins in the bApps tile list may frame, and only the frame we created may call.
  */
 import { isCWIEventName } from '@1sat/wallet-browser';
+import { isMintPrivateAction, isMintPrivateCode } from '../../services/mintPrivateAction';
 import { USER_DENIED_CODE, USER_DENIED_MESSAGE, isUserDenied } from '../../services/userDenied';
 
 /** Exact origins (scheme://host[:port]) of the given URLs; invalid or non-https URLs are skipped. */
@@ -59,7 +60,7 @@ export const parseXdmRequest = (data: unknown): XdmRequest | null => {
   const d = data as Record<string, unknown>;
   if (d.type !== 'CWI' || d.isInvocation !== true) return null;
   if (typeof d.id !== 'string' || d.id.length === 0 || d.id.length > MAX_ID) return null;
-  if (typeof d.call !== 'string' || !isCWIEventName(d.call)) return null;
+  if (typeof d.call !== 'string' || !(isCWIEventName(d.call) || isMintPrivateAction(d.call))) return null;
   const args = d.args === undefined ? {} : d.args;
   if (typeof args !== 'object' || args === null || Array.isArray(args)) return null;
   return { id: d.id, call: d.call, args: args as Record<string, unknown> };
@@ -85,6 +86,9 @@ export const toXdmResponse = (id: string, reply: unknown) => {
       code: USER_DENIED_CODE,
     } as const;
   const description = typeof r.error === 'string' && r.error ? r.error : 'Request failed';
+  // wallet.mintPrivate refusals keep their code so the site can read it (services/mintPrivateAction.ts).
+  if (isMintPrivateCode(r.code))
+    return { type: 'CWI', isInvocation: false, id, status: 'error', description, code: r.code } as const;
   return { type: 'CWI', isInvocation: false, id, status: 'error', description, code: 1 } as const;
 };
 

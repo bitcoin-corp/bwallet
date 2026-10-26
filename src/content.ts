@@ -2,6 +2,7 @@
 
 import { isCWIEventName } from '@1sat/wallet-browser';
 import { isSpendingAuthAction } from './services/streamGrants';
+import { isMintPrivateAction } from './services/mintPrivateAction';
 import { CustomListenerName, RequestEventDetail, RequestParams } from './inject';
 import { originatorForOrigin } from './services/originKey';
 import { forwardCwiCall } from './services/cwiForward';
@@ -16,7 +17,7 @@ console.log('🌱 Yours Wallet Loaded');
 // Forward CWI requests from page to background service worker
 self.addEventListener(CustomListenerName.YOURS_REQUEST, (e: Event) => {
   const { type, messageId, params: originalParams = {} } = (e as CustomEvent<RequestEventDetail>).detail;
-  if (!type || !(isCWIEventName(type) || isSpendingAuthAction(type))) return;
+  if (!type || !(isCWIEventName(type) || isSpendingAuthAction(type) || isMintPrivateAction(type))) return;
 
   let params: RequestParams = {};
 

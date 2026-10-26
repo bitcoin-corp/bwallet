@@ -23,6 +23,7 @@ import {
 } from '../../pair/protocol';
 import { inOrder } from '../../pair/in-order';
 import { handleSiteCall } from '../dappBrowser';
+import { isMintPrivateCode } from '../../services/mintPrivateAction';
 import { legacyPairedOrigin, pairedOrigin } from '../../services/originKey';
 import { appNameFor } from '../storeBuild';
 import type { OneSatContext } from '@1sat/actions';
@@ -410,6 +411,9 @@ async function onRequest(l: Live, id: string, action: string, params: unknown) {
     // The user declined on the phone: the standard code (services/userDenied.ts), not the generic REJECTED.
     else if (r?.code === USER_DENIED_CODE || isUserDenied(r?.error))
       await reply(l, { t: 'res', id, error: { code: USER_DENIED_CODE, message: USER_DENIED_MESSAGE } });
+    // wallet.mintPrivate refusals keep their own code (services/mintPrivateAction.ts).
+    else if (isMintPrivateCode(r?.code))
+      await reply(l, { t: 'res', id, error: { code: r!.code!, message: r?.error || 'Request refused' } });
     else await reply(l, { t: 'res', id, error: { code: 'REJECTED', message: r?.error || 'Request refused' } });
   } catch (e) {
     await reply(l, { t: 'res', id, error: { code: 'ERROR', message: e instanceof Error ? e.message : String(e) } });

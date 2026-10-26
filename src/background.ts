@@ -55,7 +55,9 @@ import {
   type StreamPass,
   type StreamState,
 } from './services/streamGrants';
-import type { StreamGrantPrompt } from './promptProtocol';
+import type { MintPrivatePrompt, StreamGrantPrompt } from './promptProtocol';
+import { isMintPrivateAction, runSiteMintPrivate, type Kv as MintKv } from './services/mintPrivateSite';
+import type { OneSatContext } from '@1sat/actions';
 import { ALLOWANCES_ENABLED } from './services/allowanceFlag';
 import { ENVELOPES_ENABLED } from './mobile/storeBuild';
 import {
@@ -1195,9 +1197,14 @@ const pendingStreamGrantRequests = new Map<
   string,
   { request: StreamGrantPrompt; resolve: (capSatsPerHour: number | null) => void }
 >();
+/** Sites waiting on the "Lock N posts to you" sheet (services/mintPrivateSite.ts). Resolves true only on Allow. */
+const pendingMintPrivateRequests = new Map<string, { request: MintPrivatePrompt; resolve: (allow: boolean) => void }>();
 const failPendingStreamGrants = () => {
   for (const p of pendingStreamGrantRequests.values()) p.resolve(null);
   pendingStreamGrantRequests.clear();
+  // The private-mint sheet too: lock, account switch or a closed window answers "declined".
+  for (const p of pendingMintPrivateRequests.values()) p.resolve(false);
+  pendingMintPrivateRequests.clear();
 };
 
 /**
@@ -1319,6 +1326,7 @@ const selfClosedWindowIds = new Set<number>();
 const hasQueuedDappUi = (): boolean =>
   pendingUsbChecks.size > 0 ||
   pendingStreamGrantRequests.size > 0 ||
+  pendingMintPrivateRequests.size > 0 ||
   pendingPermissionRequests.size > 0 ||
   pendingGroupedPermissionRequests.size > 0 ||
   pendingCounterpartyPermissionRequests.size > 0 ||
@@ -1390,6 +1398,8 @@ const getPendingPromptPayload = (kind: string, requestID?: string): unknown => {
       return requestID ? pendingUsbChecks.get(requestID)?.request : undefined;
     case 'streamGrant':
       return requestID ? pendingStreamGrantRequests.get(requestID)?.request : undefined;
+    case 'mintPrivate':
+      return requestID ? pendingMintPrivateRequests.get(requestID)?.request : undefined;
     default:
       return undefined;
   }
@@ -1402,6 +1412,8 @@ const getNextPendingPrompt = (): { kind: PromptKind; requestID: string } | undef
   if (!usbCheck.done) return { kind: 'usbCheck', requestID: usbCheck.value };
   const streamGrant = pendingStreamGrantRequests.keys().next();
   if (!streamGrant.done) return { kind: 'streamGrant', requestID: streamGrant.value };
+  const mintPrivate = pendingMintPrivateRequests.keys().next();
+  if (!mintPrivate.done) return { kind: 'mintPrivate', requestID: mintPrivate.value };
   const bundle = permissionBundler.list()[0];
   if (bundle) {
     permissionBundler.flush(bundle.id); // the sheet is asking now: no need to wait out the merge window
@@ -2165,6 +2177,38 @@ if (!(
         return true;
       }
       void handleSpendingAuth(String(message.action), derived.originator, message.params, sendResponse);
+      return true;
+    }
+    // wallet.mintPrivate (services/mintPrivateSite.ts). Same rule: the originator is the browser's sender.origin.
+    // Extension pages never use this route (the wallet's own vault mints directly).
+    if (isMintPrivateAction(message?.action)) {
+      if (isFromExtension) {
+        sendResponse({ type: message.action, success: false, error: 'Unauthorized' });
+        return true;
+      }
+      const derived = originatorForOrigin(sender.origin);
+      if (!derived.originator) {
+        sendResponse({ type: message.action, success: false, error: derived.error });
+        return true;
+      }
+      void handleMintPrivateSite(normalizeOriginator(derived.originator), message.params).then((r) =>
+        sendResponse({ type: message.action, ...r }),
+      );
+      return true;
+    }
+    // The private-mint sheet's answer. Extension pages only: a site can never answer its own sheet.
+    if (message?.action === 'MINT_PRIVATE_RESPONSE') {
+      if (!isFromExtension) {
+        sendResponse({ type: message.action, success: false, error: 'Unauthorized' });
+        return true;
+      }
+      const requestID = String((message as { requestID?: unknown }).requestID ?? '');
+      const pending = pendingMintPrivateRequests.get(requestID);
+      pendingMintPrivateRequests.delete(requestID);
+      const allow = (message as { allow?: unknown }).allow === true && !!pending && pairedGrantAllowed(pending.request.originator);
+      pending?.resolve(allow);
+      sendResponse({ type: message.action, success: !!pending });
+      closeDappPopupIfNoUi();
       return true;
     }
     // Settings › Envelopes and Coin return. Extension pages only.
@@ -3773,6 +3817,56 @@ if (!(
 
   /** A sheet nobody answers must not hold the site's request open forever. */
   const STREAM_GRANT_TIMEOUT_MS = 3 * 60_000;
+
+  /** chrome.storage.local as the async store mintPrivate keeps its request and sequence records in. */
+  const mintKv: MintKv = {
+    get: (k) => new Promise((res) => chrome.storage.local.get(k, (v) => res((v ?? {})[k]))),
+    set: (k, v) => new Promise((res) => chrome.storage.local.set({ [k]: v }, () => res())),
+  };
+
+  /**
+   * wallet.mintPrivate from a site (originator already derived from the browser). The mint runs as the wallet
+   * itself (admin originator, so the private archive keys are the wallet's own and never granted to a site); the
+   * site only ever gets ids and outpoints back. The one sheet is the wallet's own prompt page.
+   */
+  const handleMintPrivateSite = async (originator: string, params: unknown) => {
+    try {
+      const wpm = (await ensureWallet()) as unknown as Record<string, (args: unknown, o?: string) => unknown>;
+      const identityKey = chromeStorageService.getCurrentAccountObject().account?.pubKeys?.identityPubKey || '';
+      // Every wallet method called with the admin originator: no permission sheet per output, the one sheet below
+      // is the approval. Bound to this call only; nothing outside it holds this object.
+      const admin = new Proxy(
+        {},
+        { get: (_t, m: string) => (typeof wpm[m] === 'function' ? (args: unknown) => wpm[m](args, ADMIN_ORIGINATOR) : wpm[m]) },
+      );
+      const usdPerBsv = await cachedUsdPerBsv().catch(() => undefined);
+      return await runSiteMintPrivate({
+        ctx: { wallet: admin } as unknown as OneSatContext,
+        originator,
+        identityKey,
+        satsPerKb: chromeStorageService.getCustomFeeRate(),
+        params,
+        kv: mintKv,
+        ask: (sheet) =>
+          new Promise<boolean>((resolve) => {
+            const requestID = `mintpriv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const timer = setTimeout(() => {
+              if (pendingMintPrivateRequests.delete(requestID)) resolve(false);
+            }, STREAM_GRANT_TIMEOUT_MS);
+            pendingMintPrivateRequests.set(requestID, {
+              request: { requestID, ...sheet, usdPerBsv },
+              resolve: (v) => {
+                clearTimeout(timer);
+                resolve(v);
+              },
+            });
+            showPromptUi('mintPrivate', requestID);
+          }),
+      });
+    } catch (e) {
+      return { success: false as const, error: e instanceof Error ? e.message : String(e), code: 'ERROR' };
+    }
+  };
 
   /** requestSpendingAuthorization / revokeSpendingAuthorization / status, from a site (originator already derived). */
   const handleSpendingAuth = async (
@@ -5924,6 +6018,7 @@ if (!(
     // The envelope / stream sheet too: an open one answers "declined", so Allow after a disconnect writes nothing
     // (b-Aware rows 53-54, 24 Oct 2026).
     for (const [, pending] of takePendingFor(pendingStreamGrantRequests, originator)) pending.resolve(null);
+    for (const [, pending] of takePendingFor(pendingMintPrivateRequests, originator)) pending.resolve(false);
     closeDappPopupIfNoUi();
   };
 
