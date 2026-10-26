@@ -13,6 +13,7 @@ export type PrivatePiece = PrivateItem & { url: string; revealed: boolean };
  * Your private media (spec §9.5), decrypted on this device only, plus which of them already have a reveal post
  * (the wallet's own `bchat reveal` actions). Nothing decrypted is written to storage.
  */
+// eslint-disable-next-line react-refresh/only-export-components -- the hook and its vault ship together
 export function usePrivateMedia(ctx: OneSatContext): { items: PrivatePiece[]; loading: boolean; reload: () => void } {
   const [items, setItems] = useState<PrivatePiece[]>([]);
   const [loading, setLoading] = useState(true);

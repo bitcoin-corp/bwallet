@@ -12,7 +12,7 @@ const wallet = new ProtoWallet(new PrivateKey(1));
 const hex = Utils.toHex;
 const bin = (h: string) => Utils.toArray(h, 'hex');
 const symKey = (keyID: string) =>
-  (wallet as unknown as { keyDeriver: { deriveSymmetricKey: Function } }).keyDeriver
+  (wallet as unknown as { keyDeriver: { deriveSymmetricKey: (...a: unknown[]) => unknown } }).keyDeriver
     .deriveSymmetricKey(r.ARCHIVE_PROTOCOL, keyID, 'self')
     .toArray('be', 32) as number[];
 const fixedIv =
