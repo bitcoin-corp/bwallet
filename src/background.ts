@@ -769,6 +769,14 @@ const runInitializeWallet = async (): Promise<WalletInterface | null> => {
         .reconcilePostage()
         .then((p) => (p.settled.length || p.errors.length ? console.log('[background] postage reconcile:', p) : undefined))
         .catch((err: unknown) => console.warn('[background] postage reconcile failed:', err));
+      // Unbroadcast (nosend) payments past their deadline: released only once the chain shows they never went out
+      // (BRC-177, services/unsentExpiry.ts). Rate-limited inside.
+      await ctx
+        .expireUnsent()
+        .then((x) =>
+          x.released.length || x.settled.length || x.lateSeen.length ? console.log('[background] nosend expiry:', x) : undefined,
+        )
+        .catch((err: unknown) => console.warn('[background] nosend expiry failed:', err));
       // Give up on queued sends that never reached the network, and give the money back (services/stuckSends.ts).
       // Anything still queued keeps the send-retry alarm on (services/sendRetry.ts).
       const q = await reviewQueuedSends(ctx);

@@ -5,12 +5,16 @@
 //    pays the fee), with noSend so nothing leaves the device yet;
 // 3. we check the outputs are exactly ours (the lock, then the 1-sat beacon to the slot's owner address) and run
 //    a real owner-branch spend of the new lock output through the script interpreter, signed by the wallet;
-// 4. only then the wallet broadcasts it (sendWith). On any failure before that, the action is aborted.
+// 4. only then the wallet broadcasts it (sendWith). On any failure before that, the action is aborted. Once the
+//    send was attempted the network may have it (P0 25 Oct 2026), so a failed send is never aborted: it is kept
+//    and watched (services/unsentGuard.ts), and released only at its deadline once the chain shows it never went
+//    out (services/unsentExpiry.ts).
 
 import { OP, Script, Transaction, UnlockingScript, type WalletInterface } from '@bsv/sdk';
 import { BTRUST_PROTOCOL, inheritanceLock, TEST_HEIRS_BLOCKS, validatePlan, type InheritancePlan } from './inheritance';
 import { beaconScript, ownerKeyID, planFromScript, scanForLocks, type ChainReader } from './derive';
 import { BEACON_SATS, ownerSigner, signInput, verifySpend, type HashSigner } from './sign';
+import { releaseAfterHandoff, type ReleaseOpts, type UnsentWallet } from '../../services/unsentGuard';
 
 /** The smallest lock we accept: enough to pay a check-in or claim fee and still leave coins locked. */
 export const MIN_LOCK_SATS = 1000;
@@ -51,6 +55,8 @@ export async function fundLock(opts: {
   plan: InheritancePlan;
   slot: number;
   sats: number;
+  /** Test hook: options for the keep-and-watch after a failed send. */
+  unsent?: Omit<ReleaseOpts, 'notBroadcast'>;
 }): Promise<Funded> {
   const { wallet, slot, sats } = opts;
   const plan = validatePlan(opts.plan);
@@ -72,6 +78,7 @@ export async function fundLock(opts: {
   if (!r.tx || !r.txid) throw new Error('The wallet did not return the funding transaction.');
   const txid = r.txid;
   let sent = false;
+  let attempted = false;
   try {
     const tx = Transaction.fromAtomicBEEF(r.tx);
     if (tx.id('hex') !== txid) throw new Error('Refusing to send: the transaction id does not match.');
@@ -80,6 +87,7 @@ export async function fundLock(opts: {
     if (tx.outputs[1]?.lockingScript.toHex() !== beacon.toHex() || tx.outputs[1].satoshis !== BEACON_SATS)
       throw new Error('Refusing to send: the beacon output is missing.');
     await checkLockSpendable(tx, 0, plan, owner);
+    attempted = true;
     const s = await wallet.createAction({
       description: 'bTrust: send lock',
       options: { sendWith: [txid], acceptDelayedBroadcast: false },
@@ -89,7 +97,9 @@ export async function fundLock(opts: {
     sent = true;
     return { txid, tx, vout: 0, slot, plan };
   } finally {
-    if (!sent) await wallet.abortAction({ reference: txid }).catch(() => undefined);
+    if (!sent && !attempted) await wallet.abortAction({ reference: txid }).catch(() => undefined);
+    else if (!sent)
+      await releaseAfterHandoff(wallet as unknown as UnsentWallet, txid, { ...opts.unsent, notBroadcast: false });
   }
 }
 

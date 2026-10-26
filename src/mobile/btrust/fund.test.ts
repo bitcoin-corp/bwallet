@@ -37,7 +37,11 @@ function mockChain() {
  * A BRC-100 wallet stand-in: real seed-derived keys (ProtoWallet) plus a createAction that funds from one
  * P2PKH coin, pays a fee, signs, holds noSend actions and broadcasts them to the mock chain on sendWith.
  */
-function mockWallet(root: PrivateKey, chain: ReturnType<typeof mockChain>, opts: { tamper?: boolean } = {}) {
+function mockWallet(
+  root: PrivateKey,
+  chain: ReturnType<typeof mockChain>,
+  opts: { tamper?: boolean; failSend?: boolean } = {},
+) {
   const proto = new ProtoWallet(root);
   const coinKey = PrivateKey.fromRandom();
   const pending = new Map<string, Transaction>();
@@ -54,7 +58,7 @@ function mockWallet(root: PrivateKey, chain: ReturnType<typeof mockChain>, opts:
       if (args.options?.sendWith) {
         const results = args.options.sendWith.map((txid) => {
           const t = pending.get(txid);
-          if (!t) return { txid, status: 'failed' as const };
+          if (!t || opts.failSend) return { txid, status: 'failed' as const };
           chain.add(t);
           pending.delete(txid);
           return { txid, status: 'unproven' as const };
@@ -137,6 +141,25 @@ describe('funding', () => {
     await expect(fundLock({ wallet: bad.wallet, plan: p0, slot: 0, sats: 5000 })).rejects.toThrow('changed the lock');
     expect(bad.aborted.length).toBe(1);
     expect(chain.txs.length).toBe(0);
+  });
+
+  test('P0: a send that was attempted and failed is kept, never aborted (the network may have it)', async () => {
+    const chain = mockChain();
+    const w = mockWallet(root, chain, { failSend: true });
+    const p0 = planFor(await keys(ownerKeyID(0)));
+    const logs: string[] = [];
+    await expect(
+      fundLock({
+        wallet: w.wallet,
+        plan: p0,
+        slot: 0,
+        sats: 5000,
+        unsent: { settleDelaysMs: [], sleep: async () => undefined, lookups: [], log: (m) => logs.push(m) },
+      }),
+    ).rejects.toThrow('did not accept');
+    expect(w.aborted).toEqual([]);
+    expect(w.pending.size).toBe(1);
+    expect(logs.join('\n')).toMatch(/kept, not aborted \(server-may-have-broadcast\)/);
   });
 
   test('the spendability check fails for a lock the wallet cannot spend', async () => {

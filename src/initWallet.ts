@@ -91,6 +91,7 @@ import {
 import { recoverPaymentByTxid, type TxidRecoverReport } from './services/recoverByTxid';
 import { makePostageReconcileWiring, makeTxidRecoverDeps, sweepCandidateTxids } from './services/recoverByTxidWiring';
 import { reconcilePostage, wocIsMined, type PostageReconcileReport } from './services/postageReconcile';
+import { runUnsentExpiry, storageKV, type ExpiryReport, type NoSendAction } from './services/unsentExpiry';
 import { chainActive } from './services/dappChain';
 import { healthStatus, SYNC_HEALTH_KEY } from './services/storageHealth';
 import type { TokenRecoveryOptions, TokenRecoveryResult } from './services/tokenRecovery';
@@ -190,6 +191,11 @@ export interface AccountContext {
   restoreMissingCoins: (coins: MissingCoin[]) => Promise<RestoreReport>;
   /** Settle bMail postage held as nosend/unsent whose tx the chain says is mined (services/postageReconcile.ts). */
   reconcilePostage: (force?: boolean) => Promise<PostageReconcileReport>;
+  /**
+   * BRC-177 deadlines for nosend actions: release one only after the chain shows it was never broadcast and its
+   * inputs are unspent; watch releases in case it turns up later (services/unsentExpiry.ts).
+   */
+  expireUnsent: (force?: boolean) => Promise<ExpiryReport>;
   /** Sweep txids from this wallet's own records, for Find mined payments (recoverByTxidWiring.ts). */
   sweepCandidates: () => Promise<string[]>;
   /** Re-internalize paymail receipts the server recorded that this device lacks (restore from seed, 14 Oct 2026). */
@@ -1115,6 +1121,40 @@ export const initWallet = async (
         {
           ...makePostageReconcileWiring({ storage, wallet: baseWallet as never, services: toolboxServices as never }),
           isMined: (txid) => wocIsMined(txid),
+        },
+        { force },
+      ),
+    expireUnsent: (force?: boolean) =>
+      runUnsentExpiry(
+        {
+          listNoSend: async () => {
+            const out: NoSendAction[] = [];
+            for (let offset = 0; offset < 5000; offset += 500) {
+              const page = await baseWallet.listNoSendActions({
+                labels: [],
+                includeLabels: true,
+                includeInputs: true,
+                limit: 500,
+                offset,
+              });
+              for (const a of page.actions)
+                out.push({
+                  txid: a.txid,
+                  labels: a.labels,
+                  inputs: (a.inputs ?? []).map((i) => ({ sourceOutpoint: i.sourceOutpoint })),
+                });
+              if (page.actions.length < 500) break;
+            }
+            return out;
+          },
+          abort: (txid) => baseWallet.abortAction({ reference: txid }),
+          sendWith: (txid) =>
+            baseWallet.createAction({
+              description: 'Payment the network has',
+              options: { sendWith: [txid], acceptDelayedBroadcast: false },
+            }),
+          recoverLate: (txid) => recoverTxidImpl(txid),
+          kv: storageKV(baseWallet.keyDeriver.identityKey),
         },
         { force },
       ),
