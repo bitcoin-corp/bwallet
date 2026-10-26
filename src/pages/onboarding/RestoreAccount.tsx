@@ -19,6 +19,7 @@ import { relayxXpub } from '../../sweep/relayxRecover';
 import type { ChromeStorageService } from '../../services/ChromeStorage.service';
 import twetchLogo from '../../assets/twetch.svg';
 import { originFromImport, saveAccountOrigin } from '../../mobile/origins/origins';
+import { markSeedRestore } from '../../services/seedRestoreGap';
 import yoursWhiteLogo from '../../assets/logos/white-logo.png';
 import otherWallet from '../../assets/other-wallet.svg';
 import wifWallet from '../../assets/wif-wallet.svg';
@@ -266,6 +267,9 @@ const RestoreAccountInner = ({ onNavigateBack, newWallet = false, onNewAccount }
       // Origin card + drawer tint (owner, 24 Oct 2026): remember which wallet this account was restored from.
       const from = originFromImport(importWallet);
       if (from) saveAccountOrigin(keys.identityAddress, from);
+      // Change and app-basket coins need derivation records the seed cannot rebuild: offer the full wallet
+      // from the phone or a backup on the balance card (services/seedRestoreGap.ts).
+      markSeedRestore(keys.identityAddress);
       console.log('[restore] done at', at());
 
       if (cancelled.current) {

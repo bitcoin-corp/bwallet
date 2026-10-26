@@ -1,4 +1,5 @@
 import { heldBsv21Balances } from '../mobile/airdrops/heldBalances';
+import { dismissSeedRestore, readSeedRestore, shouldOfferFullWallet } from '../services/seedRestoreGap';
 import { migrationRowText } from '../utils/migrationRow';
 import { quarantineFor, setQuarantineAccount } from '../mobile/airdrops/inbox';
 import { withoutQuarantined } from '../mobile/airdrops/quarantine';
@@ -224,6 +225,8 @@ export const BsvWallet = () => {
   const [generatingAddress, setGeneratingAddress] = useState(false);
   // The last balance this device saw, shown at once while the wallet opens and syncs (owner, 19 Oct 2026: a big
   // wallet sat on "Still syncing. Tap to retry." for a long time before its balance appeared).
+  // Restored from the 12 words: change/basket coins may only be in the other device's storage (seedRestoreGap.ts).
+  const [offerFullWallet, setOfferFullWallet] = useState(() => shouldOfferFullWallet(readSeedRestore(identityAddress)));
   const [bsvBalance, setBsvBalance] = useState<number>(() => (loadLastBalance(identityAddress) ?? 0) / 100_000_000);
   const [exchangeRate, setExchangeRate] = useState<number>(0);
   const [balanceLoading, setBalanceLoading] = useState(true);
@@ -2278,6 +2281,39 @@ export const BsvWallet = () => {
   return (
     <>
       <TopNav />
+      {offerFullWallet && (
+        <div
+          role="note"
+          style={{
+            margin: '0.5rem 1rem',
+            padding: '0.75rem 1rem',
+            borderRadius: '0.75rem',
+            border: `1px solid ${theme.color.global.gray}`,
+            color: theme.color.global.contrast,
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Bring over your full wallet</div>
+          <div style={{ fontSize: '0.8rem', opacity: 0.8, marginBottom: '0.5rem' }}>
+            You restored from your 12 words. Change and app coins made on your other device are kept in that
+            device&apos;s records, not the words, so this balance can be lower. On your phone open Settings › Wallet
+            Backup › Master Backup, send the file here, then tap Use a backup file.
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button type="button" onClick={() => navigate('/master-restore')}>
+              Use a backup file
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                dismissSeedRestore(identityAddress);
+                setOfferFullWallet(false);
+              }}
+            >
+              It&apos;s all here
+            </button>
+          </div>
+        </div>
+      )}
       {showBackupPromo && (
         <BackupPromo
           theme={theme}

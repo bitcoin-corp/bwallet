@@ -10,6 +10,7 @@ import { useSnackbar } from '../../hooks/useSnackbar';
 import { useTheme } from '../../hooks/useTheme';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import { restoreMasterFromZip } from '../../utils/masterImporter';
+import { markBackupImported } from '../../services/seedRestoreGap';
 import { useNavigate } from 'react-router-dom';
 import { YoursIcon } from '../../components/YoursIcon';
 
@@ -72,6 +73,9 @@ export const MasterRestore = () => {
       setLoading(true);
       setPasswordError(false);
       await restoreMasterFromZip(chromeStorageService, handleProgress, selectedFile, password);
+      // The backup carries the derivation records a seed restore lacks: stop offering it on the balance card.
+      const restored = await chromeStorageService.getAndSetStorage().catch(() => undefined);
+      for (const id of Object.keys(restored?.accounts ?? {})) markBackupImported(id);
       addSnackbar('Wallet restored successfully!', 'success');
       window.location.reload();
     } catch (error) {
