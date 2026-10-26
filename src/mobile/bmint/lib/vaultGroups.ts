@@ -21,12 +21,16 @@ export type VaultPiece = {
   origin?: string;
   pending?: boolean;
   flagged?: boolean;
+  /** Encrypted to this wallet (private mint, spec §9): grouped in their own "Private" sub-vault. */
+  private?: boolean;
 };
 
 export type SubVault = { id: string; title: string; items: VaultPiece[] };
 
 export const OTHER_ID = '__other__';
 export const NPG_ID = 'run:npg';
+export const PRIVATE_ID = '__private__';
+export const PRIVATE_TITLE = 'Private (only you)';
 /** "Other" with this many pieces or fewer shows them one by one instead of as a sub-vault. */
 export const LOOSE_MAX = 3;
 
@@ -63,7 +67,9 @@ export const groupVault = (pieces: VaultPiece[]): { vaults: SubVault[]; loose: V
   const byOrigin = new Map(pieces.filter((p) => p.origin).map((p) => [p.origin!.replace('.', '_'), p]));
   const ids = new Set(pieces.map((p) => p.collection).filter(Boolean));
   const groups = new Map<string, VaultPiece[]>();
+  const priv = pieces.filter((p) => p.private);
   for (const p of pieces) {
+    if (p.private) continue;
     // A parent inscription joins its own collection.
     const own = p.origin && ids.has(p.origin) ? p.origin : '';
     const id = p.collection || own || OTHER_ID;
@@ -80,6 +86,8 @@ export const groupVault = (pieces: VaultPiece[]): { vaults: SubVault[]; loose: V
       items,
     }))
     .sort((a, b) => b.items.length - a.items.length || a.title.localeCompare(b.title));
+  // Private pieces always sit together, first, so it's never unclear which pieces only you can see.
+  if (priv.length) vaults.unshift({ id: PRIVATE_ID, title: PRIVATE_TITLE, items: priv });
   if (other.length > LOOSE_MAX) vaults.push({ id: OTHER_ID, title: 'Other', items: other });
   return { vaults, loose: other.length > LOOSE_MAX ? [] : other };
 };

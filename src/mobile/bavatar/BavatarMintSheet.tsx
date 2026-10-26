@@ -8,6 +8,7 @@ import { useBackClose } from '../backStack';
 import { useServiceContext } from '../../hooks/useServiceContext';
 import type { BavatarMine } from '../chat/api';
 import { svgDataUri } from '../wallet/cardBackQr';
+import { PrivacyChoice } from '../private/PrivacyChoice';
 import {
   bavatarClient,
   bavatarLabel,
@@ -63,12 +64,13 @@ export default function BavatarMintSheet({ onClose }: { onClose: () => void }) {
   );
   const offer = mine ? mintOffer(mine) : null;
 
+  const [makePublic, setMakePublic] = useState(false);
   const mint = async () => {
     if (state.k !== 'ready') return;
     const m = state.mine;
     setState({ k: 'minting', mine: m });
     try {
-      const txid = await mintBavatar(apiContext, { identityKey, payAddress, mine: m });
+      const txid = await mintBavatar(apiContext, { identityKey, payAddress, mine: m, private: !makePublic });
       setState({ k: 'done', mine: m, txid });
     } catch (e) {
       setState({ k: 'error', msg: e instanceof Error ? e.message : 'Mint failed' });
@@ -121,8 +123,9 @@ export default function BavatarMintSheet({ onClose }: { onClose: () => void }) {
         details={
           mine ? (
             <span>
-              Your bAvatar art, your name and your number, inscribed as a 1-sat ordinal in this wallet. The QR opens
-              your paymail. Send it on and the art and number go with it; your account stays yours.
+              {makePublic
+                ? 'Public: your bAvatar art, your name and your number, inscribed as a 1-sat ordinal anyone can see. The QR opens your paymail. Send it on and the art and number go with it; your account stays yours.'
+                : 'Private: your bAvatar is encrypted with your own keys before it goes on chain, so only you can see it. You can reveal it later from bMint › Your vault.'}
             </span>
           ) : undefined
         }
@@ -143,6 +146,7 @@ export default function BavatarMintSheet({ onClose }: { onClose: () => void }) {
                 Claim a $name first: your bAvatar carries it.
               </p>
             )}
+            {state.k !== 'done' && <PrivacyChoice isPublic={makePublic} onChange={setMakePublic} />}
             <div className="flex flex-wrap" style={{ gap: 8 }}>
               {offer?.kind === 'free' && <Chip solid>FREE</Chip>}
               {offer?.kind === 'paid' && <Chip>Network fee ~4,000 sats</Chip>}
@@ -163,6 +167,7 @@ export default function BavatarMintSheet({ onClose }: { onClose: () => void }) {
                 </svg>
                 Scans to your paymail
               </Chip>
+              <Chip>{makePublic ? 'Public' : 'Private: only you'}</Chip>
               <Chip>Yours forever</Chip>
             </div>
             {state.k === 'done' && (

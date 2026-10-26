@@ -1,4 +1,5 @@
 import { inscribe, syncAddresses, type OneSatContext } from '@1sat/actions';
+import { mintPrivateMedia } from '../private/privateMint';
 import { BchatClient, defaultHttp, loadSession, saveSession, type BavatarMine } from '../chat/api';
 import { walletSigner } from '../chat/signer';
 import { isNative } from '../native';
@@ -104,7 +105,14 @@ const b64 = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(
 /** Inscribe this account's bAvatar. Returns the txid. Throws with a readable message on failure. */
 export async function mintBavatar(
   ctx: OneSatContext,
-  input: { identityKey: string; payAddress: string; mine: BavatarMine; client?: BchatClient },
+  input: {
+    identityKey: string;
+    payAddress: string;
+    mine: BavatarMine;
+    client?: BchatClient;
+    /** Default true (owner, 25 Oct 2026): encrypted to this wallet (spec §9, kind bavatar). */
+    private?: boolean;
+  },
 ): Promise<string> {
   const { mine } = input;
   if (mine.minted) return mine.minted.txid;
@@ -113,19 +121,35 @@ export async function mintBavatar(
   if (!svg) throw new Error('This account needs a $name before it can mint its bAvatar.');
   if (new TextEncoder().encode(svg).length > MAX_BAVATAR_BYTES) throw new Error('bAvatar image too large');
 
+  const privateRun = async (): Promise<{ txid?: string; error?: string }> => {
+    try {
+      const r = await mintPrivateMedia(ctx, {
+        file: Array.from(new TextEncoder().encode(svg)),
+        mime: 'image/svg+xml',
+        name: `${handle}-bavatar.svg`,
+        kind: 'bavatar',
+        feeSats: 0,
+      });
+      return { txid: r.txid };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  };
   const run = () =>
-    inscribe.execute(ctx, {
-      base64Content: b64(svg),
-      contentType: 'image/svg+xml',
-      map: {
-        app: MINT_APP,
-        type: 'bavatar',
-        name: bavatarLabel(handle, mine.number),
-        handle,
-        number: String(mine.number),
-        edition: mine.number <= FOUNDING && mine.founding ? 'Founding 1,000' : 'bWalletX',
-      },
-    });
+    input.private !== false
+      ? privateRun()
+      : inscribe.execute(ctx, {
+          base64Content: b64(svg),
+          contentType: 'image/svg+xml',
+          map: {
+            app: MINT_APP,
+            type: 'bavatar',
+            name: bavatarLabel(handle, mine.number),
+            handle,
+            number: String(mine.number),
+            edition: mine.number <= FOUNDING && mine.founding ? 'Founding 1,000' : 'bWalletX',
+          },
+        });
 
   const client = input.client ?? (await bavatarClient(ctx));
   let res = await run();

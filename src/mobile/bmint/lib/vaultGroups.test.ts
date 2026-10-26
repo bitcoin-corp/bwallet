@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'bun:test';
-import { baseName, coverOf, groupVault, NPG_ID, OTHER_ID, runCollection, type VaultPiece } from './vaultGroups';
+import { describe, expect, it, test } from 'bun:test';
+import {
+  baseName,
+  coverOf,
+  groupVault,
+  NPG_ID,
+  OTHER_ID,
+  PRIVATE_ID,
+  runCollection,
+  type VaultPiece,
+} from './vaultGroups';
 
 const p = (key: string, name: string, collection = '', extra: Partial<VaultPiece> = {}): VaultPiece => ({
   key,
@@ -58,5 +67,20 @@ describe('vault sub-vaults', () => {
   it('covers with the first piece that has a picture', () => {
     const v = { id: 'c', title: 'c', items: [p('a', 'A'), p('b', 'B', 'c', { thumb: 'u' })] };
     expect(coverOf(v)?.key).toBe('b');
+  });
+});
+
+describe('private pieces', () => {
+  test('go in their own Private sub-vault, first, never mixed into collections or loose', () => {
+    const { vaults, loose } = groupVault([
+      { key: 'a', name: 'A', collection: 'c1', kind: 'images' },
+      { key: 'b', name: 'B', collection: 'c1', kind: 'images' },
+      { key: 'p1', name: 'P1', collection: '', kind: 'images', private: true },
+      { key: 'p2', name: 'P2', collection: 'c1', kind: 'video', private: true },
+    ]);
+    expect(vaults[0].id).toBe(PRIVATE_ID);
+    expect(vaults[0].items.map((i) => i.key)).toEqual(['p1', 'p2']);
+    expect(vaults.find((v) => v.id === 'c1')!.items.map((i) => i.key)).toEqual(['a', 'b']);
+    expect(loose).toEqual([]);
   });
 });

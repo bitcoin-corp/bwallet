@@ -482,11 +482,14 @@ export async function publish(
     /** Optional home app share (spec §6.2): its own output after the fee (if any). */
     home?: { address: string; satoshis: number; lockingScript: Script; app?: string };
   },
+  /** Wallet action labels (local only), e.g. 'bchat reveal'. */
+  labels?: string[],
 ): Promise<string> {
   const signed = await signWithIdentity(() => applyBapAip(ctx, script));
   if (!signed) throw new PostCancelledError();
   const res = await executeTrackedAction(ctx.wallet, {
     description,
+    ...(labels?.length && { labels }),
     outputs: [
       { lockingScript: signed.toHex(), satoshis: 0, outputDescription: description, basket: BSOCIAL_BASKET, tags },
       ...(payment

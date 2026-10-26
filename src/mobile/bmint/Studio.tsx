@@ -12,7 +12,8 @@ import { getTagValue } from '../../utils/format';
 import { useRelayxAccount } from '../sweep/useRelayxAccount';
 import { loadSavedRelayx } from '../sweep/relayxSaved';
 import type { Found } from '../../sweep/relayxRecover';
-import { coverOf, groupVault, runCollection, type SubVault, type VaultPiece } from './lib/vaultGroups';
+import { coverOf, groupVault, PRIVATE_ID, runCollection, type SubVault, type VaultPiece } from './lib/vaultGroups';
+import { RevealSheet, usePrivateMedia, type PrivatePiece } from '../private/PrivateVault';
 import { DROP_ACCEPT, DROP_UNSUPPORTED, handOff, TILE_LABEL, tileForFile, type DropTile } from './lib/drop';
 
 /**
@@ -173,6 +174,10 @@ export const DropHero = ({ name }: { name: string }) => {
               <dt>Owner</dt>
               <dd>{name}</dd>
             </div>
+            <div>
+              <dt>Who can see it</dt>
+              <dd>Only you (private), unless you choose public next</dd>
+            </div>
           </dl>
           {size && !size.ok && <p className="bm-drop-err">{size.message}</p>}
           <p className="bm-prev-note">
@@ -246,12 +251,45 @@ const fromRun = (f: Found): VaultPiece => ({
 
 const KIND_LABEL: Record<string, string> = { images: 'Picture', music: 'Music', video: 'Video', run: 'Run NFT' };
 
+const kindOfMime = (m: string) =>
+  /^image\//.test(m) ? 'images' : /^video\//.test(m) ? 'video' : /^audio\//.test(m) ? 'music' : 'other';
+
+/** A private item as a vault piece (decrypted on this device; the key is its head record outpoint). */
+const fromPrivate = (p: PrivatePiece): VaultPiece => ({
+  key: `private:${p.outpoint}`,
+  name: p.header.name,
+  collection: '',
+  thumb: kindOfMime(p.header.mime) === 'images' ? p.url : undefined,
+  video: kindOfMime(p.header.mime) === 'video' ? p.url : undefined,
+  kind: kindOfMime(p.header.mime),
+  private: true,
+});
+
 const PieceArt = ({ piece }: { piece?: VaultPiece }) => {
   const [broken, setBroken] = useState(false);
   if (piece?.thumb && !broken) return <img src={piece.thumb} alt="" loading="lazy" onError={() => setBroken(true)} />;
   if (piece?.video) return <video src={piece.video} muted preload="metadata" playsInline />;
   return <HubArt id={piece?.kind === 'music' ? 'music' : 'books'} />;
 };
+
+const PrivateTile = ({ item, onOpen, revealed }: { item: VaultPiece; onOpen: () => void; revealed: boolean }) => (
+  <button
+    type="button"
+    className="bm-vtile"
+    onClick={onOpen}
+    aria-label={`${item.name}, ${revealed ? 'public' : 'private'}. Reveal`}
+  >
+    <span className="bm-vart">
+      <PieceArt piece={item} />
+      <span className="bm-chip bm-vpending">{revealed ? 'Public' : 'Private'}</span>
+      <Seal className="bm-vseal" />
+    </span>
+    <span className="bm-vcap">
+      <b>{item.name}</b>
+      <span>{revealed ? 'Revealed' : 'Only you · tap to reveal'}</span>
+    </span>
+  </button>
+);
 
 const VaultTile = ({ item }: { item: VaultPiece }) => (
   <Link to="/m/nfts" className={`bm-vtile${item.flagged ? ' flagged' : ''}`}>
@@ -290,6 +328,10 @@ export const Vault = ({ name }: { name: string }) => {
   const { items: shownRaw, loading, error, hasMore, loadMore } = useWalletMedia();
   const items = useWithoutHidden(shownRaw);
   const xpub = useRelayxAccount();
+  const { apiContext } = useServiceContext();
+  const priv = usePrivateMedia(apiContext);
+  const [revealing, setRevealing] = useState<PrivatePiece[] | null>(null);
+  const privByKey = useMemo(() => new Map(priv.items.map((p) => [`private:${p.outpoint}`, p])), [priv.items]);
   const [open, setOpen] = useState<string | null>(null);
   // Every page, so each sub-vault's count is the real one (Wallet › NFTs does the same).
   useEffect(() => {
@@ -297,8 +339,8 @@ export const Vault = ({ name }: { name: string }) => {
   }, [hasMore, loading, error, loadMore]);
   const pieces = useMemo(() => {
     const run = xpub ? (loadSavedRelayx(xpub)?.result.nfts ?? []) : [];
-    return [...items.map(fromMedia), ...run.filter((f) => !f.unread).map(fromRun)];
-  }, [items, xpub]);
+    return [...priv.items.map(fromPrivate), ...items.map(fromMedia), ...run.filter((f) => !f.unread).map(fromRun)];
+  }, [items, xpub, priv.items]);
   const { vaults, loose } = useMemo(() => groupVault(pieces), [pieces]);
   const inside = open ? vaults.find((v) => v.id === open) : undefined;
   return (
@@ -330,11 +372,30 @@ export const Vault = ({ name }: { name: string }) => {
           )}
         </span>
       </div>
+      {inside?.id === PRIVATE_ID && (
+        <p className="bm-fine">
+          Only you can see these: they are encrypted with your keys. Revealing one makes it public for good.{' '}
+          {priv.items.some((p) => !p.revealed) && (
+            <button
+              type="button"
+              className="bm-btn"
+              onClick={() => setRevealing(priv.items.filter((p) => !p.revealed))}
+            >
+              Reveal all
+            </button>
+          )}
+        </p>
+      )}
       {inside ? (
         <div className="bm-vgrid">
-          {inside.items.map((i) => (
-            <VaultTile key={i.key} item={i} />
-          ))}
+          {inside.items.map((i) => {
+            const p = privByKey.get(i.key);
+            return p ? (
+              <PrivateTile key={i.key} item={i} revealed={p.revealed} onOpen={() => setRevealing([p])} />
+            ) : (
+              <VaultTile key={i.key} item={i} />
+            );
+          })}
         </div>
       ) : pieces.length > 0 ? (
         <div className="bm-vgrid">
@@ -357,6 +418,9 @@ export const Vault = ({ name }: { name: string }) => {
           <b>{error ? "Couldn't open your vault" : 'Your vault is waiting'}</b>
           <span>{error || 'Your first mint lands here, sealed with your name and the time it was made.'}</span>
         </div>
+      )}
+      {revealing && (
+        <RevealSheet ctx={apiContext} items={revealing} onClose={() => setRevealing(null)} onDone={priv.reload} />
       )}
     </section>
   );

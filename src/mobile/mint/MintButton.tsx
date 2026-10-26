@@ -3,6 +3,9 @@ import { useBackClose } from '../backStack';
 import { createPortal } from 'react-dom';
 import { listOrdinals } from '@1sat/actions';
 import { mintMedia } from './mintMedia';
+import { MAX_PRIVATE_BYTES, mintPrivateMedia, privateMediaBytes } from '../private/privateMint';
+import { mediaKindFor, mintIsPrivate } from '../private/records';
+import { PrivacyChoice } from '../private/PrivacyChoice';
 import {
   AppWindow,
   BookOpen,
@@ -226,6 +229,8 @@ export const MintSheet = ({
   const [existingId, setExistingId] = useState('');
   const [collections, setCollections] = useState<{ id: string; name: string }[]>([]);
   const [formError, setFormError] = useState('');
+  // Private by default (owner, 25 Oct 2026): encrypted to this wallet; "Make public now" per mint.
+  const [makePublic, setMakePublic] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [txid, setTxid] = useState('');
@@ -258,13 +263,19 @@ export const MintSheet = ({
   }, [collKind, newColl, existingId, collections]);
 
   const satsPerKb = chromeStorageService.getCustomFeeRate();
-  const maxBytes = maxBytesFor(kindSel);
-  const editionCount = collection.kind === 'none' ? Math.max(1, Math.floor(Number(editions)) || 1) : 1;
+  const privKind = picked ? mediaKindFor(picked.type, kindSel) : mediaKindFor('', kindSel);
+  const isPrivate = mintIsPrivate(makePublic, picked ? picked.type : null, kindSel);
+  const maxBytes = isPrivate ? Math.min(MAX_PRIVATE_BYTES, maxBytesFor(kindSel)) : maxBytesFor(kindSel);
+  const editionCount = !isPrivate && collection.kind === 'none' ? Math.max(1, Math.floor(Number(editions)) || 1) : 1;
   const plan = planEditions(editionCount, picked?.file.size ?? 0);
-  const usePoster = !!poster && collection.kind === 'none';
-  const txBytes = picked ? mintTxBytes(picked.file.size, plan, usePoster ? poster!.file.size : 0) : 0;
+  const usePoster = !isPrivate && !!poster && collection.kind === 'none';
+  const txBytes = picked
+    ? isPrivate
+      ? privateMediaBytes(picked.file.size)
+      : mintTxBytes(picked.file.size, plan, usePoster ? poster!.file.size : 0)
+    : 0;
   const cost = picked
-    ? estimateCost(txBytes, satsPerKb, exchangeRate, { newCollection: collection.kind === 'new' })
+    ? estimateCost(txBytes, satsPerKb, exchangeRate, { newCollection: !isPrivate && collection.kind === 'new' })
     : null;
   const kindFields = {
     artist,
@@ -393,9 +404,12 @@ export const MintSheet = ({
     if (!picked) return setFormError('Pick a file to mint.');
     const size = checkSize(picked.file.size, maxBytes);
     if (!size.ok) return setFormError(size.message);
-    if (collKind === 'existing' && collection.kind !== 'existing') return setFormError('Choose a collection.');
-    const err =
-      validateForm({ title, description, collection }) ?? (kindSel ? validateKindFields(kindSel, kindFields) : null);
+    if (!isPrivate && collKind === 'existing' && collection.kind !== 'existing')
+      return setFormError('Choose a collection.');
+    const err = isPrivate
+      ? validateForm({ title, description, collection: { kind: 'none' } })
+      : (validateForm({ title, description, collection }) ??
+        (kindSel ? validateKindFields(kindSel, kindFields) : null));
     setFormError(err ?? '');
     if (!err) setConfirming(true);
   };
@@ -409,6 +423,21 @@ export const MintSheet = ({
     }
     setBusy(true);
     try {
+      if (isPrivate && privKind) {
+        // Encrypted on this device with the wallet's own keys; only ciphertext goes on chain.
+        const res = await mintPrivateMedia(apiContext, {
+          file: Array.from(new Uint8Array(await picked.file.arrayBuffer())),
+          mime: picked.type,
+          name: picked.file.name,
+          kind: privKind,
+          feeSats: cost.feeSats,
+        });
+        setTxid(res.txid);
+        setConfirming(false);
+        setStep('done');
+        notifyMinted();
+        return;
+      }
       const none = collection.kind === 'none';
       const posterVout = usePoster ? plan.outputs : undefined;
       const res = await mintMedia(apiContext, {
@@ -626,6 +655,7 @@ export const MintSheet = ({
                 ))}
               </div>
             )}
+            <PrivacyChoice isPublic={makePublic} onChange={setMakePublic} available={!picked || privKind !== null} />
             <input
               ref={inputRef}
               type="file"
@@ -642,7 +672,9 @@ export const MintSheet = ({
               {picked ? 'Choose a different file' : `Choose ${media.label}`}
             </button>
             <p className="text-xs" style={{ color: '#999' }}>
-              Don't mint anything you don't own or that's illegal — inscriptions are permanent.
+              {isPrivate
+                ? 'Only you can see it: it is encrypted on this device before it goes on chain. You can reveal it later.'
+                : "Public: anyone can see it on chain, for good. Don't mint anything you don't own or that's illegal."}
             </p>
             {picked && (
               <div className="rounded-xl overflow-hidden border" style={{ borderColor: BORDER }}>
@@ -690,7 +722,7 @@ export const MintSheet = ({
               </p>
             )}
 
-            {picked && (kindSel === 'music' || kindSel === 'video') && (
+            {picked && !isPrivate && (kindSel === 'music' || kindSel === 'video') && (
               <div className="flex items-center gap-2">
                 {poster ? (
                   <img src={poster.url} alt="Cover" className="w-14 h-14 object-cover rounded-lg" />
@@ -792,7 +824,7 @@ export const MintSheet = ({
                 </div>
               </>
             )}
-            {kindSel && collKind === 'none' && (
+            {kindSel && !isPrivate && collKind === 'none' && (
               <div className="flex gap-2 items-center">
                 <label className="flex items-center gap-2 text-xs flex-1" style={{ color: '#bbb' }}>
                   Editions
@@ -818,7 +850,7 @@ export const MintSheet = ({
                 )}
               </div>
             )}
-            {kindSel && editionCount > 1 && (
+            {kindSel && !isPrivate && editionCount > 1 && (
               <p className="text-xs m-0" style={{ color: '#999' }}>
                 {plan.mode === 'inline'
                   ? `1 of ${editionCount}: ${editionCount} copies in one transaction, each its own NFT.`
@@ -834,17 +866,19 @@ export const MintSheet = ({
               maxLength={1000}
               onChange={(e) => setDescription(e.target.value)}
             />
-            <select
-              className={input}
-              style={{ ...inputStyle, background: PANEL }}
-              value={collKind}
-              onChange={(e) => setCollKind(e.target.value as Collection['kind'])}
-            >
-              <option value="none">No collection</option>
-              <option value="new">New collection…</option>
-              {collections.length > 0 && <option value="existing">Add to my collection…</option>}
-            </select>
-            {collKind === 'new' && (
+            {!isPrivate && (
+              <select
+                className={input}
+                style={{ ...inputStyle, background: PANEL }}
+                value={collKind}
+                onChange={(e) => setCollKind(e.target.value as Collection['kind'])}
+              >
+                <option value="none">No collection</option>
+                <option value="new">New collection…</option>
+                {collections.length > 0 && <option value="existing">Add to my collection…</option>}
+              </select>
+            )}
+            {!isPrivate && collKind === 'new' && (
               <input
                 className={input}
                 style={inputStyle}
@@ -854,7 +888,7 @@ export const MintSheet = ({
                 onChange={(e) => setNewColl(e.target.value)}
               />
             )}
-            {collKind === 'existing' && (
+            {!isPrivate && collKind === 'existing' && (
               <select
                 className={input}
                 style={{ ...inputStyle, background: PANEL }}
@@ -884,17 +918,25 @@ export const MintSheet = ({
               className="h-11 rounded-xl font-bold border-0 cursor-pointer"
               style={{ background: `linear-gradient(135deg, #FFE27A, #E0A800)`, color: '#1a1400' }}
             >
-              Review mint
+              {isPrivate ? 'Review private mint' : 'Review public mint'}
             </button>
           </div>
         )}
 
         {step === 'done' && (
           <div className="flex flex-col gap-3 text-sm">
-            <p>
-              "{title.trim()}" was inscribed. It will appear in Media{kindSel === 'music' ? ' › Music' : ''} shortly
-              {txBytes > 10 * 1024 * 1024 ? ' (Pending until it lands, which can take a few minutes)' : ''}.
-            </p>
+            {isPrivate ? (
+              <p>
+                "{title.trim()}" is minted privately: only you can see it. It is in bMint › Your vault › Private, where
+                you can reveal it later.
+              </p>
+            ) : (
+              <p>
+                "{title.trim()}" was inscribed publicly. It will appear in Media{kindSel === 'music' ? ' › Music' : ''}{' '}
+                shortly
+                {txBytes > 10 * 1024 * 1024 ? ' (Pending until it lands, which can take a few minutes)' : ''}.
+              </p>
+            )}
             <a
               href={wocTxUrl(txid)}
               target="_blank"
@@ -925,7 +967,12 @@ export const MintSheet = ({
         show={confirming}
         theme={theme}
         lineItems={[
-          { address: `Inscribe "${title.trim()}"`, amount: picked ? formatBytes(txBytes) : '' },
+          {
+            address: isPrivate
+              ? `Mint "${title.trim()}" privately (only you can see it)`
+              : `Inscribe "${title.trim()}" publicly`,
+            amount: picked ? formatBytes(txBytes) : '',
+          },
           ...(cost
             ? [
                 {
