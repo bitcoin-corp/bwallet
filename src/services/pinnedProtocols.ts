@@ -95,12 +95,36 @@ export const pinnedProtocol = (protocolID: unknown): PinnedProtocol | undefined 
  */
 export const PINNED_PROTOCOLS_VERSION = 3;
 
+/** BRC-205 `base`: vendor "-" major.minor.patch, no leading zeroes, 7–30 ASCII bytes. */
+const BRC205_BASE = /^[A-Za-z0-9][A-Za-z0-9._-]*-(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+/** Older @bsv/sdk validators (result validation, the binary wire) still cap the whole string at 30 bytes. */
+const SDK_MAX = 30;
+
 /**
- * The getVersion string with the pin level appended (`bwalletx-5.2.40+p2`). Some transports (e.g. the
- * @bwalletx/connect binary wire) carry only `version`, so the pin level must live in the string itself.
- * Sites parse it with /\+p(\d+)\b/. Stays within the SDK's 7–30 character limit.
+ * The getVersion string in BRC-205 form with the pin level as an attribute: `bwalletx-5.2.44; pin=3;`. Some
+ * transports (e.g. the @bwalletx/connect binary wire) carry only `version`, so the pin level must live in the string
+ * itself. Sites read it with pinLevelFromVersion (or /(?:\+p|; pin=)(\d+)\b/). When the attribute would push the
+ * string past the SDK's 30 bytes, or the base isn't a BRC-205 base, only the base is sent (BRC-205: omit optional
+ * attributes to stay within limits); the pin level still goes in the `pinnedProtocols` field.
  */
-export const versionWithPins = (base: string): string => `${base}+p${PINNED_PROTOCOLS_VERSION}`;
+export const versionWithPins = (base: string): string => {
+  const v = `${base}; pin=${PINNED_PROTOCOLS_VERSION};`;
+  return BRC205_BASE.test(base) && base.length <= SDK_MAX && v.length <= SDK_MAX ? v : base;
+};
+
+/**
+ * The pin level a version string advertises: the BRC-205 `pin` attribute (`…; pin=3;`) or the legacy `+p3` suffix
+ * (wallets up to 5.2.44). 0 when there is none. Takes the larger of that and a `pinnedProtocols` field when given.
+ */
+export const pinLevelFromVersion = (
+  v: { version?: unknown; pinnedProtocols?: unknown } | string | null | undefined,
+) => {
+  const o = typeof v === 'string' ? { version: v } : (v ?? {});
+  const s = typeof o.version === 'string' && o.version.length <= 2048 ? o.version : '';
+  const m = s.match(/(?:\+p|; pin=)(\d{1,6})(?=;|$|\b)/);
+  const field = Number(o.pinnedProtocols);
+  return Math.max(Number.isSafeInteger(field) && field > 0 ? field : 0, m ? Number(m[1]) : 0);
+};
 
 export const PINNED_REFUSAL = 'This protocol belongs to another site';
 

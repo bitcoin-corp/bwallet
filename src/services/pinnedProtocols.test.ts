@@ -4,6 +4,7 @@ import {
   pinnedProtocolRefusal,
   PINNED_REFUSAL,
   PINNED_PROTOCOLS_VERSION,
+  pinLevelFromVersion,
   versionWithPins,
 } from './pinnedProtocols';
 import { guardReservedProtocols } from './reservedProtocols';
@@ -76,23 +77,62 @@ describe('pinned protocols', () => {
   });
 });
 
-describe('versionWithPins', () => {
-  const PIN = /\+p(\d+)\b/;
-  test('carries the pin level in the version string', () => {
-    const v = versionWithPins('bwalletx-5.2.40');
-    expect(v).toBe(`bwalletx-5.2.40+p${PINNED_PROTOCOLS_VERSION}`);
-    expect(Number(v.match(PIN)?.[1])).toBe(PINNED_PROTOCOLS_VERSION);
+describe('versionWithPins (BRC-205)', () => {
+  test('BRC-205 form: base, one space, pin attribute, final semicolon', () => {
+    expect(versionWithPins('bwalletx-5.2.44')).toBe(`bwalletx-5.2.44; pin=${PINNED_PROTOCOLS_VERSION};`);
+    expect(versionWithPins('yours-wallet-5.2.44')).toBe(`yours-wallet-5.2.44; pin=${PINNED_PROTOCOLS_VERSION};`);
+    // Matches the BRC-205 ABNF (version-string = base [";" [SP attribute *(";" SP attribute) [";"]]]).
+    const grammar =
+      /^[A-Za-z0-9][A-Za-z0-9._-]*-(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(;( [a-z][a-z0-9-]*=([A-Za-z0-9._~-]|%[0-9A-F]{2})+(; [a-z][a-z0-9-]*=([A-Za-z0-9._~-]|%[0-9A-F]{2})+)*;?)?)?$/;
+    expect(versionWithPins('bwalletx-5.2.44')).toMatch(grammar);
   });
-  test('every branded name fits the SDK limit (7–30 chars)', () => {
+  test('every branded name fits the SDK limit (7–30 chars); too long → base only', () => {
     for (const base of [
-      'bwalletx-5.2.40',
-      'bwallet-mobile-5.2.40',
-      'yours-wallet-5.2.40',
+      'bwalletx-5.2.44',
+      'bwallet-mobile-5.2.44',
+      'yours-wallet-5.2.44',
+      'bwallet-mobile-5.2.100',
       'bwallet-mobile-55.55.555',
     ]) {
       const v = versionWithPins(base);
       expect(v.length).toBeGreaterThanOrEqual(7);
       expect(v.length).toBeLessThanOrEqual(30);
+      expect(v.startsWith(base)).toBe(true);
     }
+    expect(versionWithPins('bwallet-mobile-55.55.555')).toBe('bwallet-mobile-55.55.555');
+  });
+  test('a base outside BRC-205 (4-part or leading zero) is sent bare', () => {
+    expect(versionWithPins('bwalletx-5.2.44.1')).toBe('bwalletx-5.2.44.1');
+    expect(versionWithPins('bwalletx-05.2.44')).toBe('bwalletx-05.2.44');
+  });
+});
+
+describe('pinLevelFromVersion (sites and SDK)', () => {
+  test('reads the BRC-205 attribute and the legacy +pN suffix', () => {
+    expect(pinLevelFromVersion('bwalletx-5.2.44; pin=3;')).toBe(3);
+    expect(pinLevelFromVersion('bwalletx-5.2.44; pin=3')).toBe(3);
+    expect(pinLevelFromVersion('bwalletx-5.2.44; account-label=A; pin=2;')).toBe(2);
+    expect(pinLevelFromVersion('bwalletx-5.2.40+p2')).toBe(2);
+    expect(pinLevelFromVersion(versionWithPins('bwalletx-5.2.44'))).toBe(PINNED_PROTOCOLS_VERSION);
+  });
+  test('the pinnedProtocols field counts; the larger wins; nothing → 0', () => {
+    expect(pinLevelFromVersion({ version: 'bwalletx-5.2.44', pinnedProtocols: 3 })).toBe(3);
+    expect(pinLevelFromVersion({ version: 'bwalletx-5.2.44; pin=1;', pinnedProtocols: 3 })).toBe(3);
+    expect(pinLevelFromVersion({ version: 'bwalletx-5.2.44' })).toBe(0);
+    expect(pinLevelFromVersion('wallet-brc100-1.0.0')).toBe(0);
+    expect(pinLevelFromVersion(null)).toBe(0);
+    expect(pinLevelFromVersion({ version: 5 as unknown as string, pinnedProtocols: 'x' })).toBe(0);
+  });
+  test('not fooled by look-alikes', () => {
+    expect(pinLevelFromVersion('bwalletx-5.2.44; xpin=9;')).toBe(0);
+    expect(pinLevelFromVersion('bwalletx-5.2.44;pin=9;')).toBe(0);
+  });
+  test('the old site regex is what breaks: sites must switch to pinLevelFromVersion or the dual regex', () => {
+    const OLD = /\+p(\d+)\b/;
+    const DUAL = /(?:\+p|; pin=)(\d+)\b/;
+    const v = versionWithPins('bwalletx-5.2.44');
+    expect(OLD.test(v)).toBe(false);
+    expect(Number(v.match(DUAL)?.[1])).toBe(PINNED_PROTOCOLS_VERSION);
+    expect(Number('bwalletx-5.2.40+p2'.match(DUAL)?.[1])).toBe(2);
   });
 });
