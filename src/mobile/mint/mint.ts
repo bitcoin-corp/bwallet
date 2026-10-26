@@ -21,7 +21,9 @@ export const MAX_MINT_BYTES = 10 * 1024 * 1024;
 export const DOWNSCALE_SUGGEST_BYTES = 1024 * 1024;
 export const MINT_FEE_RATE = 0.01;
 /** Rough bytes for inputs, change, envelope + MAP + SIGMA around the body. */
-export const TX_OVERHEAD_BYTES = 900; // inputs, change, fee output + issuer signature (MAP + AIP, ~300 B)
+/** BRC-217 adds to the inscription output: MAP identity_key pair (80 B) + | AIP address BITCOIN_ECDSA sig -1 (155 B). */
+export const BRC217_BYTES = 240;
+export const TX_OVERHEAD_BYTES = 900 + BRC217_BYTES; // inputs, change, fee output, issuer statement (~300 B), BRC-217
 export const ACCEPT = 'image/*,video/*,audio/*,.glb,.gltf,.usdz';
 
 // Store build: no fee to bCorp (storeBuild.ts).

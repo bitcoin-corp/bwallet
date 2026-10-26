@@ -8,7 +8,8 @@
 import { inscribe, mintCollection, mintCollectionItem, type OneSatContext } from '@1sat/actions';
 import { Hash, Script, Transaction, Utils, type CreateActionArgs, type WalletInterface } from '@bsv/sdk';
 import { buildInscriptionScript } from '@1sat/templates';
-import { withIssuerSignature } from '../issuer/issuerSign';
+import { withPublicMintSignature } from '../issuer/issuerSign';
+import { findEnvelope, OP_RETURN as RET, tokenize } from '../issuer/brc217';
 import { registerIssuer } from '../issuer/issuerVerify';
 import { buildMap, collectionIdFrom, MINT_APP, withFeeOutput, type Collection } from './mint';
 
@@ -65,20 +66,27 @@ export function meterFees(ctx: OneSatContext): { ctx: OneSatContext; total: () =
   return { ctx: { ...ctx, wallet } as OneSatContext, total: () => (unknown ? null : sum) };
 }
 
-const OP_IF = 0x63;
-const OP_ENDIF = 0x68;
-const OP_RETURN = 0x6a;
-
-/** The owner lock of a 1Sat inscription script: [OP_FALSE OP_IF ord … OP_ENDIF] <lock> [OP_RETURN MAP…]. */
+/**
+ * The owner lock of a 1Sat inscription script, either layout:
+ *   old (@1sat/templates): [OP_FALSE OP_IF ord … OP_ENDIF] <lock> [OP_RETURN MAP…]
+ *   BRC-217:               <lock> [OP_FALSE OP_IF ord … OP_ENDIF] OP_RETURN [MAP…] | AIP …
+ */
 export function lockOfInscription(hex: string): Script | null {
-  const c = Script.fromHex(hex).chunks;
-  if (c[0]?.op !== 0 || c[1]?.op !== OP_IF) return null;
-  const end = c.findIndex((ch, i) => i > 1 && ch.op === OP_ENDIF);
-  if (end < 0) return null;
-  const rest = c.slice(end + 1);
-  const ret = rest.findIndex((ch) => ch.op === OP_RETURN);
+  let bytes: number[];
+  let ops;
+  try {
+    bytes = Utils.toArray(hex, 'hex');
+    ops = tokenize(bytes);
+  } catch {
+    return null;
+  }
+  const env = findEnvelope(ops);
+  if (!env) return null;
+  if (env.start > 0) return Script.fromBinary(bytes.slice(0, ops[env.start].start));
+  const rest = ops.slice(env.endif + 1);
+  const ret = rest.findIndex((o) => o.op === RET && !o.data);
   const lock = ret < 0 ? rest : rest.slice(0, ret);
-  return lock.length ? new Script(lock) : null;
+  return lock.length ? Script.fromBinary(bytes.slice(lock[0].start, lock[lock.length - 1].end)) : null;
 }
 
 /** 1Sat stamps `id:<actionId>_<index>` per basketed output before createAction; keep the index true after inserting. */
@@ -149,8 +157,10 @@ export async function mintMedia(apiContext: OneSatContext, m: MintMediaInput): P
   const name = m.title.trim();
   const description = m.description.trim();
   let signedAt: number | null = null;
+  // Innermost wrapper: the fee output and the editions / poster are added first, then every inscription output
+  // becomes BRC-217 (lock first, signed), then the legacy issuer statement hashes that final script.
   const signed = (ctx: OneSatContext) =>
-    withIssuerSignature(ctx, 'ordinal', (r) => {
+    withPublicMintSignature(ctx, 'ordinal', (r) => {
       signedAt = r.index;
     });
   const register = (txid?: string) => {
@@ -160,8 +170,8 @@ export async function mintMedia(apiContext: OneSatContext, m: MintMediaInput): P
   let res: { txid?: string; error?: string };
   let collectionId: string | undefined;
   if (collection.kind === 'none') {
-    const extras = withExtraOutputs(base, { copies: m.copies ?? 1, poster: m.poster });
-    res = await inscribe.execute(signed(withFeeOutput(extras, feeSats)), {
+    const extras = withExtraOutputs(signed(base), { copies: m.copies ?? 1, poster: m.poster });
+    res = await inscribe.execute(withFeeOutput(extras, feeSats), {
       base64Content,
       contentType,
       map: m.map ?? buildMap({ title: name, description, collection }),
@@ -181,7 +191,7 @@ export async function mintMedia(apiContext: OneSatContext, m: MintMediaInput): P
       register(c.txid);
       collectionId = collectionIdFrom(c.txid, c.collectionId);
     }
-    res = await mintCollectionItem.execute(signed(withFeeOutput(base, feeSats)), {
+    res = await mintCollectionItem.execute(withFeeOutput(signed(base), feeSats), {
       base64Content,
       contentType,
       name,
