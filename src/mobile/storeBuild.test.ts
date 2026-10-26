@@ -166,7 +166,7 @@ describe('TOKENBLASTER_ENABLED: tokenblaster.lol data and the 1Sat Ordnance 3D c
     expect(src('./ownerAppsX.store.ts')).not.toContain('TokenBlaster');
     expect(src('../../vite.config.mobile.ts')).toContain("'src/mobile/ownerAppsX.store.ts'");
     const b = src('./BrowserPage.tsx');
-    expect(b).toContain("...(TOKENBLASTER_ENABLED ? ['TokenBlaster'] : [])");
+    expect(b).toContain("...(TOKENBLASTER_ENABLED ? ['TERRORNODE'] : [])");
     expect(b).toMatch(/HOME_ADDITIONS[^=]*= TOKENBLASTER_ENABLED\s*\?/);
     expect(src('./feed/feeds.ts')).toContain(
       "...(TOKENBLASTER_ENABLED ? ([['tokenblaster', 'TokenBlaster']] as Entry[]) : [])",

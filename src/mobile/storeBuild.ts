@@ -97,7 +97,7 @@ export const BPOSITIVE_ENABLED: boolean = !(
  * app linking to it would point users at outside buying (Apple 3.1.1/3.1.5, Play Payments).
  */
 // Folds to [] in a store build, where the tile's data is not in the bundle at all (TOKENBLASTER_ENABLED).
-export const STORE_HIDDEN_OWNER_APPS: readonly string[] = TOKENBLASTER_ENABLED ? ['TokenBlaster'] : [];
+export const STORE_HIDDEN_OWNER_APPS: readonly string[] = TOKENBLASTER_ENABLED ? ['TokenBlaster', 'TERRORNODE'] : [];
 export const ownerAppsFor = <T extends { name: string }>(apps: readonly T[], store = STORE_BUILD): T[] =>
   store ? apps.filter((a) => !STORE_HIDDEN_OWNER_APPS.includes(a.name)) : [...apps];
 

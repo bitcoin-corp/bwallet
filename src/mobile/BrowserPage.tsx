@@ -515,7 +515,7 @@ allowFrameUrls(ALL_TILES.filter((t) => !t.bapp?.noFrame && !t.url.startsWith('/'
 const DEFAULT_FAVOURITES = [
   'bChatX',
   'bMoviesX',
-  ...(TOKENBLASTER_ENABLED ? ['TokenBlaster'] : []),
+  ...(TOKENBLASTER_ENABLED ? ['TERRORNODE'] : []),
   'bMusicX',
   'bMintX',
   'bWriterX',
@@ -538,7 +538,11 @@ const DEFAULT_FAVOURITES = [
 
 // Apps added to Home once for people who already arranged it (they can still remove them).
 const HOME_ADDITIONS: { flag: string; name: string }[] = TOKENBLASTER_ENABLED
-  ? [{ flag: 'bwallet:home-add:tokenblaster', name: 'TokenBlaster' }]
+  ? [
+      { flag: 'bwallet:home-add:tokenblaster', name: 'TokenBlaster' },
+      // Owner, 26 Oct 2026: TERRORNODE on Home for people who already arranged it, next to the start.
+      { flag: 'bwallet:home-add:terrornode', name: 'TERRORNODE' },
+    ]
   : [];
 
 const readFavourites = (): string[] => mergeFavouriteExtras(readSavedFavourites());
