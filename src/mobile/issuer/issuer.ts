@@ -12,6 +12,7 @@ import {
   Transaction,
   Utils,
 } from '@bsv/sdk';
+import { verifyBrc217 } from './brc217';
 
 /**
  * Verifiable issuers: every mint bWallet makes carries an issuer statement, signed by the
@@ -293,5 +294,24 @@ export function verifyIssueTx(tx: Transaction, tokenId: string): IssueVerdict {
       address: p.address,
     };
   }
+  // BRC-217 (26 Oct 2026 on): the token output signs itself. MAP identity_key names the account; the author
+  // address must be that key's issuer child, as for the statement above.
+  const b = verifyBrc217(tokenHex);
+  if (b.ok) {
+    const key = b.map.identity_key;
+    if (!isIdentityKey(key)) return { ok: false, reason: 'bad identity key' };
+    if (issuerSigningKey(key).toAddress() !== b.address)
+      return { ok: false, reason: 'signature is not from the stated identity' };
+    return {
+      ok: true,
+      tokenId: id,
+      identityKey: key.toLowerCase(),
+      kind: 'ordinal',
+      ticker: inscriptionTicker(tokenHex),
+      address: b.address,
+    };
+  }
+  if (b.reason !== 'no author section' && b.reason !== 'not lock-first' && b.reason !== 'no inscription')
+    lastReason = b.reason;
   return { ok: false, reason: lastReason };
 }

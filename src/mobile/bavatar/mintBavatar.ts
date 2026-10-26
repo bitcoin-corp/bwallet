@@ -1,5 +1,6 @@
 import { inscribe, syncAddresses, type OneSatContext } from '@1sat/actions';
 import { mintPrivateMedia } from '../private/privateMint';
+import { withBrc217 } from '../issuer/issuerSign';
 import { BchatClient, defaultHttp, loadSession, saveSession, type BavatarMine } from '../chat/api';
 import { walletSigner } from '../chat/signer';
 import { isNative } from '../native';
@@ -138,7 +139,7 @@ export async function mintBavatar(
   const run = () =>
     input.private !== false
       ? privateRun()
-      : inscribe.execute(ctx, {
+      : inscribe.execute(withBrc217(ctx), {
           base64Content: b64(svg),
           contentType: 'image/svg+xml',
           map: {
