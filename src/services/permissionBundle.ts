@@ -106,7 +106,13 @@ export interface BundlerOptions<R extends BundleRequest> {
   newId?: () => string;
 }
 
-export const DEFAULT_MERGE_WINDOW_MS = 400;
+/**
+ * 60 ms, was 400 (27 Oct 2026): the window sat in front of every Connect prompt, and a site's connect asks one thing,
+ * so it was pure wait (measured: prompt 530 ms after the click warm, 165 ms with 60). Requests the manager raises for
+ * one call arrive within a few ms of each other; a straggler after the window still joins the open sheet live
+ * (addedLive), so nothing is split into a second sheet.
+ */
+export const DEFAULT_MERGE_WINDOW_MS = 60;
 
 let idCounter = 0;
 const defaultId = () => `bundle-${Date.now().toString(36)}-${(idCounter++).toString(36)}`;

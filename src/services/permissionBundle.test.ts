@@ -835,3 +835,10 @@ describe('b-Aware: Allow grants only lines the card showed (unseen lines fail cl
     expect(sheetDecisions(m, true, { k1: true }, true, viewFor(m))).toEqual({ k1: true, pay: true });
   });
 });
+
+describe('merge window default', () => {
+  test('stays short: it is waited before every Connect prompt', async () => {
+    const { DEFAULT_MERGE_WINDOW_MS } = await import('./permissionBundle');
+    expect(DEFAULT_MERGE_WINDOW_MS).toBeLessThanOrEqual(100);
+  });
+});
