@@ -37,6 +37,7 @@ export const THEME_SITES: readonly ThemeSite[] = [
   { id: 'tokenblaster', host: 'tokenblaster.com' },
   { id: 'bchatx', host: 'bchatx.com' },
   { id: 'bmarketx', host: 'bmarketx.com' },
+  { id: 'badvertisingx', host: 'badvertisingx.com' },
 ];
 
 /** Other hosts that serve the same deployment as a family site (same theme file): chat.bwalletx.com is bChatX. */

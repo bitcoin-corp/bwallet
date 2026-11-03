@@ -35,6 +35,7 @@ const THEME_SITES = [
   { id: 'tokenblaster', host: 'tokenblaster.com' },
   { id: 'bchatx', host: 'bchatx.com' },
   { id: 'bmarketx', host: 'bmarketx.com' },
+  { id: 'badvertisingx', host: 'badvertisingx.com' },
 ];
 
 module.exports = { THEME_SITES };

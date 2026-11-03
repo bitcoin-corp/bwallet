@@ -81,6 +81,36 @@ describe('contrast guard and pack', () => {
     expect(p.look.accent).toBe('#00E676');
     expect(parseThemePack(JSON.parse(JSON.stringify(p)))).not.toBeNull();
   });
+  it("badvertisingx.com's bAds file (gold b on warm black) is a family theme the wallet will wear", () => {
+    const site = familySite('https://badvertisingx.com/campaign')!;
+    expect(site.id).toBe('badvertisingx');
+    const t = parseSiteTheme(
+      {
+        v: 1,
+        id: 'badvertisingx',
+        label: 'bAds',
+        blurb: 'Gold b on warm black',
+        scheme: 'dark',
+        accent: '#F5B800',
+        hi: '#FFD24D',
+        lo: '#C99700',
+        on: '#120F05',
+        bg: '#0B0A09',
+        surface: '#121110',
+        surface2: '#1A1816',
+        nav: '#0B0A09',
+        text: '#F3ECDC',
+        muted: '#A39D90',
+        line: '#2A2724',
+        success: '#5FD38A',
+        danger: '#F97066',
+        livery: { display: 'Space Grotesk', label: 'IBM Plex Mono' },
+      },
+      site,
+    )!;
+    expect(siteThemeReadable(t)).toBe(true);
+    expect(siteThemePack(t)!.id).toBe('site-badvertisingx');
+  });
   it('refuses unreadable colours', () => {
     expect(siteThemeReadable(parseSiteTheme({ ...GOOD, on: '#00C853' }, DNSDEX)!)).toBe(false);
     expect(siteThemeReadable(parseSiteTheme({ ...GOOD, text: '#111111' }, DNSDEX)!)).toBe(false);
