@@ -6,7 +6,7 @@ import { BchatClient, defaultHttp, loadSession, saveSession } from '../chat/api'
 import { walletSigner } from '../chat/signer';
 import { proveHoldings } from '../chat/holdings';
 import { MINT_APP, fileToBase64, withFeeOutput } from '../mint/mint';
-import { withIssuerSignature } from '../issuer/issuerSign';
+import { withBrc217, withIssuerSignature } from '../issuer/issuerSign';
 import { registerIssuer } from '../issuer/issuerVerify';
 import { rememberOwnToken } from '../tokens/indexFund';
 import { CURVE_MAP_DESCRIPTION, curveMapScript } from '../curves/curveMap';
@@ -60,7 +60,8 @@ export function withMapOutput(ctx: OneSatContext, script: LockingScript, descrip
 }
 
 export async function inscribeIcon(ctx: OneSatContext, file: File, ticker: string, what = 'ticket'): Promise<string> {
-  const res = await inscribe.execute(ctx, {
+  // Public icon inscription: BRC-217 signed (lock first). The BSV-21 deploy itself keeps its legacy issuer output.
+  const res = await inscribe.execute(withBrc217(ctx), {
     base64Content: fileToBase64(await file.arrayBuffer()),
     contentType: file.type,
     map: { app: MINT_APP, type: 'ord', name: `$${ticker} ${what} icon` },
