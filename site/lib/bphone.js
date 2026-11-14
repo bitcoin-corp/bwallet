@@ -17,13 +17,28 @@ const minutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
 
 const ADDRESS_RE = /^1[1-9A-HJ-NP-Za-km-z]{24,34}$/;
 
+// The callee's identity-key signature over its payout address (wallet src/mobile/calls/payee.ts signPayee). Kept as
+// sent: the caller's wallet checks it against the callee's key and refuses an address without one (b-Aware row 114).
+function cleanProof(raw) {
+  const r = obj(raw);
+  return r &&
+    typeof r.timestamp === 'string' &&
+    /^\d{1,16}$/.test(r.timestamp) &&
+    typeof r.signature === 'string' &&
+    /^[0-9a-f]{2,200}$/i.test(r.signature)
+    ? { timestamp: r.timestamp, signature: r.signature }
+    : undefined;
+}
+
 function cleanAsset(raw) {
   const r = obj(raw);
   if (!r) return null;
   // MNEE / token payments go to an address the callee's wallet put here; BSV goes to their paymail.
   const address = typeof r.address === 'string' && ADDRESS_RE.test(r.address) ? r.address : undefined;
+  const proof = address ? cleanProof(r.proof) : undefined;
+  const at = address ? { address, ...(proof ? { proof } : {}) } : {};
   if (r.kind === 'bsv') return { kind: 'bsv' };
-  if (r.kind === 'mnee') return address ? { kind: 'mnee', address } : { kind: 'mnee' };
+  if (r.kind === 'mnee') return { kind: 'mnee', ...at };
   if (r.kind === 'bsv21' && typeof r.id === 'string' && TOKEN_ID_RE.test(r.id)) {
     const dec = Number.isInteger(r.dec) && r.dec >= 0 && r.dec <= 18 ? r.dec : 0;
     const out = {
@@ -35,7 +50,7 @@ function cleanAsset(raw) {
           .slice(0, 16) || 'tokens',
       dec,
     };
-    return address ? { ...out, address } : out;
+    return { ...out, ...at };
   }
   return null;
 }

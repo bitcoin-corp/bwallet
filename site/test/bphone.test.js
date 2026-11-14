@@ -90,6 +90,29 @@ describe('profile cleaning', () => {
     expect(cleanRate({ amount: 3, per: 'call', asset: { kind: 'eth' } })).toBeNull();
     expect(cleanRate({ amount: 3, per: 'day', asset: { kind: 'bsv' } })).toBeNull();
   });
+  // b-Aware row 114: the callee's signature over its payout address reaches callers (they refuse an address without).
+  test("a payout address keeps its callee's signature; a malformed one is dropped", () => {
+    const address = '1BoatSLRHtKNngkdXEeobR76b53LETtpyT';
+    const proof = { timestamp: '1794600000000', signature: '30440220' + 'ab'.repeat(30) };
+    expect(cleanRate({ amount: 1, per: 'minute', asset: { kind: 'mnee', address, proof } }).asset).toEqual({
+      kind: 'mnee',
+      address,
+      proof,
+    });
+    const id = `${'b'.repeat(64)}_0`;
+    expect(cleanRate({ amount: 1, per: 'call', asset: { kind: 'bsv21', id, address, proof } }).asset).toMatchObject({
+      address,
+      proof,
+    });
+    expect(
+      cleanRate({
+        amount: 1,
+        per: 'minute',
+        asset: { kind: 'mnee', address, proof: { timestamp: 'x', signature: 'zz' } },
+      }).asset,
+    ).toEqual({ kind: 'mnee', address });
+    expect(cleanRate({ amount: 1, per: 'minute', asset: { kind: 'mnee', proof } }).asset).toEqual({ kind: 'mnee' });
+  });
   test('booking requests need a future time and a sane length', () => {
     const now = Date.parse('2026-10-08T12:00:00Z');
     expect(cleanBookingRequest({ at: '2026-10-08T11:00:00Z', minutes: 30 }, now)).toBe(

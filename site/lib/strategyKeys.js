@@ -150,6 +150,47 @@ const chain = {
     const m = await r.json().catch(() => null);
     return m?.origin ? normOutpoint(m.origin) : null;
   },
+  /**
+   * Where a transaction sits on chain: { height, index } once mined (index = its position in the block, when known),
+   * null when a source says it is known and unconfirmed, and it THROWS when that couldn't be found out (a source
+   * failed and none showed a block, or no source knows the transaction): "unconfirmed" and "couldn't check" must
+   * never look the same (re-review of f3ff8a37). From the 1Sat BEEF's merkle path (the leaf offset is the
+   * position), and JungleBus. Not checked against block headers: it ranks listings (lib/contracts.js).
+   */
+  async position(txid) {
+    let failed = false;
+    let unconfirmed = false;
+    try {
+      const r = await fetch(`${ONESAT}/beef/${txid}`, { signal: AbortSignal.timeout(10_000) });
+      if (r.ok) {
+        const tx = Transaction.fromBEEF(Array.from(new Uint8Array(await r.arrayBuffer())));
+        if (tx.id('hex') !== txid) throw new Error('wrong transaction');
+        const mp = tx.merklePath;
+        const leaf = mp?.path[0]?.find((l) => l.hash === txid);
+        if (mp && Number.isInteger(mp.blockHeight) && mp.blockHeight > 0)
+          return { height: mp.blockHeight, index: Number.isInteger(leaf?.offset) ? leaf.offset : null };
+        unconfirmed = true;
+      } else if (r.status !== 404) failed = true;
+    } catch {
+      failed = true;
+    }
+    try {
+      const r = await fetch(`https://junglebus.gorillapool.io/v1/transaction/get/${txid}`, {
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (r.ok) {
+        const j = await r.json();
+        if (j?.id !== txid) throw new Error('wrong transaction');
+        if (Number.isInteger(j.block_height) && j.block_height > 0)
+          return { height: j.block_height, index: Number.isInteger(j.block_index) ? j.block_index : null };
+        unconfirmed = true;
+      } else if (r.status !== 404) failed = true;
+    } catch {
+      failed = true;
+    }
+    if (failed || !unconfirmed) throw new Error('Chain position unavailable');
+    return null;
+  },
   async bsvUsd() {
     const r = await fetch('https://api.whatsonchain.com/v1/bsv/main/exchangerate', {
       signal: AbortSignal.timeout(8_000),
