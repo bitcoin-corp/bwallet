@@ -79,7 +79,7 @@ const contractId = (e) => JSON.stringify([canonical(e.contract), e.description])
  * so it says what to do (owner, 14 Nov 2026).
  */
 const UPDATE_TO_SIGN =
-  "This contract wasn't listed: paid contracts now carry your signature. Update bWalletX (5.2.57 or later) and publish it again.";
+  "This contract wasn't listed: paid contracts now carry your signature, which needs bWalletX 5.2.57 or later. Update when it's available, then publish it again.";
 
 /**
  * Why the catalogue won't list (or serve) `env`, as [status, error], or null. A paid listing must be signed by its

@@ -204,7 +204,7 @@ describe('contract catalogue: paid listings are signed by their author', () => {
     expect(status).toBe(400);
     // Older wallets show this text as it is, after minting.
     expect(out.error).toBe(
-      "This contract wasn't listed: paid contracts now carry your signature. Update bWalletX (5.2.57 or later) and publish it again.",
+      "This contract wasn't listed: paid contracts now carry your signature, which needs bWalletX 5.2.57 or later. Update when it's available, then publish it again.",
     );
     expect(table).toHaveLength(0);
   });
